@@ -171,3 +171,6 @@ any-code/
 
 ```
 <type>(<scope>): <description>
+```
+
+每次 commit 后可以顺手 `git push`。
