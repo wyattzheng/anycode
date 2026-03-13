@@ -1,0 +1,38 @@
+.voice-button {
+    position: absolute;
+    bottom: calc(var(--tab-height) + 16px);
+    right: 16px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    z-index: 40;
+    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.voice-button:active {
+    transform: scale(0.92);
+}
+
+.voice-button.recording {
+    background: var(--color-danger);
+    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+    }
+
+    50% {
+        box-shadow: 0 4px 30px rgba(239, 68, 68, 0.7);
+    }
+}

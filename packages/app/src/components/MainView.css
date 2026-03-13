@@ -1,0 +1,11 @@
+.main-view {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.main-view-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}

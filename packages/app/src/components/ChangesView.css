@@ -1,0 +1,84 @@
+.changes-view {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.changes-list {
+    border-bottom: 1px solid var(--color-border);
+    max-height: 40%;
+    overflow-y: auto;
+}
+
+.change-items {
+    padding: 8px 0;
+}
+
+.change-item {
+    padding: 10px 16px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.change-item:active {
+    background: var(--color-surface-hover);
+}
+
+.change-badge {
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.change-item.added .change-badge {
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--color-success);
+}
+
+.change-item.modified .change-badge {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--color-warning);
+}
+
+.change-item.deleted .change-badge {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--color-danger);
+}
+
+.changes-diff {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.diff-content {
+    padding: 16px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--color-text-dim);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+@media (min-width: 768px) {
+    .changes-view {
+        flex-direction: row;
+    }
+
+    .changes-list {
+        width: 280px;
+        max-height: none;
+        border-bottom: none;
+        border-right: 1px solid var(--color-border);
+        flex-shrink: 0;
+    }
+}
