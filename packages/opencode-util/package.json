@@ -1,0 +1,16 @@
+{
+  "name": "@opencode-ai/util",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "zod": "4.1.8"
+  },
+  "devDependencies": {
+    "typescript": "5.8.2"
+  }
+}

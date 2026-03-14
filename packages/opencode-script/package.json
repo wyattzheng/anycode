@@ -1,0 +1,17 @@
+{
+  "name": "@opencode-ai/script",
+  "version": "0.0.1",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "semver": "^7.6.3"
+  },
+  "devDependencies": {
+    "@types/semver": "^7.5.8",
+    "typescript": "5.8.2"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
