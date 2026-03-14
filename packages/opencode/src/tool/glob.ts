@@ -1,7 +1,7 @@
 import z from "zod"
 import path from "path"
 import { Tool } from "./tool"
-import { Filesystem } from "../util/filesystem"
+
 import DESCRIPTION from "./glob.txt"
 import { Ripgrep } from "../file/ripgrep"
 import { Instance } from "../project/instance"
@@ -46,7 +46,8 @@ export const GlobTool = Tool.define("glob", {
         break
       }
       const full = path.resolve(search, file)
-      const stats = Filesystem.stat(full)?.mtime.getTime() ?? 0
+      const s = await ctx.fs.stat(full)
+      const stats = s?.mtimeMs ?? 0
       files.push({
         path: full,
         mtime: stats,

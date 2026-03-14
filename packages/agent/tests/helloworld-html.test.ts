@@ -9,7 +9,6 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest"
 import { http, HttpResponse } from "msw"
-import fs from "fs"
 import path from "path"
 import { CodeAgent } from "../src/index"
 import { createTempDir, cleanupTempDir, server } from "./setup"
@@ -18,17 +17,21 @@ import {
     HTML_CONTENT,
 } from "./fixtures/helloworld-html-stream"
 import { RESPONSES_API_BODY } from "./fixtures/text-stream"
+import { InMemoryFS } from "./fixtures/in-memory-fs"
 
 describe("CodeAgent: create hello world HTML page", () => {
     let agent: CodeAgent
     let tmpDir: string
+    let memFS: InMemoryFS
 
     beforeAll(async () => {
         tmpDir = createTempDir()
+        memFS = new InMemoryFS()
 
         agent = new CodeAgent({
             directory: tmpDir,
             skipPlugins: true,
+            fs: memFS,
             provider: {
                 id: "openai",
                 apiKey: "test-key-not-real",
@@ -117,11 +120,13 @@ describe("CodeAgent: create hello world HTML page", () => {
         const toolDones = events.filter((e) => e.type === "tool_call_done")
         expect(toolDones.length).toBeGreaterThan(0)
 
-        // ── Verify the file was actually created on disk ──
-        const indexPath = path.join(tmpDir, "index.html")
-        expect(fs.existsSync(indexPath)).toBe(true)
+        // ── Verify the file was written through the VFS ──
+        const writtenPaths = memFS.getWrittenPaths()
+        const htmlFile = writtenPaths.find((p) => p.endsWith("index.html"))
+        expect(htmlFile).toBeDefined()
 
-        const content = fs.readFileSync(indexPath, "utf-8")
+        const content = memFS.getFileText(htmlFile!)
+        expect(content).toBeDefined()
         expect(content).toContain("Hello, World!")
         expect(content).toContain("<!DOCTYPE html>")
     })

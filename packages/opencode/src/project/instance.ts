@@ -7,11 +7,13 @@ import { iife } from "@/util/iife"
 import { GlobalBus } from "@/bus/global"
 import { Filesystem } from "@/util/filesystem"
 import { InstanceState } from "@/util/instance-state"
+import { createNodeVFS, type VFS } from "@/util/vfs"
 
 interface Context {
   directory: string
   worktree: string
   project: Project.Info
+  vfs?: VFS
 }
 const context = Context.create<Context>("instance")
 const cache = new Map<string, Promise<Context>>()
@@ -32,20 +34,24 @@ function emit(directory: string) {
   })
 }
 
-function boot(input: { directory: string; init?: () => Promise<any>; project?: Project.Info; worktree?: string }) {
+function boot(input: { directory: string; init?: () => Promise<any>; project?: Project.Info; worktree?: string; vfs?: VFS }) {
   return iife(async () => {
-    const ctx =
+    const ctx: Context =
       input.project && input.worktree
         ? {
             directory: input.directory,
             worktree: input.worktree,
             project: input.project,
+            vfs: input.vfs,
           }
-        : await Project.fromDirectory(input.directory).then(({ project, sandbox }) => ({
-            directory: input.directory,
-            worktree: sandbox,
-            project,
-          }))
+        : {
+            ...(await Project.fromDirectory(input.directory).then(({ project, sandbox }) => ({
+              directory: input.directory,
+              worktree: sandbox,
+              project,
+            }))),
+            vfs: input.vfs,
+          }
     await context.provide(ctx, async () => {
       await input.init?.()
     })
@@ -63,7 +69,7 @@ function track(directory: string, next: Promise<Context>) {
 }
 
 export const Instance = {
-  async provide<R>(input: { directory: string; init?: () => Promise<any>; fn: () => R }): Promise<R> {
+  async provide<R>(input: { directory: string; init?: () => Promise<any>; fn: () => R; vfs?: VFS }): Promise<R> {
     const directory = Filesystem.resolve(input.directory)
     let existing = cache.get(directory)
     if (!existing) {
@@ -77,7 +83,9 @@ export const Instance = {
       )
     }
     const ctx = await existing
-    return context.provide(ctx, async () => {
+    // Allow overriding VFS per provide() call
+    const ctxWithVfs = input.vfs ? { ...ctx, vfs: input.vfs } : ctx
+    return context.provide(ctxWithVfs, async () => {
       return input.fn()
     })
   },
@@ -89,6 +97,11 @@ export const Instance = {
   },
   get project() {
     return context.use().project
+  },
+  get vfs(): VFS {
+    const ctx = context.use()
+    if (ctx.vfs) return ctx.vfs
+    return createNodeVFS()
   },
   /**
    * Check if a path is within the project boundary.

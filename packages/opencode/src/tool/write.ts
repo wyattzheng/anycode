@@ -8,7 +8,6 @@ import { Bus } from "../bus"
 import { File } from "../file"
 import { FileWatcher } from "../file/watcher"
 import { FileTime } from "../file/time"
-import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
 import { trimDiff } from "./edit"
 import { assertExternalDirectory } from "./external-directory"
@@ -26,8 +25,8 @@ export const WriteTool = Tool.define("write", {
     const filepath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
     await assertExternalDirectory(ctx, filepath)
 
-    const exists = await Filesystem.exists(filepath)
-    const contentOld = exists ? await Filesystem.readText(filepath) : ""
+    const exists = await ctx.fs.exists(filepath)
+    const contentOld = exists ? await ctx.fs.readText(filepath) : ""
     if (exists) await FileTime.assert(ctx.sessionID, filepath)
 
     const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, params.content))
@@ -41,7 +40,7 @@ export const WriteTool = Tool.define("write", {
       },
     })
 
-    await Filesystem.write(filepath, params.content)
+    await ctx.fs.write(filepath, params.content)
     await Bus.publish(File.Event.Edited, {
       file: filepath,
     })
@@ -54,7 +53,7 @@ export const WriteTool = Tool.define("write", {
     let output = "Wrote file successfully."
     await LSP.touchFile(filepath, true)
     const diagnostics = await LSP.diagnostics()
-    const normalizedFilepath = Filesystem.normalizePath(filepath)
+    const normalizedFilepath = filepath
     let projectDiagnosticsCount = 0
     for (const [file, issues] of Object.entries(diagnostics)) {
       const errors = issues.filter((item) => item.severity === 1)

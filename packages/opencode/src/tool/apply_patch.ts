@@ -1,6 +1,6 @@
 import z from "zod"
 import * as path from "path"
-import * as fs from "fs/promises"
+
 import { Tool } from "./tool"
 import { Bus } from "../bus"
 import { FileWatcher } from "../file/watcher"
@@ -10,7 +10,6 @@ import { createTwoFilesPatch, diffLines } from "diff"
 import { assertExternalDirectory } from "./external-directory"
 import { trimDiff } from "./edit"
 import { LSP } from "../lsp"
-import { Filesystem } from "../util/filesystem"
 import DESCRIPTION from "./apply_patch.txt"
 import { File } from "../file"
 
@@ -91,12 +90,12 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
 
         case "update": {
           // Check if file exists for update
-          const stats = await fs.stat(filePath).catch(() => null)
-          if (!stats || stats.isDirectory()) {
+          const stats = await ctx.fs.stat(filePath)
+          if (!stats || stats.isDirectory) {
             throw new Error(`apply_patch verification failed: Failed to read file to update: ${filePath}`)
           }
 
-          const oldContent = await fs.readFile(filePath, "utf-8")
+          const oldContent = await ctx.fs.readText(filePath)
           let newContent = oldContent
 
           // Apply the update chunks to get new content
@@ -135,7 +134,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
         }
 
         case "delete": {
-          const contentToDelete = await fs.readFile(filePath, "utf-8").catch((error) => {
+          const contentToDelete = await ctx.fs.readText(filePath).catch((error: unknown) => {
             throw new Error(`apply_patch verification failed: ${error}`)
           })
           const deleteDiff = trimDiff(createTwoFilesPatch(filePath, filePath, contentToDelete, ""))
@@ -192,29 +191,29 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
       switch (change.type) {
         case "add":
           // Create parent directories (recursive: true is safe on existing/root dirs)
-          await fs.mkdir(path.dirname(change.filePath), { recursive: true })
-          await fs.writeFile(change.filePath, change.newContent, "utf-8")
+          await ctx.fs.mkdir(path.dirname(change.filePath))
+          await ctx.fs.write(change.filePath, change.newContent)
           updates.push({ file: change.filePath, event: "add" })
           break
 
         case "update":
-          await fs.writeFile(change.filePath, change.newContent, "utf-8")
+          await ctx.fs.write(change.filePath, change.newContent)
           updates.push({ file: change.filePath, event: "change" })
           break
 
         case "move":
           if (change.movePath) {
             // Create parent directories (recursive: true is safe on existing/root dirs)
-            await fs.mkdir(path.dirname(change.movePath), { recursive: true })
-            await fs.writeFile(change.movePath, change.newContent, "utf-8")
-            await fs.unlink(change.filePath)
+            await ctx.fs.mkdir(path.dirname(change.movePath))
+            await ctx.fs.write(change.movePath, change.newContent)
+            await ctx.fs.remove(change.filePath)
             updates.push({ file: change.filePath, event: "unlink" })
             updates.push({ file: change.movePath, event: "add" })
           }
           break
 
         case "delete":
-          await fs.unlink(change.filePath)
+          await ctx.fs.remove(change.filePath)
           updates.push({ file: change.filePath, event: "unlink" })
           break
       }
@@ -257,7 +256,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
     for (const change of fileChanges) {
       if (change.type === "delete") continue
       const target = change.movePath ?? change.filePath
-      const normalized = Filesystem.normalizePath(target)
+      const normalized = target
       const issues = diagnostics[normalized] ?? []
       const errors = issues.filter((item) => item.severity === 1)
       if (errors.length > 0) {

@@ -196,6 +196,7 @@ export class CodeAgent {
         // Boot the instance for the given directory
         await Instance.provide({
             directory: this.options.directory,
+            vfs: this.options.fs as any,
             init: async () => {
                 // Register custom tools
                 if (this.options.tools) {
@@ -251,6 +252,7 @@ export class CodeAgent {
 
         return Instance.provide({
             directory: this.options.directory,
+            vfs: this.options.fs as any,
             fn: async () => {
                 const sessionMod = await import("@any-code/opencode/session/index")
                 const session = await sessionMod.Session.create({
@@ -294,6 +296,7 @@ export class CodeAgent {
         // Start the agent loop in the background, including subscriptions inside Instance context
         const promptPromise = Instance.provide({
             directory: this.options.directory,
+            vfs: this.options.fs as any,
             fn: async () => {
                 const busMod = await import("@any-code/opencode/bus/index")
                 const Bus = busMod.Bus
@@ -473,6 +476,7 @@ export class CodeAgent {
 
         await Instance.provide({
             directory: this.options.directory,
+            vfs: this.options.fs as any,
             fn: async () => {
                 const { SessionPrompt } = await import("@any-code/opencode/session/prompt")
                 SessionPrompt.cancel(sessionId as any)
@@ -497,6 +501,7 @@ export class CodeAgent {
 
             await Instance.provide({
                 directory: this.options.directory,
+                vfs: this.options.fs as any,
                 fn: async () => {
                     ToolRegistry.register({
                         id: name,

@@ -10,7 +10,6 @@ import DESCRIPTION from "./read.txt"
 import { Instance } from "../project/instance"
 import { assertExternalDirectory } from "./external-directory"
 import { InstructionPrompt } from "../session/instruction"
-import { Filesystem } from "../util/filesystem"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -35,11 +34,11 @@ export const ReadTool = Tool.define("read", {
     }
     const title = path.relative(Instance.worktree, filepath)
 
-    const stat = Filesystem.stat(filepath)
+    const stat = await ctx.fs.stat(filepath)
 
     await assertExternalDirectory(ctx, filepath, {
       bypass: Boolean(ctx.extra?.["bypassCwdCheck"]),
-      kind: stat?.isDirectory() ? "directory" : "file",
+      kind: stat?.isDirectory ? "directory" : "file",
     })
 
     await ctx.ask({
@@ -73,18 +72,12 @@ export const ReadTool = Tool.define("read", {
       throw new Error(`File not found: ${filepath}`)
     }
 
-    if (stat.isDirectory()) {
-      const dirents = await fs.readdir(filepath, { withFileTypes: true })
-      const entries = await Promise.all(
-        dirents.map(async (dirent) => {
-          if (dirent.isDirectory()) return dirent.name + "/"
-          if (dirent.isSymbolicLink()) {
-            const target = await fs.stat(path.join(filepath, dirent.name)).catch(() => undefined)
-            if (target?.isDirectory()) return dirent.name + "/"
-          }
-          return dirent.name
-        }),
-      )
+    if (stat.isDirectory) {
+      const entries_raw = await ctx.fs.readDir(filepath)
+      const entries = entries_raw.map((e) => {
+        if (e.isDirectory) return e.name + "/"
+        return e.name
+      })
       entries.sort((a, b) => a.localeCompare(b))
 
       const limit = params.limit ?? DEFAULT_READ_LIMIT
@@ -118,7 +111,8 @@ export const ReadTool = Tool.define("read", {
     const instructions = await InstructionPrompt.resolve(ctx.messages, filepath, ctx.messageID)
 
     // Exclude SVG (XML-based) and vnd.fastbidsheet (.fbs extension, commonly FlatBuffers schema files)
-    const mime = Filesystem.mimeType(filepath)
+    const { lookup } = await import("mime-types")
+    const mime = lookup(filepath) || "application/octet-stream"
     const isImage = mime.startsWith("image/") && mime !== "image/svg+xml" && mime !== "image/vnd.fastbidsheet"
     const isPdf = mime === "application/pdf"
     if (isImage || isPdf) {
@@ -135,7 +129,7 @@ export const ReadTool = Tool.define("read", {
           {
             type: "file",
             mime,
-            url: `data:${mime};base64,${Buffer.from(await Filesystem.readBytes(filepath)).toString("base64")}`,
+            url: `data:${mime};base64,${Buffer.from(await ctx.fs.readBytes(filepath)).toString("base64")}`,
           },
         ],
       }

@@ -1,7 +1,7 @@
 import z from "zod"
 import { text } from "node:stream/consumers"
 import { Tool } from "./tool"
-import { Filesystem } from "../util/filesystem"
+
 import { Ripgrep } from "../file/ripgrep"
 import { Process } from "../util/process"
 
@@ -90,12 +90,12 @@ export const GrepTool = Tool.define("grep", {
       const lineNum = parseInt(lineNumStr, 10)
       const lineText = lineTextParts.join("|")
 
-      const stats = Filesystem.stat(filePath)
+      const stats = await ctx.fs.stat(filePath)
       if (!stats) continue
 
       matches.push({
         path: filePath,
-        modTime: stats.mtime.getTime(),
+        modTime: stats.mtimeMs,
         lineNum,
         lineText,
       })

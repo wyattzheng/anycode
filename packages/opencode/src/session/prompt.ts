@@ -3,6 +3,7 @@ import os from "os"
 import fs from "fs/promises"
 import z from "zod"
 import { Filesystem } from "../util/filesystem"
+import { createNodeVFS } from "../util/vfs"
 import { SessionID, MessageID, PartID } from "./schema"
 import { MessageV2 } from "./message-v2"
 import { Log } from "../util/log"
@@ -425,6 +426,7 @@ export namespace SessionPrompt {
           callID: part.callID,
           extra: { bypassAgentCheck: true },
           messages: msgs,
+          fs: createNodeVFS(),
           async metadata(input) {
             part = (await Session.updatePart({
               ...part,
@@ -753,6 +755,8 @@ export namespace SessionPrompt {
     using _ = log.time("resolveTools")
     const tools: Record<string, AITool> = {}
 
+    const vfs = Instance.vfs
+
     const context = (args: any, options: ToolCallOptions): Tool.Context => ({
       sessionID: input.session.id,
       abort: options.abortSignal!,
@@ -761,6 +765,7 @@ export namespace SessionPrompt {
       extra: { model: input.model, bypassAgentCheck: input.bypassAgentCheck },
       agent: input.agent.name,
       messages: input.messages,
+      fs: vfs,
       metadata: async (val: { title?: string; metadata?: any }) => {
         const match = input.processor.partFromToolCall(options.toolCallId)
         if (match && match.state.status === "running") {
@@ -1160,6 +1165,7 @@ export namespace SessionPrompt {
                       messages: [],
                       metadata: async () => { },
                       ask: async () => { },
+                      fs: createNodeVFS(),
                     }
                     const result = await t.execute(args, readCtx)
                     pieces.push({
@@ -1219,6 +1225,7 @@ export namespace SessionPrompt {
                   messages: [],
                   metadata: async () => { },
                   ask: async () => { },
+                  fs: createNodeVFS(),
                 }
                 const result = await ReadTool.init().then((t) => t.execute(args, listCtx))
                 return [

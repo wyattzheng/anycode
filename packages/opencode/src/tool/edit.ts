@@ -13,7 +13,6 @@ import { File } from "../file"
 import { FileWatcher } from "../file/watcher"
 import { Bus } from "../bus"
 import { FileTime } from "../file/time"
-import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
 import { Snapshot } from "@/snapshot"
 import { assertExternalDirectory } from "./external-directory"
@@ -58,7 +57,7 @@ export const EditTool = Tool.define("edit", {
     let contentNew = ""
     await FileTime.withLock(filePath, async () => {
       if (params.oldString === "") {
-        const existed = await Filesystem.exists(filePath)
+        const existed = await ctx.fs.exists(filePath)
         contentNew = params.newString
         diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
         await ctx.ask({
@@ -70,7 +69,7 @@ export const EditTool = Tool.define("edit", {
             diff,
           },
         })
-        await Filesystem.write(filePath, params.newString)
+        await ctx.fs.write(filePath, params.newString)
         await Bus.publish(File.Event.Edited, {
           file: filePath,
         })
@@ -82,11 +81,11 @@ export const EditTool = Tool.define("edit", {
         return
       }
 
-      const stats = Filesystem.stat(filePath)
+      const stats = await ctx.fs.stat(filePath)
       if (!stats) throw new Error(`File ${filePath} not found`)
-      if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
+      if (stats.isDirectory) throw new Error(`Path is a directory, not a file: ${filePath}`)
       await FileTime.assert(ctx.sessionID, filePath)
-      contentOld = await Filesystem.readText(filePath)
+      contentOld = await ctx.fs.readText(filePath)
 
       const ending = detectLineEnding(contentOld)
       const old = convertToLineEnding(normalizeLineEndings(params.oldString), ending)
@@ -107,7 +106,7 @@ export const EditTool = Tool.define("edit", {
         },
       })
 
-      await Filesystem.write(filePath, contentNew)
+      await ctx.fs.write(filePath, contentNew)
       await Bus.publish(File.Event.Edited, {
         file: filePath,
       })
@@ -115,7 +114,7 @@ export const EditTool = Tool.define("edit", {
         file: filePath,
         event: "change",
       })
-      contentNew = await Filesystem.readText(filePath)
+      contentNew = await ctx.fs.readText(filePath)
       diff = trimDiff(
         createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
       )
@@ -145,7 +144,7 @@ export const EditTool = Tool.define("edit", {
     let output = "Edit applied successfully."
     await LSP.touchFile(filePath, true)
     const diagnostics = await LSP.diagnostics()
-    const normalizedFilePath = Filesystem.normalizePath(filePath)
+    const normalizedFilePath = filePath
     const issues = diagnostics[normalizedFilePath] ?? []
     const errors = issues.filter((item) => item.severity === 1)
     if (errors.length > 0) {
