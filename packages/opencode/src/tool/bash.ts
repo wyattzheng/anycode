@@ -11,8 +11,8 @@ import fs from "fs/promises"
 
 import { Filesystem } from "@/util/filesystem"
 import { fileURLToPath } from "url"
-import { Flag } from "@/flag/flag.ts"
-import { Shell } from "@/shell/shell"
+import { Flag } from "@/util/flag"
+import { Shell } from "@/util/shell"
 
 import { BashArity } from "@/permission/arity"
 import { Truncate } from "./truncation"

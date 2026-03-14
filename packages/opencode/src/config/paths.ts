@@ -4,8 +4,8 @@ import z from "zod"
 import { type ParseError as JsoncParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser"
 import { NamedError } from "@/util/error"
 import { Filesystem } from "@/util/filesystem"
-import { Flag } from "@/flag/flag"
-import { Global } from "@/global"
+import { Flag } from "@/util/flag"
+import { Global } from "@/util/global"
 
 export namespace ConfigPaths {
   export async function projectFiles(name: string, directory: string, worktree: string) {

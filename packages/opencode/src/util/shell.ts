@@ -1,4 +1,4 @@
-import { Flag } from "@/flag/flag"
+import { Flag } from "@/util/flag"
 import { lazy } from "@/util/lazy"
 import { Filesystem } from "@/util/filesystem"
 import { which } from "@/util/which"

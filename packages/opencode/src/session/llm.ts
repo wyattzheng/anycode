@@ -1,4 +1,4 @@
-import { Installation } from "@/installation"
+import { Installation } from "@/stubs/installation"
 import { Provider } from "@/provider/provider"
 import { Log } from "@/util/log"
 import {
@@ -19,9 +19,9 @@ import type { Agent } from "@/agent/agent"
 import type { MessageV2 } from "./message-v2"
 import { Plugin } from "@/plugin"
 import { SystemPrompt } from "./system"
-import { Flag } from "@/flag/flag"
+import { Flag } from "@/util/flag"
 import { PermissionNext } from "@/permission/next"
-import { Auth } from "@/auth"
+import { Auth } from "@/stubs/auth"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })

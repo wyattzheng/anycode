@@ -9,7 +9,7 @@ import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
 import { Ripgrep } from "./ripgrep"
 import fuzzysort from "fuzzysort"
-import { Global } from "../global"
+import { Global } from "../util/global"
 import { git } from "@/util/git"
 import { Protected } from "./protected"
 

@@ -1,7 +1,7 @@
 import z from "zod"
 import path from "path"
 import { Tool } from "./tool"
-import { Question } from "../question"
+import { Question } from "../session/question"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
 import { Provider } from "../provider/provider"

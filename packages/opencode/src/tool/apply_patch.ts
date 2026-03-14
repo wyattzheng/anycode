@@ -9,7 +9,7 @@ import { Patch } from "../patch"
 import { createTwoFilesPatch, diffLines } from "diff"
 import { assertExternalDirectory } from "./external-directory"
 import { trimDiff } from "./edit"
-import { LSP } from "../lsp"
+import { LSP } from "../stubs/lsp"
 import DESCRIPTION from "./apply_patch.txt"
 import { File } from "../file"
 

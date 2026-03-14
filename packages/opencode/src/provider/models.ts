@@ -1,9 +1,9 @@
-import { Global } from "../global"
+import { Global } from "../util/global"
 import { Log } from "../util/log"
 import path from "path"
 import z from "zod"
-import { Installation } from "../installation"
-import { Flag } from "../flag/flag"
+import { Installation } from "../stubs/installation"
+import { Flag } from "../util/flag"
 import { lazy } from "@/util/lazy"
 import { Filesystem } from "../util/filesystem"
 

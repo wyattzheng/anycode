@@ -2,7 +2,7 @@ import { Schema } from "effect"
 import z from "zod"
 
 import { withStatics } from "@/util/schema"
-import { Identifier } from "@/id/id"
+import { Identifier } from "@/util/id"
 
 const sessionIdSchema = Schema.String.pipe(Schema.brand("SessionID"))
 

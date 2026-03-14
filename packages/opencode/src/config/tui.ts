@@ -6,9 +6,9 @@ import { ConfigPaths } from "./paths"
 import { migrateTuiConfig } from "./migrate-tui-config"
 import { TuiInfo } from "./tui-schema"
 import { Instance } from "@/project/instance"
-import { Flag } from "@/flag/flag"
+import { Flag } from "@/util/flag"
 import { Log } from "@/util/log"
-import { Global } from "@/global"
+import { Global } from "@/util/global"
 
 export namespace TuiConfig {
   const log = Log.create({ service: "tui.config" })

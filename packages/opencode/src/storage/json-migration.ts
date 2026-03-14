@@ -1,7 +1,7 @@
 import BetterSqlite3 from "better-sqlite3"
 type Database = BetterSqlite3.Database
 import { drizzle } from "drizzle-orm/better-sqlite3"
-import { Global } from "../global"
+import { Global } from "../util/global"
 import { Log } from "../util/log"
 import { ProjectTable } from "../project/project.sql"
 import { SessionTable, MessageTable, PartTable, TodoTable, PermissionTable } from "../session/session.sql"

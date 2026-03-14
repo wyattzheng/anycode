@@ -4,7 +4,7 @@
  */
 import z from "zod"
 import { BusEvent } from "@/bus/bus-event"
-import { Flag } from "../flag/flag"
+import { Flag } from "../util/flag"
 
 declare global {
   const OPENCODE_VERSION: string

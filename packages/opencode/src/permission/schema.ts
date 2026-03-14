@@ -1,7 +1,7 @@
 import { Schema } from "effect"
 import z from "zod"
 
-import { Identifier } from "@/id/id"
+import { Identifier } from "@/util/id"
 import { withStatics } from "@/util/schema"
 
 const permissionIdSchema = Schema.String.pipe(Schema.brand("PermissionID"))

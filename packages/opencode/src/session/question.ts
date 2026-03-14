@@ -4,7 +4,7 @@ import { SessionID, MessageID } from "@/session/schema"
 import { Instance } from "@/project/instance"
 import { Log } from "@/util/log"
 import z from "zod"
-import { QuestionID } from "./schema"
+import { QuestionID } from "./question.sql"
 
 export namespace Question {
   const log = Log.create({ service: "question" })
