@@ -5,7 +5,7 @@ import type { Snapshot } from "../snapshot"
 import type { PermissionNext } from "../permission/next"
 import type { ProjectID } from "../project/schema"
 import type { SessionID, MessageID, PartID } from "./schema"
-import type { WorkspaceID } from "../control-plane/schema"
+type WorkspaceID = string
 import { Timestamps } from "../storage/schema.sql"
 
 type PartData = Omit<MessageV2.Part, "id" | "sessionID" | "messageID">

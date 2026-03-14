@@ -2,8 +2,6 @@ import type { Hooks, PluginInput, Plugin as PluginInstance } from "@opencode-ai/
 import { Config } from "../config/config"
 import { Bus } from "../bus"
 import { Log } from "../util/log"
-import { createOpencodeClient } from "@opencode-ai/sdk"
-import { Server } from "../server/server"
 import { BunProc } from "../bun"
 import { Instance } from "../project/instance"
 import { Flag } from "../flag/flag"
@@ -22,16 +20,7 @@ export namespace Plugin {
   const INTERNAL_PLUGINS: PluginInstance[] = [CodexAuthPlugin, CopilotAuthPlugin, GitlabAuthPlugin]
 
   const state = Instance.state(async () => {
-    const client = createOpencodeClient({
-      baseUrl: "http://localhost:4096",
-      directory: Instance.directory,
-      headers: Flag.OPENCODE_SERVER_PASSWORD
-        ? {
-          Authorization: `Basic ${Buffer.from(`${Flag.OPENCODE_SERVER_USERNAME ?? "opencode"}:${Flag.OPENCODE_SERVER_PASSWORD}`).toString("base64")}`,
-        }
-        : undefined,
-      fetch: async (...args) => Server.Default().fetch(...args),
-    })
+    const client = {} as any // SDK client stub (server/ removed)
     const config = await Config.get()
     const hooks: Hooks[] = []
     const input: PluginInput = {
@@ -40,7 +29,7 @@ export namespace Plugin {
       worktree: Instance.worktree,
       directory: Instance.directory,
       get serverUrl(): URL {
-        return Server.url ?? new URL("http://localhost:4096")
+        return new URL("http://localhost:4096")
       },
       $: (strings: TemplateStringsArray, ...values: any[]) => {
         const { execSync } = require("child_process")

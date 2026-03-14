@@ -5,7 +5,6 @@ import { Global } from "../global"
 import { Log } from "../util/log"
 import { ProjectTable } from "../project/project.sql"
 import { SessionTable, MessageTable, PartTable, TodoTable, PermissionTable } from "../session/session.sql"
-import { SessionShareTable } from "../share/share.sql"
 import path from "path"
 import { existsSync } from "fs"
 import { Filesystem } from "../util/filesystem"
@@ -372,34 +371,8 @@ export namespace JsonMigration {
       log.warn("skipped orphaned permissions", { count: orphans.permissions })
     }
 
-    // Migrate session shares
-    const shareSessions = shareFiles.map((file) => path.basename(file, ".json"))
-    const shareValues = [] as any[]
-    for (let i = 0; i < shareFiles.length; i += batchSize) {
-      const end = Math.min(i + batchSize, shareFiles.length)
-      const batch = await read(shareFiles, i, end)
-      shareValues.length = 0
-      for (let j = 0; j < batch.length; j++) {
-        const data = batch[j]
-        if (!data) continue
-        const sessionID = shareSessions[i + j]
-        if (!sessionIds.has(sessionID)) {
-          orphans.shares++
-          continue
-        }
-        if (!data?.id || !data?.secret || !data?.url) {
-          errs.push(`session_share missing id/secret/url: ${shareFiles[i + j]}`)
-          continue
-        }
-        shareValues.push({ session_id: sessionID, id: data.id, secret: data.secret, url: data.url })
-      }
-      stats.shares += insert(shareValues, SessionShareTable, "session_share")
-      step("shares", end - i)
-    }
-    log.info("migrated session shares", { count: stats.shares })
-    if (orphans.shares > 0) {
-      log.warn("skipped orphaned session shares", { count: orphans.shares })
-    }
+    // Session shares migration removed (share module deleted)
+
 
     sqlite.exec("COMMIT")
 

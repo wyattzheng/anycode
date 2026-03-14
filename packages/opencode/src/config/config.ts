@@ -28,7 +28,6 @@ import { ConfigMarkdown } from "./markdown"
 import { constants, existsSync } from "fs"
 import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
-import { Event } from "../server/event"
 import { Glob } from "../util/glob"
 import { PackageRegistry } from "@/bun/registry"
 import { proxied } from "@/util/proxied"
@@ -1453,7 +1452,7 @@ export namespace Config {
         GlobalBus.emit("event", {
           directory: "global",
           payload: {
-            type: Event.Disposed.type,
+            type: "server.disposed",
             properties: {},
           },
         })

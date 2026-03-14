@@ -21,7 +21,16 @@ import { McpOAuthCallback } from "./oauth-callback"
 import { McpAuth } from "./auth"
 import { BusEvent } from "../bus/bus-event"
 import { Bus } from "@/bus"
-import { TuiEvent } from "@/cli/cmd/tui/event"
+
+// TuiEvent stub (cli/ removed) — toast notifications are no-ops in agent mode
+const TuiEvent = {
+  ToastShow: BusEvent.define("tui.toast.show", z.object({
+    title: z.string(),
+    message: z.string(),
+    variant: z.string().optional(),
+    duration: z.number().optional(),
+  })),
+}
 import open from "open"
 
 export namespace MCP {
