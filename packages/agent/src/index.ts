@@ -155,13 +155,18 @@ export interface CodeAgentEvent {
 
 // ── CodeAgent Class ────────────────────────────────────────────────────────
 
+let nextScopeId = 1
+
 export class CodeAgent {
     private options: CodeAgentOptions
     private initialized = false
     private _fs: import("./vfs").VirtualFileSystem | undefined
+    /** Unique scope identifier for Instance isolation */
+    readonly scopeId: string
 
     constructor(options: CodeAgentOptions) {
         this.options = options
+        this.scopeId = `agent-${nextScopeId++}`
         // Eagerly set custom fs if provided
         if (options.fs) {
             this._fs = options.fs
@@ -202,6 +207,7 @@ export class CodeAgent {
         // Boot the instance for the given directory
         await Instance.provide({
             directory: this.options.directory,
+            scopeId: this.scopeId,
             vfs: this.options.fs as any,
             config: this.options.config,
             instructions: this.options.instructions,
@@ -260,6 +266,7 @@ export class CodeAgent {
 
         return Instance.provide({
             directory: this.options.directory,
+            scopeId: this.scopeId,
             vfs: this.options.fs as any,
             config: this.options.config,
             instructions: this.options.instructions,
@@ -306,6 +313,7 @@ export class CodeAgent {
         // Start the agent loop in the background, including subscriptions inside Instance context
         const promptPromise = Instance.provide({
             directory: this.options.directory,
+            scopeId: this.scopeId,
             vfs: this.options.fs as any,
             config: this.options.config,
             instructions: this.options.instructions,
@@ -488,6 +496,7 @@ export class CodeAgent {
 
         await Instance.provide({
             directory: this.options.directory,
+            scopeId: this.scopeId,
             vfs: this.options.fs as any,
             config: this.options.config,
             instructions: this.options.instructions,
@@ -515,6 +524,7 @@ export class CodeAgent {
 
             await Instance.provide({
                 directory: this.options.directory,
+                scopeId: this.scopeId,
                 vfs: this.options.fs as any,
             config: this.options.config,
             instructions: this.options.instructions,

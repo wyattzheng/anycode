@@ -13,6 +13,7 @@ interface Context {
   directory: string
   worktree: string
   project: Project.Info
+  scopeId: string
   vfs?: VFS
   config?: Record<string, unknown>
   instructions?: string[]
@@ -22,6 +23,10 @@ const cache = new Map<string, Promise<Context>>()
 
 const disposal = {
   all: undefined as Promise<void> | undefined,
+}
+
+function cacheKey(directory: string, scopeId: string) {
+  return `${directory}::${scopeId}`
 }
 
 function emit(directory: string) {
@@ -36,7 +41,16 @@ function emit(directory: string) {
   })
 }
 
-function boot(input: { directory: string; init?: () => Promise<any>; project?: Project.Info; worktree?: string; vfs?: VFS; config?: Record<string, unknown>; instructions?: string[] }) {
+function boot(input: {
+  directory: string
+  scopeId: string
+  init?: () => Promise<any>
+  project?: Project.Info
+  worktree?: string
+  vfs?: VFS
+  config?: Record<string, unknown>
+  instructions?: string[]
+}) {
   return iife(async () => {
     const ctx: Context =
       input.project && input.worktree
@@ -44,6 +58,7 @@ function boot(input: { directory: string; init?: () => Promise<any>; project?: P
             directory: input.directory,
             worktree: input.worktree,
             project: input.project,
+            scopeId: input.scopeId,
             vfs: input.vfs,
             config: input.config,
             instructions: input.instructions,
@@ -54,6 +69,7 @@ function boot(input: { directory: string; init?: () => Promise<any>; project?: P
               worktree: sandbox,
               project,
             }))),
+            scopeId: input.scopeId,
             vfs: input.vfs,
             config: input.config,
             instructions: input.instructions,
@@ -65,34 +81,54 @@ function boot(input: { directory: string; init?: () => Promise<any>; project?: P
   })
 }
 
-function track(directory: string, next: Promise<Context>) {
+function track(key: string, next: Promise<Context>) {
   const task = next.catch((error) => {
-    if (cache.get(directory) === task) cache.delete(directory)
+    if (cache.get(key) === task) cache.delete(key)
     throw error
   })
-  cache.set(directory, task)
+  cache.set(key, task)
   return task
 }
 
+/** Default scope used when no explicit scopeId is provided (backward compat) */
+const DEFAULT_SCOPE = "default"
+
 export const Instance = {
-  async provide<R>(input: { directory: string; init?: () => Promise<any>; fn: () => R; vfs?: VFS; config?: Record<string, unknown>; instructions?: string[] }): Promise<R> {
+  async provide<R>(input: {
+    directory: string
+    scopeId?: string
+    init?: () => Promise<any>
+    fn: () => R
+    vfs?: VFS
+    config?: Record<string, unknown>
+    instructions?: string[]
+  }): Promise<R> {
     const directory = Filesystem.resolve(input.directory)
-    let existing = cache.get(directory)
+    const scopeId = input.scopeId || DEFAULT_SCOPE
+    const key = cacheKey(directory, scopeId)
+    let existing = cache.get(key)
     if (!existing) {
-      Log.Default.info("creating instance", { directory })
+      Log.Default.info("creating instance", { directory, scopeId })
       existing = track(
-        directory,
+        key,
         boot({
           directory,
+          scopeId,
           init: input.init,
         }),
       )
     }
     const ctx = await existing
     // Allow overriding VFS/config/instructions per provide() call
-    const ctxWithOverrides = (input.vfs || input.config || input.instructions)
-      ? { ...ctx, ...(input.vfs && { vfs: input.vfs }), ...(input.config && { config: input.config }), ...(input.instructions && { instructions: input.instructions }) }
-      : ctx
+    const ctxWithOverrides =
+      input.vfs || input.config || input.instructions
+        ? {
+            ...ctx,
+            ...(input.vfs && { vfs: input.vfs }),
+            ...(input.config && { config: input.config }),
+            ...(input.instructions && { instructions: input.instructions }),
+          }
+        : ctx
     return context.provide(ctxWithOverrides, async () => {
       return input.fn()
     })
@@ -105,6 +141,9 @@ export const Instance = {
   },
   get project() {
     return context.use().project
+  },
+  get scopeId() {
+    return context.use().scopeId
   },
   get vfs(): VFS {
     const ctx = context.use()
@@ -130,21 +169,30 @@ export const Instance = {
     return Filesystem.contains(Instance.worktree, filepath)
   },
   state<S>(init: () => S, dispose?: (state: Awaited<S>) => Promise<void>): () => S {
-    return State.create(() => Instance.directory, init, dispose)
+    return State.create(() => cacheKey(Instance.directory, Instance.scopeId), init, dispose)
   },
-  async reload(input: { directory: string; init?: () => Promise<any>; project?: Project.Info; worktree?: string }) {
+  async reload(input: {
+    directory: string
+    scopeId?: string
+    init?: () => Promise<any>
+    project?: Project.Info
+    worktree?: string
+  }) {
     const directory = Filesystem.resolve(input.directory)
-    Log.Default.info("reloading instance", { directory })
-    await Promise.all([State.dispose(directory), Effect.runPromise(InstanceState.dispose(directory))])
-    cache.delete(directory)
-    const next = track(directory, boot({ ...input, directory }))
+    const scopeId = input.scopeId || DEFAULT_SCOPE
+    const key = cacheKey(directory, scopeId)
+    Log.Default.info("reloading instance", { directory, scopeId })
+    await Promise.all([State.dispose(key), Effect.runPromise(InstanceState.dispose(directory))])
+    cache.delete(key)
+    const next = track(key, boot({ ...input, directory, scopeId }))
     emit(directory)
     return await next
   },
   async dispose() {
-    Log.Default.info("disposing instance", { directory: Instance.directory })
-    await Promise.all([State.dispose(Instance.directory), Effect.runPromise(InstanceState.dispose(Instance.directory))])
-    cache.delete(Instance.directory)
+    const key = cacheKey(Instance.directory, Instance.scopeId)
+    Log.Default.info("disposing instance", { directory: Instance.directory, scopeId: Instance.scopeId })
+    await Promise.all([State.dispose(key), Effect.runPromise(InstanceState.dispose(Instance.directory))])
+    cache.delete(key)
     emit(Instance.directory)
   },
   async disposeAll() {
