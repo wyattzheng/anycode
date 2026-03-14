@@ -7,7 +7,7 @@
  *   3. Sessions persist in the database and can be retrieved
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest"
-import { CodeAgent } from "../src/index"
+import { CodeAgent, NodeFS } from "../src/index"
 import { createTempDir, cleanupTempDir } from "./setup"
 
 describe("CodeAgent: session persistence", () => {
@@ -19,6 +19,7 @@ describe("CodeAgent: session persistence", () => {
         agent = new CodeAgent({
             directory: tmpDir,
             skipPlugins: true,
+            fs: new NodeFS(),
             provider: {
                 id: "openai",
                 apiKey: "test-key-not-real",

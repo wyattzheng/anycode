@@ -10,7 +10,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest"
 import { http, HttpResponse } from "msw"
 import fs from "fs"
 import path from "path"
-import { CodeAgent } from "../src/index"
+import { CodeAgent, NodeFS } from "../src/index"
 import { createTempDir, cleanupTempDir, server } from "./setup"
 import { buildExplorationFixtures } from "./fixtures/exploration-stream"
 import { RESPONSES_API_BODY } from "./fixtures/text-stream"
@@ -70,6 +70,7 @@ describe("CodeAgent: multi-tool exploration", () => {
         agent = new CodeAgent({
             directory: tmpDir,
             skipPlugins: true,
+            fs: new NodeFS(),
             provider: {
                 id: "openai",
                 apiKey: "test-key-not-real",

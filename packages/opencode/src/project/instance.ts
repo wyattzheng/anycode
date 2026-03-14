@@ -7,7 +7,7 @@ import { iife } from "@/util/iife"
 import { GlobalBus } from "@/bus/global"
 import { Filesystem } from "@/util/filesystem"
 import { InstanceState } from "@/util/instance-state"
-import { createNodeVFS, type VFS } from "@/util/vfs"
+import type { VFS } from "@/util/vfs"
 
 interface Context {
   directory: string
@@ -100,8 +100,8 @@ export const Instance = {
   },
   get vfs(): VFS {
     const ctx = context.use()
-    if (ctx.vfs) return ctx.vfs
-    return createNodeVFS()
+    if (!ctx.vfs) throw new Error("VFS not provided. Pass a VFS implementation via Instance.provide({ vfs })")
+    return ctx.vfs
   },
   /**
    * Check if a path is within the project boundary.

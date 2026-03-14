@@ -16,7 +16,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest"
 import { http, HttpResponse } from "msw"
-import { CodeAgent } from "../src/index"
+import { CodeAgent, NodeFS } from "../src/index"
 import { createTempDir, cleanupTempDir, server } from "./setup"
 import { buildSubagentFixtures, CONFIRMATION_TEXT, TASK_DESCRIPTION } from "./fixtures/subagent-stream"
 import { RESPONSES_API_BODY } from "./fixtures/text-stream"
@@ -30,6 +30,7 @@ describe("CodeAgent: subagent (task tool)", () => {
         agent = new CodeAgent({
             directory: tmpDir,
             skipPlugins: true,
+            fs: new NodeFS(),
             provider: {
                 id: "openai",
                 apiKey: "test-key-not-real",

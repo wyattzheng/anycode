@@ -5,7 +5,7 @@
  * when the LLM returns a simple text response.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest"
-import { CodeAgent } from "../src/index"
+import { CodeAgent, NodeFS } from "../src/index"
 import { createTempDir, cleanupTempDir } from "./setup"
 
 describe("CodeAgent text streaming", () => {
@@ -18,6 +18,7 @@ describe("CodeAgent text streaming", () => {
         agent = new CodeAgent({
             directory: tmpDir,
             skipPlugins: true,
+            fs: new NodeFS(),
             provider: {
                 // Use openai provider so ai-sdk makes calls to /v1/chat/completions
                 // MSW will intercept these

@@ -31,7 +31,6 @@
  */
 
 import type { ToolDefinition } from "@opencode-ai/plugin"
-import { NodeFS as NodeFSImpl } from "./vfs-node"
 export type { VirtualFileSystem, VFSStat, VFSDirEntry, GrepOptions, GrepMatch } from "./vfs"
 export { NodeFS } from "./vfs-node"
 
@@ -101,11 +100,12 @@ export interface CodeAgentOptions {
 
     /**
      * Virtual File System implementation.
-     * Defaults to NodeFS (Node.js fs + ripgrep).
+     * Required — provides file I/O for all tool operations.
      *
-     * Override for custom backends (in-memory, remote, browser, etc.).
+     * Use NodeFS for standard Node.js filesystem, or provide a custom
+     * backend (in-memory, remote, browser, etc.).
      */
-    fs?: import("./vfs").VirtualFileSystem
+    fs: import("./vfs").VirtualFileSystem
 }
 
 export interface CodeAgentSession {
@@ -158,14 +158,8 @@ export class CodeAgent {
 
     /**
      * The virtual file system instance.
-     * Defaults to NodeFS if not provided in options.
-     * Available after init() or immediately if custom fs provided.
      */
     get fs(): import("./vfs").VirtualFileSystem {
-        if (!this._fs) {
-            // Lazy-init NodeFS
-            this._fs = new NodeFSImpl()
-        }
         return this._fs!
     }
 

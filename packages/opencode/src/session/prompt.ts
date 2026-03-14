@@ -3,7 +3,6 @@ import os from "os"
 import fs from "fs/promises"
 import z from "zod"
 import { Filesystem } from "../util/filesystem"
-import { createNodeVFS } from "../util/vfs"
 import { SessionID, MessageID, PartID } from "./schema"
 import { MessageV2 } from "./message-v2"
 import { Log } from "../util/log"
@@ -426,7 +425,7 @@ export namespace SessionPrompt {
           callID: part.callID,
           extra: { bypassAgentCheck: true },
           messages: msgs,
-          fs: createNodeVFS(),
+          fs: Instance.vfs,
           async metadata(input) {
             part = (await Session.updatePart({
               ...part,
@@ -1165,7 +1164,7 @@ export namespace SessionPrompt {
                       messages: [],
                       metadata: async () => { },
                       ask: async () => { },
-                      fs: createNodeVFS(),
+                      fs: Instance.vfs,
                     }
                     const result = await t.execute(args, readCtx)
                     pieces.push({
@@ -1225,7 +1224,7 @@ export namespace SessionPrompt {
                   messages: [],
                   metadata: async () => { },
                   ask: async () => { },
-                  fs: createNodeVFS(),
+                  fs: Instance.vfs,
                 }
                 const result = await ReadTool.init().then((t) => t.execute(args, listCtx))
                 return [

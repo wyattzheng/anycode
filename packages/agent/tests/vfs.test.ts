@@ -122,14 +122,16 @@ describe("VFS: NodeFS implementation", () => {
 })
 
 describe("CodeAgent: VFS integration", () => {
-    it("should default to NodeFS", async () => {
+    it("should use provided NodeFS", async () => {
         const { NodeFS: NodeFSClass } = await import("../src/vfs-node")
+        const nodeFs = new NodeFSClass()
         const agent = new CodeAgent({
             directory: "/tmp/test",
             provider: { id: "openai", apiKey: "test", model: "gpt-4o" },
+            fs: nodeFs,
         })
         expect(agent.fs).toBeDefined()
-        expect(agent.fs).toBeInstanceOf(NodeFSClass)
+        expect(agent.fs).toBe(nodeFs)
     })
 
     it("should accept custom VFS", async () => {

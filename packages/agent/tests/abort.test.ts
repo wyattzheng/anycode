@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest"
 import { http, HttpResponse } from "msw"
-import { CodeAgent } from "../src/index"
+import { CodeAgent, NodeFS } from "../src/index"
 import { createTempDir, cleanupTempDir, server } from "./setup"
 
 describe("CodeAgent abort", () => {
@@ -38,6 +38,7 @@ describe("CodeAgent abort", () => {
         agent = new CodeAgent({
             directory: tmpDir,
             skipPlugins: true,
+            fs: new NodeFS(),
             provider: {
                 id: "openai",
                 apiKey: "test-key-not-real",
