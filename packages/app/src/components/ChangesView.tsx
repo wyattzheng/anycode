@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { AddedIcon, ModifiedIcon, DeletedIcon } from "./Icons";
+import { FileDocIcon } from "./Icons";
 import "./ChangesView.css";
 
 export function ChangesView() {
@@ -55,16 +55,19 @@ export function ChangesView() {
             <div className="changes-list" style={{ height: listHeight }}>
                 <div className="change-items">
                     <div className="change-item added">
-                        <span className="change-badge"><AddedIcon /></span>
+                        <FileDocIcon />
                         <span>src/App.tsx</span>
+                        <span className="change-badge">A</span>
                     </div>
                     <div className="change-item modified">
-                        <span className="change-badge"><ModifiedIcon /></span>
+                        <FileDocIcon />
                         <span>src/main.tsx</span>
+                        <span className="change-badge">M</span>
                     </div>
                     <div className="change-item deleted">
-                        <span className="change-badge"><DeletedIcon /></span>
+                        <FileDocIcon />
                         <span>src/old.ts</span>
+                        <span className="change-badge">D</span>
                     </div>
                 </div>
             </div>

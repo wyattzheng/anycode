@@ -1,9 +1,10 @@
 import { useState, useRef, useCallback } from "react";
-import { FolderOpenIcon, FileDocIcon } from "./Icons";
+import { FolderOpenIcon, FileDocIcon, ChevronIcon } from "./Icons";
 import "./FileBrowser.css";
 
 export function FileBrowser() {
     const [sidebarHeight, setSidebarHeight] = useState(200);
+    const [srcExpanded, setSrcExpanded] = useState(true);
     const containerRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
@@ -54,18 +55,23 @@ export function FileBrowser() {
             </div>
             <div className="file-browser-sidebar" style={{ height: sidebarHeight }}>
                 <div className="file-tree">
-                    <div className="file-tree-item folder">
+                    <div className="file-tree-item folder" onClick={() => setSrcExpanded(!srcExpanded)}>
+                        <span className={`chevron ${srcExpanded ? "expanded" : ""}`}><ChevronIcon /></span>
                         <span className="file-icon"><FolderOpenIcon /></span>
                         <span className="file-name">src/</span>
                     </div>
-                    <div className="file-tree-item file indent">
-                        <span className="file-icon"><FileDocIcon /></span>
-                        <span className="file-name">main.tsx</span>
-                    </div>
-                    <div className="file-tree-item file indent">
-                        <span className="file-icon"><FileDocIcon /></span>
-                        <span className="file-name">App.tsx</span>
-                    </div>
+                    {srcExpanded && (
+                        <>
+                            <div className="file-tree-item file indent">
+                                <span className="file-icon"><FileDocIcon /></span>
+                                <span className="file-name">main.tsx</span>
+                            </div>
+                            <div className="file-tree-item file indent">
+                                <span className="file-icon"><FileDocIcon /></span>
+                                <span className="file-name">App.tsx</span>
+                            </div>
+                        </>
+                    )}
                     <div className="file-tree-item file">
                         <span className="file-icon"><FileDocIcon /></span>
                         <span className="file-name">package.json</span>

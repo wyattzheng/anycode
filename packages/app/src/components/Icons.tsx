@@ -79,8 +79,15 @@ export function DiffIcon({ size = 18, color = "currentColor" }: IconProps) {
 export function FolderOpenIcon({ size = 14, color = "currentColor" }: IconProps) {
     return (
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 19l2.757-7.351A1 1 0 0 1 8.693 11H21.18a1 1 0 0 1 .935 1.354l-2.296 6.292A1 1 0 0 1 18.882 19z" />
-            <path d="M2 11V5a2 2 0 0 1 2-2h4l2 3h6a2 2 0 0 1 2 2v1" />
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+        </svg>
+    );
+}
+
+export function ChevronIcon({ size = 10, color = "currentColor" }: IconProps) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 6 15 12 9 18" />
         </svg>
     );
 }

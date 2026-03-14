@@ -52,6 +52,18 @@
     flex-shrink: 0;
 }
 
+.chevron {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    transition: transform 0.15s;
+    opacity: 0.5;
+}
+
+.chevron.expanded {
+    transform: rotate(90deg);
+}
+
 .file-name {
     overflow: hidden;
     text-overflow: ellipsis;
