@@ -6,6 +6,8 @@
  *
  * @example
  * ```ts
+ * import { CodeAgent } from "agent"
+ *
  * const agent = new CodeAgent({
  *   directory: "/path/to/project",
  *   provider: { id: "anthropic", apiKey: "sk-...", model: "claude-sonnet-4-20250514" },
@@ -19,6 +21,7 @@
  *   },
  * })
  *
+ * await agent.init()
  * const session = await agent.createSession()
  * const stream = agent.chat(session.id, "Build a React todo app")
  * for await (const event of stream) {
@@ -28,7 +31,6 @@
  */
 
 import type { ToolDefinition } from "@opencode-ai/plugin"
-import type z from "zod"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -67,78 +69,324 @@ export interface CodeAgentSession {
 }
 
 export type CodeAgentEventType =
-    | "text"
     | "text_delta"
-    | "tool_call"
-    | "tool_result"
+    | "tool_call_start"
+    | "tool_call_done"
     | "error"
     | "done"
 
 export interface CodeAgentEvent {
     type: CodeAgentEventType
-    /** For text/text_delta events */
+    /** For text_delta events: incremental text */
     content?: string
-    /** For tool_call events */
+    /** For tool events */
     toolName?: string
     toolArgs?: Record<string, unknown>
-    /** For tool_result events */
     toolOutput?: string
     /** For error events */
-    error?: Error
+    error?: string
+    /** Message metadata (on done events) */
+    usage?: {
+        inputTokens: number
+        outputTokens: number
+        cost: number
+    }
 }
 
 // ── CodeAgent Class ────────────────────────────────────────────────────────
 
 export class CodeAgent {
     private options: CodeAgentOptions
+    private initialized = false
 
     constructor(options: CodeAgentOptions) {
         this.options = options
     }
 
     /**
-     * Create a new chat session
+     * Initialize the agent - must be called before createSession or chat.
+     * Boots up opencode subsystems: database, config, plugins, tool registry.
      */
-    async createSession(title?: string): Promise<CodeAgentSession> {
-        // TODO: Integrate with opencode Session.create()
-        // This requires initializing opencode's Instance, Database, Config, etc.
-        throw new Error("Not yet implemented - pending opencode integration")
+    async init(): Promise<void> {
+        if (this.initialized) return
+
+        // Set provider API key via environment variable (opencode convention)
+        const envKey = this.getProviderEnvKey(this.options.provider.id)
+        if (envKey) {
+            process.env[envKey] = this.options.provider.apiKey
+        }
+
+        // Set base URL if provided
+        if (this.options.provider.baseUrl) {
+            const baseUrlEnv = this.getProviderBaseUrlEnv(this.options.provider.id)
+            if (baseUrlEnv) {
+                process.env[baseUrlEnv] = this.options.provider.baseUrl
+            }
+        }
+
+        // Import opencode modules (they have top-level awaits)
+        const { Instance } = await import("@any-code/opencode/project/instance")
+
+        // Boot the instance for the given directory
+        await Instance.provide({
+            directory: this.options.directory,
+            init: async () => {
+                // Register custom tools
+                if (this.options.tools) {
+                    const { ToolRegistry } = await import("@any-code/opencode/tool/registry")
+                    const { Tool } = await import("@any-code/opencode/tool/tool")
+                    const z = (await import("zod")).default
+
+                    for (const [name, def] of Object.entries(this.options.tools)) {
+                        ToolRegistry.register({
+                            id: name,
+                            init: async () => ({
+                                parameters: z.object(def.args),
+                                description: def.description,
+                                execute: async (args, ctx) => {
+                                    const result = await def.execute(args as any, ctx as any)
+                                    return {
+                                        title: "",
+                                        output: typeof result === "string" ? result : JSON.stringify(result),
+                                        metadata: {},
+                                    }
+                                },
+                            }),
+                        })
+                    }
+                }
+
+                // Register custom system prompt via plugin hooks
+                if (this.options.systemPrompt) {
+                    const { Plugin } = await import("@any-code/opencode/plugin")
+                    // We'll inject the system prompt via the hook system
+                    // The prompt will be appended in the chat method
+                }
+
+                // Initialize plugins
+                const { Plugin } = await import("@any-code/opencode/plugin")
+                await Plugin.init()
+            },
+            fn: () => { },
+        })
+
+        this.initialized = true
     }
 
     /**
-     * Send a message to the agent and receive streaming responses
+     * Create a new chat session
+     */
+    async createSession(title?: string): Promise<CodeAgentSession> {
+        this.assertInitialized()
+
+        const { Instance } = await import("@any-code/opencode/project/instance")
+
+        return Instance.provide({
+            directory: this.options.directory,
+            fn: async () => {
+                const { Session } = await import("@any-code/opencode/session/index")
+                const session = await Session.create({
+                    title,
+                })
+                return {
+                    id: session.id,
+                    title: session.title,
+                    createdAt: session.time.created,
+                }
+            },
+        })
+    }
+
+    /**
+     * Send a message to the agent and receive streaming responses.
+     * Subscribe to Bus events for real-time updates.
      */
     async *chat(
         sessionId: string,
         message: string,
     ): AsyncGenerator<CodeAgentEvent> {
-        // TODO: Integrate with opencode SessionPrompt.chat()
-        // The core loop is:
-        // 1. SessionPrompt.chat() creates user message
-        // 2. SessionProcessor.create() sets up the processing loop
-        // 3. LLM.stream() calls the AI model
-        // 4. Tool calls are executed via ToolRegistry
-        // 5. Loop until done
-        throw new Error("Not yet implemented - pending opencode integration")
+        this.assertInitialized()
+
+        const { Instance } = await import("@any-code/opencode/project/instance")
+        const { Bus } = await import("@any-code/opencode/bus/index")
+        const { MessageV2 } = await import("@any-code/opencode/session/message-v2")
+        const { Session } = await import("@any-code/opencode/session/index")
+
+        // Set up event stream
+        const events: CodeAgentEvent[] = []
+        let resolve: (() => void) | null = null
+        let done = false
+
+        const push = (event: CodeAgentEvent) => {
+            events.push(event)
+            if (resolve) {
+                resolve()
+                resolve = null
+            }
+        }
+
+        // Subscribe to message part events
+        const unsubs: (() => void)[] = []
+
+        unsubs.push(
+            Bus.subscribe(MessageV2.Event.PartDelta, (payload) => {
+                if (payload.sessionID !== sessionId) return
+                push({
+                    type: "text_delta",
+                    content: payload.delta,
+                })
+            }),
+        )
+
+        unsubs.push(
+            Bus.subscribe(MessageV2.Event.PartUpdated, (payload) => {
+                const part = payload.part
+                if (part.sessionID !== sessionId) return
+
+                if (part.type === "tool" && part.state.status === "running") {
+                    push({
+                        type: "tool_call_start",
+                        toolName: part.tool,
+                        toolArgs: part.state.input as Record<string, unknown>,
+                    })
+                }
+                if (part.type === "tool" && part.state.status === "completed") {
+                    push({
+                        type: "tool_call_done",
+                        toolName: part.tool,
+                        toolOutput: part.state.output,
+                    })
+                }
+                if (part.type === "tool" && part.state.status === "error") {
+                    push({
+                        type: "error",
+                        error: part.state.error,
+                    })
+                }
+            }),
+        )
+
+        unsubs.push(
+            Bus.subscribe(Session.Event.Error, (payload) => {
+                if (payload.sessionID !== sessionId) return
+                push({
+                    type: "error",
+                    error: payload.error?.message ?? "Unknown error",
+                })
+            }),
+        )
+
+        // Start the agent loop in the background
+        const promptPromise = Instance.provide({
+            directory: this.options.directory,
+            fn: async () => {
+                const { SessionPrompt } = await import("@any-code/opencode/session/prompt")
+                const { Provider } = await import("@any-code/opencode/provider/provider")
+
+                const providerID = this.options.provider.id
+                const modelID = this.options.provider.model
+
+                try {
+                    await SessionPrompt.prompt({
+                        sessionID: sessionId as any,
+                        model: {
+                            providerID: providerID as any,
+                            modelID: modelID as any,
+                        },
+                        parts: [
+                            {
+                                type: "text",
+                                text: message,
+                            },
+                        ],
+                        ...(this.options.systemPrompt ? { system: this.options.systemPrompt } : {}),
+                    })
+                } catch (err: any) {
+                    push({
+                        type: "error",
+                        error: err?.message ?? String(err),
+                    })
+                } finally {
+                    done = true
+                    push({ type: "done" })
+                }
+            },
+        })
+
+        // Yield events as they come in
+        try {
+            while (!done || events.length > 0) {
+                if (events.length > 0) {
+                    const event = events.shift()!
+                    yield event
+                    if (event.type === "done") return
+                } else {
+                    await new Promise<void>((r) => {
+                        resolve = r
+                    })
+                }
+            }
+        } finally {
+            // Cleanup subscriptions
+            for (const unsub of unsubs) {
+                unsub()
+            }
+        }
     }
 
     /**
-     * Abort an ongoing chat in a session
+     * Cancel an ongoing chat in a session
      */
     async abort(sessionId: string): Promise<void> {
-        // TODO: Integrate with opencode Session abort mechanism
-        throw new Error("Not yet implemented - pending opencode integration")
+        this.assertInitialized()
+
+        const { Instance } = await import("@any-code/opencode/project/instance")
+
+        await Instance.provide({
+            directory: this.options.directory,
+            fn: async () => {
+                const { SessionPrompt } = await import("@any-code/opencode/session/prompt")
+                SessionPrompt.cancel(sessionId as any)
+            },
+        })
     }
 
     /**
      * Register a custom tool at runtime
      */
-    registerTool(name: string, tool: ToolDefinition): void {
+    async registerTool(name: string, tool: ToolDefinition): Promise<void> {
         if (!this.options.tools) {
             this.options.tools = {}
         }
         this.options.tools[name] = tool
-        // TODO: Call ToolRegistry.register() when opencode is initialized
+
+        // If already initialized, register dynamically
+        if (this.initialized) {
+            const { Instance } = await import("@any-code/opencode/project/instance")
+            const { ToolRegistry } = await import("@any-code/opencode/tool/registry")
+            const z = (await import("zod")).default
+
+            await Instance.provide({
+                directory: this.options.directory,
+                fn: async () => {
+                    ToolRegistry.register({
+                        id: name,
+                        init: async () => ({
+                            parameters: z.object(tool.args),
+                            description: tool.description,
+                            execute: async (args, ctx) => {
+                                const result = await tool.execute(args as any, ctx as any)
+                                return {
+                                    title: "",
+                                    output: typeof result === "string" ? result : JSON.stringify(result),
+                                    metadata: {},
+                                }
+                            },
+                        }),
+                    })
+                },
+            })
+        }
     }
 
     /**
@@ -146,5 +394,39 @@ export class CodeAgent {
      */
     get config(): Readonly<CodeAgentOptions> {
         return this.options
+    }
+
+    // ── Private helpers ────────────────────────────────────────────────────
+
+    private assertInitialized() {
+        if (!this.initialized) {
+            throw new Error("CodeAgent not initialized. Call agent.init() first.")
+        }
+    }
+
+    private getProviderEnvKey(providerId: string): string | undefined {
+        const map: Record<string, string> = {
+            anthropic: "ANTHROPIC_API_KEY",
+            openai: "OPENAI_API_KEY",
+            google: "GOOGLE_API_KEY",
+            groq: "GROQ_API_KEY",
+            mistral: "MISTRAL_API_KEY",
+            xai: "XAI_API_KEY",
+            deepinfra: "DEEPINFRA_API_KEY",
+            cerebras: "CEREBRAS_API_KEY",
+            cohere: "COHERE_API_KEY",
+            perplexity: "PERPLEXITY_API_KEY",
+            togetherai: "TOGETHER_API_KEY",
+        }
+        return map[providerId]
+    }
+
+    private getProviderBaseUrlEnv(providerId: string): string | undefined {
+        const map: Record<string, string> = {
+            anthropic: "ANTHROPIC_BASE_URL",
+            openai: "OPENAI_BASE_URL",
+            google: "GOOGLE_GENERATIVE_AI_BASE_URL",
+        }
+        return map[providerId]
     }
 }
