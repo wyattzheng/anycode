@@ -14,14 +14,16 @@ import { createTempDir, cleanupTempDir } from "./setup"
 describe("CodeAgent: session persistence", () => {
     let agent: CodeAgent
     let tmpDir: string
+    let paths: ReturnType<typeof testPaths>
 
     beforeAll(async () => {
         tmpDir = createTempDir()
+        paths = testPaths()
         agent = new CodeAgent({
             directory: tmpDir,
             skipPlugins: true,
             fs: new NodeFS(),
-            paths: testPaths(),
+            paths,
             provider: {
                 id: "openai",
                 apiKey: "test-key-not-real",
@@ -67,6 +69,8 @@ describe("CodeAgent: session persistence", () => {
         const { Instance } = await import("@any-code/opencode/project/instance")
         const sessionData = await Instance.provide({
             directory: tmpDir,
+            vfs: new NodeFS(),
+            paths,
             fn: async () => {
                 const { Session } = await import("@any-code/opencode/session/index")
                 return Session.get(session.id)
@@ -84,6 +88,8 @@ describe("CodeAgent: session persistence", () => {
         const { Instance } = await import("@any-code/opencode/project/instance")
         const sessions = await Instance.provide({
             directory: tmpDir,
+            vfs: new NodeFS(),
+            paths,
             fn: async () => {
                 const { Session } = await import("@any-code/opencode/session/index")
                 return [...Session.list()]
