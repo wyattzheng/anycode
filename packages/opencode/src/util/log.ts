@@ -56,13 +56,12 @@ export namespace Log {
     return msg.length
   }
 
-  export async function init(options: Options) {
-    const { Instance } = await import("../project/instance")
+  export async function init(options: Options & { paths: { log: string } }) {
     if (options.level) level = options.level
-    cleanup(Instance.paths.log)
+    cleanup(options.paths.log)
     if (options.print) return
     logpath = path.join(
-      Instance.paths.log,
+      options.paths.log,
       options.dev ? "dev.log" : new Date().toISOString().split(".")[0].replace(/:/g, "") + ".log",
     )
     await fs.truncate(logpath).catch(() => {})

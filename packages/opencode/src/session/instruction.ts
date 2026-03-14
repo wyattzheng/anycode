@@ -69,12 +69,12 @@ export namespace InstructionPrompt {
   }
 
   export async function systemPaths(context: AgentContext) {
-    const config = await Config.get()
+    const config = await Config.get(context)
     const paths = new Set<string>()
 
     if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
       for (const file of FILES) {
-        const matches = await Filesystem.findUp(file, context.directory, context.worktree)
+        const matches = await Filesystem.findUp(context, file, context.directory, context.worktree)
         if (matches.length > 0) {
           matches.forEach((p) => {
             paths.add(path.resolve(p))
@@ -85,7 +85,7 @@ export namespace InstructionPrompt {
     }
 
     for (const file of globalFiles(context)) {
-      if (await Filesystem.exists(file)) {
+      if (await Filesystem.exists(context, file)) {
         paths.add(path.resolve(file))
         break
       }
@@ -121,11 +121,11 @@ export namespace InstructionPrompt {
       return injected
     }
 
-    const config = await Config.get()
+    const config = await Config.get(context)
     const paths = await systemPaths(context)
 
     const files = Array.from(paths).map(async (p) => {
-      const content = await Filesystem.readText(p).catch(() => "")
+      const content = await Filesystem.readText(context, p).catch(() => "")
       return content ? "Instructions from: " + p + "\n" + content : ""
     })
 
@@ -164,10 +164,10 @@ export namespace InstructionPrompt {
     return paths
   }
 
-  export async function find(dir: string) {
+  export async function find(context: AgentContext, dir: string) {
     for (const file of FILES) {
       const filepath = path.resolve(path.join(dir, file))
-      if (await Filesystem.exists(filepath)) return filepath
+      if (await Filesystem.exists(context, filepath)) return filepath
     }
   }
 
@@ -181,11 +181,11 @@ export namespace InstructionPrompt {
     const root = path.resolve(context.directory)
 
     while (current.startsWith(root) && current !== root) {
-      const found = await find(current)
+      const found = await find(undefined as any, current)
 
       if (found && found !== target && !system.has(found) && !already.has(found) && !isClaimed(context, messageID, found)) {
         claim(context, messageID, found)
-        const content = await Filesystem.readText(found).catch(() => undefined)
+        const content = await Filesystem.readText(context, found).catch(() => undefined)
         if (content) {
           results.push({ filepath: found, content: "Instructions from: " + found + "\n" + content })
         }

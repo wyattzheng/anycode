@@ -1,3 +1,5 @@
+import { createScopedState } from "@/agent/context"
+import type { AgentContext } from "@/agent/context"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import z from "zod"
@@ -45,10 +47,10 @@ export namespace FileWatcher {
     }
   })
 
-  const state = Instance.state(
-    async () => {
+  const state = createScopedState(
+    async (context: AgentContext) => {
       log.info("init")
-      const cfg = await Config.get()
+      const cfg = await Config.get(context)
       const backend = (() => {
         if (process.platform === "win32") return "windows"
         if (process.platform === "darwin") return "fs-events"
@@ -66,9 +68,9 @@ export namespace FileWatcher {
       const subscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
         if (err) return
         for (const evt of evts) {
-          if (evt.type === "create") Bus.publish(Event.Updated, { file: evt.path, event: "add" })
-          if (evt.type === "update") Bus.publish(Event.Updated, { file: evt.path, event: "change" })
-          if (evt.type === "delete") Bus.publish(Event.Updated, { file: evt.path, event: "unlink" })
+          if (evt.type === "create") Bus.publish(context, Event.Updated, { file: evt.path, event: "add" })
+          if (evt.type === "update") Bus.publish(context, Event.Updated, { file: evt.path, event: "change" })
+          if (evt.type === "delete") Bus.publish(context, Event.Updated, { file: evt.path, event: "unlink" })
         }
       }
 
@@ -76,23 +78,23 @@ export namespace FileWatcher {
       const cfgIgnores = cfg.watcher?.ignore ?? []
 
       if (Flag.OPENCODE_EXPERIMENTAL_FILEWATCHER) {
-        const pending = w.subscribe(Instance.directory, subscribe, {
+        const pending = w.subscribe(context.directory, subscribe, {
           ignore: [...FileIgnore.PATTERNS, ...cfgIgnores, ...Protected.paths()],
           backend,
         })
         const sub = await withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((err) => {
-          log.error("failed to subscribe to Instance.directory", { error: err })
+          log.error("failed to subscribe to context.directory", { error: err })
           pending.then((s) => s.unsubscribe()).catch(() => {})
           return undefined
         })
         if (sub) subs.push(sub)
       }
 
-      if (Instance.project.vcs === "git") {
+      if (context.project.vcs === "git") {
         const result = await git(["rev-parse", "--git-dir"], {
-          cwd: Instance.worktree,
+          cwd: context.worktree,
         })
-        const vcsDir = result.exitCode === 0 ? path.resolve(Instance.worktree, result.text().trim()) : undefined
+        const vcsDir = result.exitCode === 0 ? path.resolve(context.worktree, result.text().trim()) : undefined
         if (vcsDir && !cfgIgnores.includes(".git") && !cfgIgnores.includes(vcsDir)) {
           const gitDirContents = await readdir(vcsDir).catch(() => [])
           const ignoreList = gitDirContents.filter((entry) => entry !== "HEAD")
@@ -121,6 +123,6 @@ export namespace FileWatcher {
     if (Flag.OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER) {
       return
     }
-    state()
+    state(undefined as any)
   }
 }

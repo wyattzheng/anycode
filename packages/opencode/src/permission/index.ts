@@ -1,3 +1,5 @@
+import { createScopedState } from "@/agent/context"
+import type { AgentContext } from "@/agent/context"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { SessionID, MessageID } from "@/session/schema"
@@ -61,7 +63,7 @@ export namespace Permission {
     ),
   }
 
-  const state = Instance.state(
+  const state = createScopedState(
     () => ({
       pending: new Map<SessionID, Map<PermissionID, PendingEntry>>(),
       approved: new Map<SessionID, Map<string, boolean>>(),
@@ -75,12 +77,12 @@ export namespace Permission {
     },
   )
 
-  export function pending() {
-    return state().pending
+  export function pending(context: AgentContext) {
+    return state(context).pending
   }
 
   export function list() {
-    const { pending } = state()
+    const { pending } = state(undefined as any)
     const result: Info[] = []
     for (const session of pending.values()) {
       for (const item of session.values()) {
@@ -99,7 +101,7 @@ export namespace Permission {
     messageID: Info["messageID"]
     metadata: Info["metadata"]
   }) {
-    const { pending, approved } = state()
+    const { pending, approved } = state(undefined as any)
     log.info("asking", {
       sessionID: input.sessionID,
       messageID: input.messageID,
@@ -141,7 +143,7 @@ export namespace Permission {
         resolve,
         reject,
       })
-      Bus.publish(Event.Updated, info)
+      Bus.publish(undefined, Event.Updated, info)
     })
   }
 
@@ -150,13 +152,13 @@ export namespace Permission {
 
   export function respond(input: { sessionID: Info["sessionID"]; permissionID: Info["id"]; response: Response }) {
     log.info("response", input)
-    const { pending, approved } = state()
+    const { pending, approved } = state(undefined as any)
     const session = pending.get(input.sessionID)
     const match = session?.get(input.permissionID)
     if (!session || !match) return
     session.delete(input.permissionID)
     if (session.size === 0) pending.delete(input.sessionID)
-    Bus.publish(Event.Replied, {
+    Bus.publish(undefined, Event.Replied, {
       sessionID: input.sessionID,
       permissionID: input.permissionID,
       response: input.response,

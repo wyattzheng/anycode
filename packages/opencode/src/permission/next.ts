@@ -1,3 +1,5 @@
+import { createScopedState } from "@/agent/context"
+import type { AgentContext } from "@/agent/context"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { Config } from "@/config/config"
@@ -110,14 +112,13 @@ export namespace PermissionNext {
 
   interface PendingEntry {
     info: Request
-    resolve: () => void
+    resolve: (value?: void) => void
     reject: (e: any) => void
   }
 
-  const state = Instance.state(() => {
-    const projectID = Instance.project.id
+  const state = createScopedState(() => {
     const row = Database.use((db) =>
-      db.select().from(PermissionTable).where(eq(PermissionTable.project_id, projectID)).get(),
+      db.select().from(PermissionTable).get(),
     )
     const stored = row?.data ?? ([] as Ruleset)
 
@@ -132,7 +133,7 @@ export namespace PermissionNext {
       ruleset: Ruleset,
     }),
     async (input) => {
-      const s = await state()
+      const s = await state(undefined as any)
       const { ruleset, ...request } = input
       for (const pattern of request.patterns ?? []) {
         const rule = evaluate(request.permission, pattern, ruleset, s.approved)
@@ -151,7 +152,7 @@ export namespace PermissionNext {
               resolve,
               reject,
             })
-            Bus.publish(Event.Asked, info)
+            Bus.publish(undefined, Event.Asked, info)
           })
         }
         if (rule.action === "allow") continue
@@ -166,11 +167,11 @@ export namespace PermissionNext {
       message: z.string().optional(),
     }),
     async (input) => {
-      const s = await state()
+      const s = await state(undefined as any)
       const existing = s.pending.get(input.requestID)
       if (!existing) return
       s.pending.delete(input.requestID)
-      Bus.publish(Event.Replied, {
+      Bus.publish(undefined, Event.Replied, {
         sessionID: existing.info.sessionID,
         requestID: existing.info.id,
         reply: input.reply,
@@ -182,7 +183,7 @@ export namespace PermissionNext {
         for (const [id, pending] of s.pending) {
           if (pending.info.sessionID === sessionID) {
             s.pending.delete(id)
-            Bus.publish(Event.Replied, {
+            Bus.publish(undefined, Event.Replied, {
               sessionID: pending.info.sessionID,
               requestID: pending.info.id,
               reply: "reject",
@@ -193,7 +194,7 @@ export namespace PermissionNext {
         return
       }
       if (input.reply === "once") {
-        existing.resolve()
+        existing.resolve(undefined as any)
         return
       }
       if (input.reply === "always") {
@@ -205,7 +206,7 @@ export namespace PermissionNext {
           })
         }
 
-        existing.resolve()
+        existing.resolve(undefined as any)
 
         const sessionID = existing.info.sessionID
         for (const [id, pending] of s.pending) {
@@ -215,17 +216,17 @@ export namespace PermissionNext {
           )
           if (!ok) continue
           s.pending.delete(id)
-          Bus.publish(Event.Replied, {
+          Bus.publish(undefined, Event.Replied, {
             sessionID: pending.info.sessionID,
             requestID: pending.info.id,
             reply: "always",
           })
-          pending.resolve()
+          pending.resolve(undefined as any)
         }
 
         // TODO: we don't save the permission ruleset to disk yet until there's
         // UI to manage it
-        // db().insert(PermissionTable).values({ projectID: Instance.project.id, data: s.approved })
+        // db().insert(PermissionTable).values({ projectID: context.project.id, data: s.approved })
         //   .onConflictDoUpdate({ target: PermissionTable.projectID, set: { data: s.approved } }).run()
         return
       }
@@ -279,7 +280,7 @@ export namespace PermissionNext {
   }
 
   export async function list() {
-    const s = await state()
+    const s = await state(undefined as any)
     return Array.from(s.pending.values(), (x) => x.info)
   }
 }

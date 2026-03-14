@@ -1,3 +1,4 @@
+import type { AgentContext } from "@/agent/context"
 import { Plugin } from "../util/plugin"
 import { FileWatcher } from "../file/watcher"
 import { File } from "../file"
@@ -10,8 +11,8 @@ import { Log } from "@/util/log"
 import { Snapshot } from "../snapshot"
 import { Truncate } from "../tool/truncation"
 
-export async function InstanceBootstrap() {
-  Log.Default.info("bootstrapping", { directory: Instance.directory })
+export async function InstanceBootstrap(context: AgentContext) {
+  Log.Default.info("bootstrapping", { directory: context.directory })
   await Plugin.init()
   FileWatcher.init()
   File.init()
@@ -19,9 +20,9 @@ export async function InstanceBootstrap() {
   Snapshot.init()
   Truncate.init()
 
-  Bus.subscribe(Command.Event.Executed, async (payload) => {
+  Bus.subscribe(context, Command.Event.Executed, async (payload) => {
     if (payload.properties.name === Command.Default.INIT) {
-      await Project.setInitialized(Instance.project.id)
+      await Project.setInitialized(context.project.id)
     }
   })
 }

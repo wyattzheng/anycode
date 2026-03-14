@@ -1,61 +1,61 @@
 import { lookup } from "mime-types"
 import { dirname, join, relative, resolve as pathResolve } from "path"
-import { Instance } from "../project/instance"
+import type { AgentContext } from "../agent/context"
 
 export namespace Filesystem {
-  // ── Read operations (all via Instance.vfs) ──────────────────────────
+  // ── Read operations (all via context.fs) ──────────────────────────
 
-  export async function exists(p: string): Promise<boolean> {
-    return Instance.vfs.exists(p)
+  export async function exists(context: AgentContext, p: string): Promise<boolean> {
+    return context.fs.exists(p)
   }
 
-  export async function isDir(p: string): Promise<boolean> {
-    const s = await Instance.vfs.stat(p)
+  export async function isDir(context: AgentContext, p: string): Promise<boolean> {
+    const s = await context.fs.stat(p)
     return s?.isDirectory ?? false
   }
 
-  export async function stat(p: string) {
-    return Instance.vfs.stat(p)
+  export async function stat(context: AgentContext, p: string) {
+    return context.fs.stat(p)
   }
 
-  export async function size(p: string): Promise<number> {
-    const s = await Instance.vfs.stat(p)
+  export async function size(context: AgentContext, p: string): Promise<number> {
+    const s = await context.fs.stat(p)
     return s?.size ?? 0
   }
 
-  export async function readText(p: string): Promise<string> {
-    return Instance.vfs.readText(p)
+  export async function readText(context: AgentContext, p: string): Promise<string> {
+    return context.fs.readText(p)
   }
 
-  export async function readJson<T = any>(p: string): Promise<T> {
-    return JSON.parse(await readText(p))
+  export async function readJson<T = any>(context: AgentContext, p: string): Promise<T> {
+    return JSON.parse(await readText(context, p))
   }
 
-  export async function readBytes(p: string): Promise<Uint8Array> {
-    return Instance.vfs.readBytes(p)
+  export async function readBytes(context: AgentContext, p: string): Promise<Uint8Array> {
+    return context.fs.readBytes(p)
   }
 
-  export async function readArrayBuffer(p: string): Promise<ArrayBuffer> {
-    const bytes = await readBytes(p)
+  export async function readArrayBuffer(context: AgentContext, p: string): Promise<ArrayBuffer> {
+    const bytes = await readBytes(context, p)
     return bytes.buffer as ArrayBuffer
   }
 
-  // ── Write operations (all via Instance.vfs) ─────────────────────────
+  // ── Write operations (all via context.fs) ─────────────────────────
 
-  export async function write(p: string, content: string | Uint8Array): Promise<void> {
-    return Instance.vfs.write(p, content)
+  export async function write(context: AgentContext, p: string, content: string | Uint8Array): Promise<void> {
+    return context.fs.write(p, content)
   }
 
-  export async function writeJson(p: string, data: unknown): Promise<void> {
-    return write(p, JSON.stringify(data, null, 2))
+  export async function writeJson(context: AgentContext, p: string, data: unknown): Promise<void> {
+    return write(context, p, JSON.stringify(data, null, 2))
   }
 
-  export async function mkdir(p: string): Promise<void> {
-    return Instance.vfs.mkdir(p)
+  export async function mkdir(context: AgentContext, p: string): Promise<void> {
+    return context.fs.mkdir(p)
   }
 
-  export async function remove(p: string): Promise<void> {
-    return Instance.vfs.remove(p)
+  export async function remove(context: AgentContext, p: string): Promise<void> {
+    return context.fs.remove(p)
   }
 
   // ── Path utilities (pure, no fs dependency) ─────────────────────────
@@ -89,12 +89,12 @@ export namespace Filesystem {
     return !relative(parent, child).startsWith("..")
   }
 
-  export async function findUp(target: string, start: string, stop?: string) {
+  export async function findUp(context: AgentContext, target: string, start: string, stop?: string) {
     let current = start
     const result = []
     while (true) {
       const search = join(current, target)
-      if (await exists(search)) result.push(search)
+      if (await exists(context, search)) result.push(search)
       if (stop === current) break
       const parent = dirname(current)
       if (parent === current) break
@@ -103,13 +103,13 @@ export namespace Filesystem {
     return result
   }
 
-  export async function* up(options: { targets: string[]; start: string; stop?: string }) {
+  export async function* up(context: AgentContext, options: { targets: string[]; start: string; stop?: string }) {
     const { targets, start, stop } = options
     let current = start
     while (true) {
       for (const target of targets) {
         const search = join(current, target)
-        if (await exists(search)) yield search
+        if (await exists(context, search)) yield search
       }
       if (stop === current) break
       const parent = dirname(current)

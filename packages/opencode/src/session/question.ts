@@ -1,7 +1,9 @@
+import { createScopedState } from "@/agent/context"
+import type { AgentContext } from "@/agent/context"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { SessionID, MessageID } from "@/session/schema"
-import { Instance } from "@/project/instance"
+
 import { Log } from "@/util/log"
 import z from "zod"
 import { QuestionID } from "./question.sql"
@@ -86,16 +88,16 @@ export namespace Question {
     reject: (e: any) => void
   }
 
-  const state = Instance.state(async () => ({
+  const state = createScopedState(async (_context: AgentContext) => ({
     pending: new Map<QuestionID, PendingEntry>(),
   }))
 
-  export async function ask(input: {
+  export async function ask(context: AgentContext, input: {
     sessionID: SessionID
     questions: Info[]
     tool?: { messageID: MessageID; callID: string }
   }): Promise<Answer[]> {
-    const s = await state()
+    const s = await state(context)
     const id = QuestionID.ascending()
 
     log.info("asking", { id, questions: input.questions.length })
@@ -112,12 +114,12 @@ export namespace Question {
         resolve,
         reject,
       })
-      Bus.publish(Event.Asked, info)
+      Bus.publish(context, Event.Asked, info)
     })
   }
 
-  export async function reply(input: { requestID: QuestionID; answers: Answer[] }): Promise<void> {
-    const s = await state()
+  export async function reply(context: AgentContext, input: { requestID: QuestionID; answers: Answer[] }): Promise<void> {
+    const s = await state(context)
     const existing = s.pending.get(input.requestID)
     if (!existing) {
       log.warn("reply for unknown request", { requestID: input.requestID })
@@ -127,7 +129,7 @@ export namespace Question {
 
     log.info("replied", { requestID: input.requestID, answers: input.answers })
 
-    Bus.publish(Event.Replied, {
+    Bus.publish(context, Event.Replied, {
       sessionID: existing.info.sessionID,
       requestID: existing.info.id,
       answers: input.answers,
@@ -136,8 +138,8 @@ export namespace Question {
     existing.resolve(input.answers)
   }
 
-  export async function reject(requestID: QuestionID): Promise<void> {
-    const s = await state()
+  export async function reject(context: AgentContext, requestID: QuestionID): Promise<void> {
+    const s = await state(context)
     const existing = s.pending.get(requestID)
     if (!existing) {
       log.warn("reject for unknown request", { requestID })
@@ -147,7 +149,7 @@ export namespace Question {
 
     log.info("rejected", { requestID })
 
-    Bus.publish(Event.Rejected, {
+    Bus.publish(context, Event.Rejected, {
       sessionID: existing.info.sessionID,
       requestID: existing.info.id,
     })
@@ -161,7 +163,7 @@ export namespace Question {
     }
   }
 
-  export async function list() {
-    return state().then((x) => Array.from(x.pending.values(), (x) => x.info))
+  export async function list(context: AgentContext) {
+    return state(context).then((x) => Array.from(x.pending.values(), (x) => x.info))
   }
 }

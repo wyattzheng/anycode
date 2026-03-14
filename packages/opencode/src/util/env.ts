@@ -1,28 +1,24 @@
-import { Instance } from "../project/instance"
+import type { AgentContext } from "../agent/context"
+import { createScopedState } from "../agent/context"
 
 export namespace Env {
-  const state = Instance.state(() => {
-    // Create a shallow copy to isolate environment per instance
-    // Prevents parallel tests from interfering with each other's env vars
+  const state = createScopedState(() => {
     return { ...process.env } as Record<string, string | undefined>
   })
 
-  export function get(key: string) {
-    const env = state()
-    return env[key]
+  export function get(context: AgentContext, key: string) {
+    return state(context)[key]
   }
 
-  export function all() {
-    return state()
+  export function all(context: AgentContext) {
+    return state(context)
   }
 
-  export function set(key: string, value: string) {
-    const env = state()
-    env[key] = value
+  export function set(context: AgentContext, key: string, value: string) {
+    state(context)[key] = value
   }
 
-  export function remove(key: string) {
-    const env = state()
-    delete env[key]
+  export function remove(context: AgentContext, key: string) {
+    delete state(context)[key]
   }
 }

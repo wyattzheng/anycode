@@ -1,3 +1,5 @@
+import { createScopedState } from "@/agent/context"
+import type { AgentContext } from "@/agent/context"
 import z from "zod"
 import os from "os"
 import fuzzysort from "fuzzysort"
@@ -12,7 +14,7 @@ import { NamedError } from "@/util/error"
 import { ModelsDev } from "./models"
 import { Auth } from "../util/auth"
 import { Env } from "../util/env"
-import { Instance } from "../project/instance"
+
 import { Flag } from "../util/flag"
 import { iife } from "@/util/iife"
 import path from "path"
@@ -124,7 +126,7 @@ export namespace Provider {
 
   type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
   type CustomVarsLoader = (options: Record<string, any>) => Record<string, string>
-  type CustomLoader = (provider: Info) => Promise<{
+  type CustomLoader = (context: AgentContext, provider: Info) => Promise<{
     autoload: boolean
     getModel?: CustomModelLoader
     vars?: CustomVarsLoader
@@ -136,7 +138,7 @@ export namespace Provider {
   }
 
   const CUSTOM_LOADERS: Record<string, CustomLoader> = {
-    async anthropic() {
+    async anthropic(context) {
       return {
         autoload: false,
         options: {
@@ -147,12 +149,12 @@ export namespace Provider {
         },
       }
     },
-    async opencode(input) {
+    async opencode(context, input) {
       const hasKey = await (async () => {
-        const env = Env.all()
+        const env = Env.all(context)
         if (input.env.some((item) => env[item])) return true
         if (await Auth.get(input.id)) return true
-        const config = await Config.get()
+        const config = await Config.get(context)
         if (config.provider?.["opencode"]?.options?.apiKey) return true
         return false
       })()
@@ -178,11 +180,11 @@ export namespace Provider {
         options: {},
       }
     },
-    azure: async (provider) => {
+    azure: async (context, provider) => {
       const resource = iife(() => {
         const name = provider.options?.resourceName
         if (typeof name === "string" && name.trim() !== "") return name
-        return Env.get("AZURE_RESOURCE_NAME")
+        return Env.get(context, "AZURE_RESOURCE_NAME")
       })
 
       return {
@@ -203,8 +205,8 @@ export namespace Provider {
         },
       }
     },
-    "azure-cognitive-services": async () => {
-      const resourceName = Env.get("AZURE_COGNITIVE_SERVICES_RESOURCE_NAME")
+    "azure-cognitive-services": async (context) => {
+      const resourceName = Env.get(context, "AZURE_COGNITIVE_SERVICES_RESOURCE_NAME")
       return {
         autoload: false,
         async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
@@ -220,23 +222,23 @@ export namespace Provider {
         },
       }
     },
-    "amazon-bedrock": async () => {
-      const config = await Config.get()
+    "amazon-bedrock": async (context) => {
+      const config = await Config.get(context)
       const providerConfig = config.provider?.["amazon-bedrock"]
 
       const auth = await Auth.get("amazon-bedrock")
 
       // Region precedence: 1) config file, 2) env var, 3) default
       const configRegion = providerConfig?.options?.region
-      const envRegion = Env.get("AWS_REGION")
+      const envRegion = Env.get(context, "AWS_REGION")
       const defaultRegion = configRegion ?? envRegion ?? "us-east-1"
 
       // Profile: config file takes precedence over env var
       const configProfile = providerConfig?.options?.profile
-      const envProfile = Env.get("AWS_PROFILE")
+      const envProfile = Env.get(context, "AWS_PROFILE")
       const profile = configProfile ?? envProfile
 
-      const awsAccessKeyId = Env.get("AWS_ACCESS_KEY_ID")
+      const awsAccessKeyId = Env.get(context, "AWS_ACCESS_KEY_ID")
 
       // TODO: Using process.env directly because Env.set only updates a process.env shallow copy,
       // until the scope of the Env API is clarified (test only or runtime?)
@@ -250,7 +252,7 @@ export namespace Provider {
         return undefined
       })
 
-      const awsWebIdentityTokenFile = Env.get("AWS_WEB_IDENTITY_TOKEN_FILE")
+      const awsWebIdentityTokenFile = Env.get(context, "AWS_WEB_IDENTITY_TOKEN_FILE")
 
       const containerCreds = Boolean(
         process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI || process.env.AWS_CONTAINER_CREDENTIALS_FULL_URI,
@@ -390,18 +392,18 @@ export namespace Provider {
         },
       }
     },
-    "google-vertex": async (provider) => {
+    "google-vertex": async (context, provider) => {
       const project =
         provider.options?.project ??
-        Env.get("GOOGLE_CLOUD_PROJECT") ??
-        Env.get("GCP_PROJECT") ??
-        Env.get("GCLOUD_PROJECT")
+        Env.get(context, "GOOGLE_CLOUD_PROJECT") ??
+        Env.get(context, "GCP_PROJECT") ??
+        Env.get(context, "GCLOUD_PROJECT")
 
       const location = String(
         provider.options?.location ??
-          Env.get("GOOGLE_VERTEX_LOCATION") ??
-          Env.get("GOOGLE_CLOUD_LOCATION") ??
-          Env.get("VERTEX_LOCATION") ??
+          Env.get(context, "GOOGLE_VERTEX_LOCATION") ??
+          Env.get(context, "GOOGLE_CLOUD_LOCATION") ??
+          Env.get(context, "VERTEX_LOCATION") ??
           "us-central1",
       )
 
@@ -437,9 +439,9 @@ export namespace Provider {
         },
       }
     },
-    "google-vertex-anthropic": async () => {
-      const project = Env.get("GOOGLE_CLOUD_PROJECT") ?? Env.get("GCP_PROJECT") ?? Env.get("GCLOUD_PROJECT")
-      const location = Env.get("GOOGLE_CLOUD_LOCATION") ?? Env.get("VERTEX_LOCATION") ?? "global"
+    "google-vertex-anthropic": async (context) => {
+      const project = Env.get(context, "GOOGLE_CLOUD_PROJECT") ?? Env.get(context, "GCP_PROJECT") ?? Env.get(context, "GCLOUD_PROJECT")
+      const location = Env.get(context, "GOOGLE_CLOUD_LOCATION") ?? Env.get(context, "VERTEX_LOCATION") ?? "global"
       const autoload = Boolean(project)
       if (!autoload) return { autoload: false }
       return {
@@ -454,7 +456,7 @@ export namespace Provider {
         },
       }
     },
-    "sap-ai-core": async () => {
+    "sap-ai-core": async (context) => {
       const auth = await Auth.get("sap-ai-core")
       // TODO: Using process.env directly because Env.set only updates a shallow copy (not process.env),
       // until the scope of the Env API is clarified (test only or runtime?)
@@ -478,7 +480,7 @@ export namespace Provider {
         },
       }
     },
-    zenmux: async () => {
+    zenmux: async (context) => {
       return {
         autoload: false,
         options: {
@@ -489,17 +491,17 @@ export namespace Provider {
         },
       }
     },
-    gitlab: async (input) => {
-      const instanceUrl = Env.get("GITLAB_INSTANCE_URL") || "https://gitlab.com"
+    gitlab: async (context, input) => {
+      const instanceUrl = Env.get(context, "GITLAB_INSTANCE_URL") || "https://gitlab.com"
 
       const auth = await Auth.get(input.id)
       const apiKey = await (async () => {
         if (auth?.type === "oauth") return auth.access
         if (auth?.type === "api") return auth.key
-        return Env.get("GITLAB_TOKEN")
+        return Env.get(context, "GITLAB_TOKEN")
       })()
 
-      const config = await Config.get()
+      const config = await Config.get(context)
       const providerConfig = config.provider?.["gitlab"]
 
       const aiGatewayHeaders = {
@@ -532,12 +534,12 @@ export namespace Provider {
         },
       }
     },
-    "cloudflare-workers-ai": async (input) => {
-      const accountId = Env.get("CLOUDFLARE_ACCOUNT_ID")
+    "cloudflare-workers-ai": async (context, input) => {
+      const accountId = Env.get(context, "CLOUDFLARE_ACCOUNT_ID")
       if (!accountId) return { autoload: false }
 
       const apiKey = await iife(async () => {
-        const envToken = Env.get("CLOUDFLARE_API_KEY")
+        const envToken = Env.get(context, "CLOUDFLARE_API_KEY")
         if (envToken) return envToken
         const auth = await Auth.get(input.id)
         if (auth?.type === "api") return auth.key
@@ -559,15 +561,15 @@ export namespace Provider {
         },
       }
     },
-    "cloudflare-ai-gateway": async (input) => {
-      const accountId = Env.get("CLOUDFLARE_ACCOUNT_ID")
-      const gateway = Env.get("CLOUDFLARE_GATEWAY_ID")
+    "cloudflare-ai-gateway": async (context, input) => {
+      const accountId = Env.get(context, "CLOUDFLARE_ACCOUNT_ID")
+      const gateway = Env.get(context, "CLOUDFLARE_GATEWAY_ID")
 
       if (!accountId || !gateway) return { autoload: false }
 
       // Get API token from env or auth - required for authenticated gateways
       const apiToken = await (async () => {
-        const envToken = Env.get("CLOUDFLARE_API_TOKEN") || Env.get("CF_AIG_TOKEN")
+        const envToken = Env.get(context, "CLOUDFLARE_API_TOKEN") || Env.get(context, "CF_AIG_TOKEN")
         if (envToken) return envToken
         const auth = await Auth.get(input.id)
         if (auth?.type === "api") return auth.key
@@ -805,9 +807,9 @@ export namespace Provider {
     }
   }
 
-  const state = Instance.state(async () => {
+  const state = createScopedState(async (context: AgentContext) => {
     using _ = log.time("state")
-    const config = await Config.get()
+    const config = await Config.get(context)
     const modelsDev = await ModelsDev.get()
     const database = mapValues(modelsDev, fromModelsDevProvider)
 
@@ -932,7 +934,7 @@ export namespace Provider {
     }
 
     // load env
-    const env = Env.all()
+    const env = Env.all(context)
     for (const [id, provider] of Object.entries(database)) {
       const providerID = ProviderID.make(id)
       if (disabled.has(providerID)) continue
@@ -971,7 +973,7 @@ export namespace Provider {
         log.error("Provider does not exist in model list " + providerID)
         continue
       }
-      const result = await fn(data)
+      const result = await fn(undefined as any, data)
       if (result && (result.autoload || providers[providerID])) {
         if (result.getModel) modelLoaders[providerID] = result.getModel
         if (result.vars) varsLoaders[providerID] = result.vars
@@ -1045,16 +1047,16 @@ export namespace Provider {
     }
   })
 
-  export async function list() {
-    return state().then((state) => state.providers)
+  export async function list(context: AgentContext) {
+    return state(context).then((state) => state.providers)
   }
 
-  async function getSDK(model: Model) {
+  async function getSDK(context: AgentContext, model: Model) {
     try {
       using _ = log.time("getSDK", {
         providerID: model.providerID,
       })
-      const s = await state()
+      const s = await state(context)
       const provider = s.providers[model.providerID]
       const options = { ...provider.options }
 
@@ -1084,7 +1086,7 @@ export namespace Provider {
         }
 
         url = url.replace(/\$\{([^}]+)\}/g, (item, key) => {
-          const val = Env.get(String(key))
+          const val = Env.get(context, String(key))
           return val ?? item
         })
         return url
@@ -1182,12 +1184,12 @@ export namespace Provider {
     }
   }
 
-  export async function getProvider(providerID: ProviderID) {
-    return state().then((s) => s.providers[providerID])
+  export async function getProvider(context: AgentContext, providerID: ProviderID) {
+    return state(context).then((s) => s.providers[providerID])
   }
 
-  export async function getModel(providerID: ProviderID, modelID: ModelID) {
-    const s = await state()
+  export async function getModel(context: AgentContext, providerID: ProviderID, modelID: ModelID) {
+    const s = await state(context)
     const provider = s.providers[providerID]
     if (!provider) {
       const availableProviders = Object.keys(s.providers)
@@ -1206,13 +1208,13 @@ export namespace Provider {
     return info
   }
 
-  export async function getLanguage(model: Model): Promise<LanguageModelV2> {
-    const s = await state()
+  export async function getLanguage(context: AgentContext, model: Model): Promise<LanguageModelV2> {
+    const s = await state(context)
     const key = `${model.providerID}/${model.id}`
     if (s.models.has(key)) return s.models.get(key)!
 
     const provider = s.providers[model.providerID]
-    const sdk = await getSDK(model)
+    const sdk = await getSDK(context, model)
 
     try {
       const language = s.modelLoaders[model.providerID]
@@ -1233,8 +1235,8 @@ export namespace Provider {
     }
   }
 
-  export async function closest(providerID: ProviderID, query: string[]) {
-    const s = await state()
+  export async function closest(context: AgentContext, providerID: ProviderID, query: string[]) {
+    const s = await state(context)
     const provider = s.providers[providerID]
     if (!provider) return undefined
     for (const item of query) {
@@ -1248,15 +1250,15 @@ export namespace Provider {
     }
   }
 
-  export async function getSmallModel(providerID: ProviderID) {
-    const cfg = await Config.get()
+  export async function getSmallModel(context: AgentContext, providerID: ProviderID) {
+    const cfg = await Config.get(context)
 
     if (cfg.small_model) {
       const parsed = parseModel(cfg.small_model)
-      return getModel(parsed.providerID, parsed.modelID)
+      return getModel(context, parsed.providerID, parsed.modelID)
     }
 
-    const provider = await state().then((state) => state.providers[providerID])
+    const provider = await state(context).then((state) => state.providers[providerID])
     if (provider) {
       let priority = [
         "claude-haiku-4-5",
@@ -1280,22 +1282,22 @@ export namespace Provider {
           // 2. User's region prefix (us., eu.)
           // 3. Unprefixed model
           const globalMatch = candidates.find((m) => m.startsWith("global."))
-          if (globalMatch) return getModel(providerID, ModelID.make(globalMatch))
+          if (globalMatch) return getModel(context, providerID, ModelID.make(globalMatch))
 
           const region = provider.options?.region
           if (region) {
             const regionPrefix = region.split("-")[0]
             if (regionPrefix === "us" || regionPrefix === "eu") {
               const regionalMatch = candidates.find((m) => m.startsWith(`${regionPrefix}.`))
-              if (regionalMatch) return getModel(providerID, ModelID.make(regionalMatch))
+              if (regionalMatch) return getModel(context, providerID, ModelID.make(regionalMatch))
             }
           }
 
           const unprefixed = candidates.find((m) => !crossRegionPrefixes.some((p) => m.startsWith(p)))
-          if (unprefixed) return getModel(providerID, ModelID.make(unprefixed))
+          if (unprefixed) return getModel(context, providerID, ModelID.make(unprefixed))
         } else {
           for (const model of Object.keys(provider.models)) {
-            if (model.includes(item)) return getModel(providerID, ModelID.make(model))
+            if (model.includes(item)) return getModel(context, providerID, ModelID.make(model))
           }
         }
       }
@@ -1314,13 +1316,13 @@ export namespace Provider {
     )
   }
 
-  export async function defaultModel() {
-    const cfg = await Config.get()
+  export async function defaultModel(context: AgentContext) {
+    const cfg = await Config.get(context)
     if (cfg.model) return parseModel(cfg.model)
 
-    const providers = await list()
-    const recent = (await Filesystem.readJson<{ recent?: { providerID: ProviderID; modelID: ModelID }[] }>(
-      path.join(Instance.paths.state, "model.json"),
+    const providers = await list(context)
+    const recent = (await Filesystem.readJson<{ recent?: { providerID: ProviderID; modelID: ModelID }[] }>(context, 
+      path.join(context.paths.state, "model.json"),
     )
       .then((x) => (Array.isArray(x.recent) ? x.recent : []))
       .catch(() => [])) as { providerID: ProviderID; modelID: ModelID }[]

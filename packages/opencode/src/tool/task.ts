@@ -11,6 +11,7 @@ import { iife } from "@/util/iife"
 import { defer } from "@/util/defer"
 import { Config } from "../config/config"
 import { PermissionNext } from "@/permission/next"
+import type { AgentContext } from "@/agent/context"
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
@@ -44,7 +45,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
     description,
     parameters,
     async execute(params: z.infer<typeof parameters>, ctx) {
-      const config = await Config.get()
+      const config = await Config.get(ctx as any)
 
       // Skip permission check when user explicitly invoked via @ or command subtask
       if (!ctx.extra?.bypassAgentCheck) {
@@ -59,7 +60,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         })
       }
 
-      const agent = await Agent.get(params.subagent_type)
+      const agent = await Agent.get(ctx as any, params.subagent_type)
       if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)
 
       const hasTaskPermission = agent.permission.some((rule) => rule.permission === "task")
@@ -124,7 +125,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       }
       ctx.abort.addEventListener("abort", cancel)
       using _ = defer(() => ctx.abort.removeEventListener("abort", cancel))
-      const promptParts = await SessionPrompt.resolvePromptParts(params.prompt)
+      const promptParts = await SessionPrompt.resolvePromptParts(ctx as any, params.prompt)
 
       const result = await SessionPrompt.prompt({
         messageID,

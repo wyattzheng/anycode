@@ -56,13 +56,13 @@ export namespace SessionRevert {
 
     if (revert) {
       const session = await Session.get(input.sessionID)
-      revert.snapshot = session.revert?.snapshot ?? (await Snapshot.track())
-      await Snapshot.revert(patches)
-      if (revert.snapshot) revert.diff = await Snapshot.diff(revert.snapshot)
+      revert.snapshot = session.revert?.snapshot ?? (await Snapshot.track(context))
+      await Snapshot.revert(context, patches)
+      if (revert.snapshot) revert.diff = await Snapshot.diff(context, revert.snapshot)
       const rangeMessages = all.filter((msg) => msg.info.id >= revert!.messageID)
       const diffs = await SessionSummary.computeDiff({ messages: rangeMessages })
-      await Storage.write(["session_diff", input.sessionID], diffs)
-      Bus.publish(Session.Event.Diff, {
+      await Storage.write(context, ["session_diff", input.sessionID], diffs)
+      Bus.publish(context, Session.Event.Diff, {
         sessionID: input.sessionID,
         diff: diffs,
       })
@@ -84,7 +84,7 @@ export namespace SessionRevert {
     SessionPrompt.assertNotBusy(context, input.sessionID)
     const session = await Session.get(input.sessionID)
     if (!session.revert) return session
-    if (session.revert.snapshot) await Snapshot.restore(session.revert.snapshot)
+    if (session.revert.snapshot) await Snapshot.restore(context, session.revert.snapshot)
     return Session.clearRevert(input.sessionID)
   }
 
@@ -114,7 +114,7 @@ export namespace SessionRevert {
     }
     for (const msg of remove) {
       Database.use((db) => db.delete(MessageTable).where(eq(MessageTable.id, msg.info.id)).run())
-      await Bus.publish(MessageV2.Event.Removed, { sessionID: sessionID, messageID: msg.info.id })
+      await Bus.publish(undefined, MessageV2.Event.Removed, { sessionID: sessionID, messageID: msg.info.id })
     }
     if (session.revert.partID && target) {
       const partID = session.revert.partID
@@ -125,7 +125,7 @@ export namespace SessionRevert {
         target.parts = preserveParts
         for (const part of removeParts) {
           Database.use((db) => db.delete(PartTable).where(eq(PartTable.id, part.id)).run())
-          await Bus.publish(MessageV2.Event.PartRemoved, {
+          await Bus.publish(undefined, MessageV2.Event.PartRemoved, {
             sessionID: sessionID,
             messageID: target.info.id,
             partID: part.id,

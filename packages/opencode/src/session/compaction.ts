@@ -31,10 +31,10 @@ export namespace SessionCompaction {
   const COMPACTION_BUFFER = 20_000
 
   export async function isOverflow(input: { tokens: MessageV2.Assistant["tokens"]; model: Provider.Model }) {
-    const config = await Config.get()
+    const config = await Config.get(undefined as any)
     if (config.compaction?.auto === false) return false
-    const context = input.model.limit.context
-    if (context === 0) return false
+    const contextLimit = input.model.limit.context
+    if (contextLimit === 0) return false
 
     const count =
       input.tokens.total ||
@@ -44,7 +44,7 @@ export namespace SessionCompaction {
       config.compaction?.reserved ?? Math.min(COMPACTION_BUFFER, ProviderTransform.maxOutputTokens(input.model))
     const usable = input.model.limit.input
       ? input.model.limit.input - reserved
-      : context - ProviderTransform.maxOutputTokens(input.model)
+      : contextLimit - ProviderTransform.maxOutputTokens(input.model)
     return count >= usable
   }
 
@@ -56,8 +56,8 @@ export namespace SessionCompaction {
   // goes backwards through parts until there are 40_000 tokens worth of tool
   // calls. then erases output of previous tool calls. idea is to throw away old
   // tool calls that are no longer relevant.
-  export async function prune(input: { sessionID: SessionID }) {
-    const config = await Config.get()
+  export async function prune(context: AgentContext, input: { sessionID: SessionID }) {
+    const config = await Config.get(context)
     if (config.compaction?.prune === false) return
     log.info("pruning")
     const msgs = await Session.messages({ sessionID: input.sessionID })
@@ -99,7 +99,7 @@ export namespace SessionCompaction {
     }
   }
 
-  export async function process(input: {
+  export async function process(context: AgentContext, input: {
     parentID: MessageID
     messages: MessageV2.WithParts[]
     sessionID: SessionID
@@ -130,10 +130,10 @@ export namespace SessionCompaction {
       }
     }
 
-    const agent = await Agent.get("compaction")
+    const agent = await Agent.get(context, "compaction")
     const model = agent.model
-      ? await Provider.getModel(agent.model.providerID, agent.model.modelID)
-      : await Provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
+      ? await Provider.getModel(context, agent.model.providerID, agent.model.modelID)
+      : await Provider.getModel(context, userMessage.model.providerID, userMessage.model.modelID)
     const msg = (await Session.updateMessage({
       id: MessageID.ascending(),
       role: "assistant",
@@ -293,7 +293,7 @@ When constructing the summary, try to stick to this template:
       }
     }
     if (processor.message.error) return "stop"
-    Bus.publish(Event.Compacted, { sessionID: input.sessionID })
+    Bus.publish(context, Event.Compacted, { sessionID: input.sessionID })
     return "continue"
   }
 

@@ -4,6 +4,7 @@ import { VFS } from "../util/vfs"
 import { SearchProvider } from "../util/search"
 import { State } from "../project/state"
 
+
 export interface AgentContext {
     /** Unique scope identifier for state isolation */
     scopeId: string

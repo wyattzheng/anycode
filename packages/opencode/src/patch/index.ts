@@ -1,3 +1,4 @@
+import type { AgentContext } from "@/agent/context"
 import z from "zod"
 import * as path from "path"
 import { Filesystem } from "../util/filesystem"
@@ -307,11 +308,11 @@ export namespace Patch {
     content: string
   }
 
-  export async function deriveNewContentsFromChunks(filePath: string, chunks: UpdateFileChunk[]): Promise<ApplyPatchFileUpdate> {
+  export async function deriveNewContentsFromChunks(context: AgentContext, filePath: string, chunks: UpdateFileChunk[]): Promise<ApplyPatchFileUpdate> {
     // Read original file content
     let originalContent: string
     try {
-      originalContent = await Filesystem.readText(filePath)
+      originalContent = await Filesystem.readText(context, filePath)
     } catch (error) {
       throw new Error(`Failed to read file ${filePath}: ${error}`)
     }
@@ -529,37 +530,37 @@ export namespace Patch {
           // Create parent directories
           const addDir = path.dirname(hunk.path)
           if (addDir !== "." && addDir !== "/") {
-            await Filesystem.mkdir(addDir)
+            await Filesystem.mkdir(undefined as any, addDir)
           }
 
-          await Filesystem.write(hunk.path, hunk.contents)
+          await Filesystem.write(undefined as any, hunk.path, hunk.contents)
           added.push(hunk.path)
           log.info(`Added file: ${hunk.path}`)
           break
 
         case "delete":
-          await Filesystem.remove(hunk.path)
+          await Filesystem.remove(undefined as any, hunk.path)
           deleted.push(hunk.path)
           log.info(`Deleted file: ${hunk.path}`)
           break
 
         case "update":
-          const fileUpdate = await deriveNewContentsFromChunks(hunk.path, hunk.chunks)
+          const fileUpdate = await deriveNewContentsFromChunks(undefined as any, hunk.path, hunk.chunks)
 
           if (hunk.move_path) {
             // Handle file move
             const moveDir = path.dirname(hunk.move_path)
             if (moveDir !== "." && moveDir !== "/") {
-              await Filesystem.mkdir(moveDir)
+              await Filesystem.mkdir(undefined as any, moveDir)
             }
 
-            await Filesystem.write(hunk.move_path, fileUpdate.content)
-            await Filesystem.remove(hunk.path)
+            await Filesystem.write(undefined as any, hunk.move_path, fileUpdate.content)
+            await Filesystem.remove(undefined as any, hunk.path)
             modified.push(hunk.move_path)
             log.info(`Moved file: ${hunk.path} -> ${hunk.move_path}`)
           } else {
             // Regular update
-            await Filesystem.write(hunk.path, fileUpdate.content)
+            await Filesystem.write(undefined as any, hunk.path, fileUpdate.content)
             modified.push(hunk.path)
             log.info(`Updated file: ${hunk.path}`)
           }
@@ -624,7 +625,7 @@ export namespace Patch {
               // For delete, we need to read the current content
               const deletePath = path.resolve(effectiveCwd, hunk.path)
               try {
-                const content = await Filesystem.readText(deletePath)
+                const content = await Filesystem.readText(undefined as any, deletePath)
                 changes.set(resolvedPath, {
                   type: "delete",
                   content,
@@ -640,7 +641,7 @@ export namespace Patch {
             case "update":
               const updatePath = path.resolve(effectiveCwd, hunk.path)
               try {
-                const fileUpdate = await deriveNewContentsFromChunks(updatePath, hunk.chunks)
+                const fileUpdate = await deriveNewContentsFromChunks(undefined as any, updatePath, hunk.chunks)
                 changes.set(resolvedPath, {
                   type: "update",
                   unified_diff: fileUpdate.unified_diff,

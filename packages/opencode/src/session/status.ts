@@ -60,13 +60,13 @@ export namespace SessionStatus {
   }
 
   export function set(context: AgentContext, sessionID: SessionID, status: Info) {
-    Bus.publish(Event.Status, {
+    Bus.publish(context, Event.Status, {
       sessionID,
       status,
     })
     if (status.type === "idle") {
       // deprecated
-      Bus.publish(Event.Idle, {
+      Bus.publish(context, Event.Idle, {
         sessionID,
       })
       delete state(context)[sessionID]

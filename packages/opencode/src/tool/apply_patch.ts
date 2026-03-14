@@ -12,6 +12,7 @@ import { trimDiff } from "./edit"
 import { LSP } from "../util/lsp"
 import DESCRIPTION from "./apply_patch.txt"
 import { File } from "../file"
+import type { AgentContext } from "@/agent/context"
 
 const PatchParams = z.object({
   patchText: z.string().describe("The full patch text that describes all changes to be made"),
@@ -100,7 +101,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
 
           // Apply the update chunks to get new content
           try {
-            const fileUpdate = await Patch.deriveNewContentsFromChunks(filePath, hunk.chunks)
+            const fileUpdate = await Patch.deriveNewContentsFromChunks(undefined as any, filePath, hunk.chunks)
             newContent = fileUpdate.content
           } catch (error) {
             throw new Error(`apply_patch verification failed: ${error}`)
@@ -219,7 +220,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
       }
 
       if (edited) {
-        await Bus.publish(File.Event.Edited, {
+        await Bus.publish(undefined, File.Event.Edited, {
           file: edited,
         })
       }
@@ -227,7 +228,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
 
     // Publish file change events
     for (const update of updates) {
-      await Bus.publish(FileWatcher.Event.Updated, update)
+      await Bus.publish(undefined, FileWatcher.Event.Updated, update)
     }
 
     // Notify LSP of file changes and collect diagnostics

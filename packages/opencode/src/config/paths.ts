@@ -5,13 +5,13 @@ import { type ParseError as JsoncParseError, parse as parseJsonc, printParseErro
 import { NamedError } from "@/util/error"
 import { Filesystem } from "@/util/filesystem"
 import { Flag } from "@/util/flag"
-import { Instance } from "@/project/instance"
+import type { AgentContext } from "@/agent/context"
 
 export namespace ConfigPaths {
-  export async function projectFiles(name: string, directory: string, worktree: string) {
+  export async function projectFiles(context: AgentContext, name: string, directory: string, worktree: string) {
     const files: string[] = []
     for (const file of [`${name}.jsonc`, `${name}.json`]) {
-      const found = await Filesystem.findUp(file, directory, worktree)
+      const found = await Filesystem.findUp(context, file, directory, worktree)
       for (const resolved of found.toReversed()) {
         files.push(resolved)
       }
@@ -19,12 +19,12 @@ export namespace ConfigPaths {
     return files
   }
 
-  export async function directories(directory: string, worktree: string) {
+  export async function directories(context: AgentContext, directory: string, worktree: string) {
     return [
-      Instance.paths.config,
+      context.paths.config,
       ...(!Flag.OPENCODE_DISABLE_PROJECT_CONFIG
         ? await Array.fromAsync(
-            Filesystem.up({
+            Filesystem.up(context, {
               targets: [".opencode"],
               start: directory,
               stop: worktree,
@@ -32,10 +32,10 @@ export namespace ConfigPaths {
           )
         : []),
       ...(await Array.fromAsync(
-        Filesystem.up({
+        Filesystem.up(context, {
           targets: [".opencode"],
-          start: Instance.paths.home,
-          stop: Instance.paths.home,
+          start: context.paths.home,
+          stop: context.paths.home,
         }),
       )),
       ...(Flag.OPENCODE_CONFIG_DIR ? [Flag.OPENCODE_CONFIG_DIR] : []),
@@ -64,8 +64,8 @@ export namespace ConfigPaths {
   )
 
   /** Read a config file, returning undefined for missing files and throwing JsonError for other failures. */
-  export async function readFile(filepath: string) {
-    return Filesystem.readText(filepath).catch((err: NodeJS.ErrnoException) => {
+  export async function readFile(context: AgentContext, filepath: string) {
+    return Filesystem.readText(context, filepath).catch((err: NodeJS.ErrnoException) => {
       if (err.code === "ENOENT") return
       throw new JsonError({ path: filepath }, { cause: err })
     })
@@ -82,7 +82,7 @@ export namespace ConfigPaths {
   }
 
   /** Apply {env:VAR} and {file:path} substitutions to config text. */
-  async function substitute(text: string, input: ParseSource, missing: "error" | "empty" = "error") {
+  async function substitute(context: AgentContext, text: string, input: ParseSource, missing: "error" | "empty" = "error") {
     text = text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
       return process.env[varName] || ""
     })
@@ -115,7 +115,7 @@ export namespace ConfigPaths {
 
       const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(configDir, filePath)
       const fileContent = (
-        await Filesystem.readText(resolvedPath).catch((error: NodeJS.ErrnoException) => {
+        await Filesystem.readText(context, resolvedPath).catch((error: NodeJS.ErrnoException) => {
           if (missing === "empty") return ""
 
           const errMsg = `bad file reference: "${token}"`
@@ -141,9 +141,9 @@ export namespace ConfigPaths {
   }
 
   /** Substitute and parse JSONC text, throwing JsonError on syntax errors. */
-  export async function parseText(text: string, input: ParseSource, missing: "error" | "empty" = "error") {
+  export async function parseText(context: AgentContext, text: string, input: ParseSource, missing: "error" | "empty" = "error") {
     const configSource = source(input)
-    text = await substitute(text, input, missing)
+    text = await substitute(context, text, input, missing)
 
     const errors: JsoncParseError[] = []
     const data = parseJsonc(text, errors, { allowTrailingComma: true })

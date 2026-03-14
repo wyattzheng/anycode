@@ -43,7 +43,7 @@ export const Instance = {
   async reload() { /* noop for stateless context */ },
   async dispose() {
     try {
-        const ctx = context.getStore()
+        const ctx = context.use()
         if (ctx) {
             GlobalBus.emit("event", {
                 directory: ctx.directory,

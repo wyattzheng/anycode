@@ -4,7 +4,6 @@ import { Tool } from "./tool"
 import path from "path"
 import DESCRIPTION from "./bash.txt"
 import { Log } from "../util/log"
-import { Instance } from "../project/instance"
 import { lazy } from "@/util/lazy"
 import { Language } from "web-tree-sitter"
 
@@ -122,7 +121,7 @@ export const BashTool = Tool.define("bash", async (initCtx?: Tool.InitContext) =
               const normalized =
                 process.platform === "win32" ? Filesystem.windowsPath(resolved).replace(/\//g, "\\") : resolved
               if (!ctx.containsPath(normalized)) {
-                const dir = (await Filesystem.isDir(normalized)) ? normalized : path.dirname(normalized)
+                const dir = (await Filesystem.isDir(ctx, normalized)) ? normalized : path.dirname(normalized)
                 directories.add(dir)
               }
             }

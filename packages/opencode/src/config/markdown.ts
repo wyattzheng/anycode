@@ -1,3 +1,4 @@
+import type { AgentContext } from "@/agent/context"
 import { NamedError } from "@/util/error"
 import matter from "gray-matter"
 import { z } from "zod"
@@ -68,8 +69,8 @@ export namespace ConfigMarkdown {
     return content.replace(frontmatter, () => processed)
   }
 
-  export async function parse(filePath: string) {
-    const template = await Filesystem.readText(filePath)
+  export async function parse(context: AgentContext, filePath: string) {
+    const template = await Filesystem.readText(context, filePath)
 
     try {
       const md = matter(template)

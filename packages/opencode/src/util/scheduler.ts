@@ -1,3 +1,5 @@
+import { createScopedState } from "@/agent/context"
+import type { AgentContext } from "@/agent/context"
 import { Instance } from "../project/instance"
 import { Log } from "../util/log"
 
@@ -25,7 +27,7 @@ export namespace Scheduler {
 
   const shared = create()
 
-  const state = Instance.state(
+  const state = createScopedState(
     () => create(),
     async (entry) => {
       for (const timer of entry.timers.values()) {
@@ -38,7 +40,7 @@ export namespace Scheduler {
 
   export function register(task: Task) {
     const scope = task.scope ?? "instance"
-    const entry = scope === "global" ? shared : state()
+    const entry = scope === "global" ? shared : state(undefined as any)
     const current = entry.timers.get(task.id)
     if (current && scope === "global") return
     if (current) clearInterval(current)

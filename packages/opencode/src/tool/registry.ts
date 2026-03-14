@@ -14,7 +14,8 @@ import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
 import type { Agent } from "../agent/agent"
 import { Tool } from "./tool"
-import { Instance } from "../project/instance"
+import { createScopedState } from "../agent/context"
+import type { AgentContext } from "../agent/context"
 import { Config } from "../config/config"
 import path from "path"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "../util/plugin"
@@ -34,15 +35,15 @@ import { pathToFileURL } from "url"
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
 
-  export const state = Instance.state(async () => {
+  export const state = createScopedState(async (context: AgentContext) => {
     const custom = [] as Tool.Info[]
 
-    const matches = await Config.directories().then((dirs) =>
+    const matches = await Config.directories(context).then((dirs) =>
       dirs.flatMap((dir) =>
         Glob.scanSync("{tool,tools}/*.{js,ts}", { cwd: dir, absolute: true, dot: true, symlink: true }),
       ),
     )
-    if (matches.length) await Config.waitForDependencies()
+    if (matches.length) await Config.waitForDependencies(context)
     for (const match of matches) {
       const namespace = path.basename(match, path.extname(match))
       const mod = await import(pathToFileURL(match).href)
@@ -74,7 +75,7 @@ export namespace ToolRegistry {
             worktree: ctx.worktree,
           } as unknown as PluginToolContext
           const result = await def.execute(args as any, pluginCtx)
-          const out = await Truncate.output(result, {}, initCtx?.agent)
+          const out = await Truncate.output(ctx as any, result, {}, initCtx?.agent)
           return {
             title: "",
             output: out.truncated ? out.content : result,
@@ -86,7 +87,7 @@ export namespace ToolRegistry {
   }
 
   export async function register(tool: Tool.Info) {
-    const { custom } = await state()
+    const { custom } = await state(undefined as any)
     const idx = custom.findIndex((t) => t.id === tool.id)
     if (idx >= 0) {
       custom.splice(idx, 1, tool)
@@ -95,9 +96,9 @@ export namespace ToolRegistry {
     custom.push(tool)
   }
 
-  async function all(): Promise<Tool.Info[]> {
-    const custom = await state().then((x) => x.custom)
-    const config = await Config.get()
+  async function all(context: AgentContext): Promise<Tool.Info[]> {
+    const custom = await state(context).then((x) => x.custom)
+    const config = await Config.get(context)
     const question = ["app", "cli", "desktop"].includes(Flag.OPENCODE_CLIENT) || Flag.OPENCODE_ENABLE_QUESTION_TOOL
 
     return [
@@ -124,7 +125,7 @@ export namespace ToolRegistry {
   }
 
   export async function ids() {
-    return all().then((x) => x.map((t) => t.id))
+    return all(undefined as any).then((x) => x.map((t) => t.id))
   }
 
   export async function tools(
@@ -134,7 +135,7 @@ export namespace ToolRegistry {
     },
     agent?: Agent.Info,
   ) {
-    const tools = await all()
+    const tools = await all(undefined as any)
     const result = await Promise.all(
       tools
         .filter((t) => {
@@ -153,7 +154,7 @@ export namespace ToolRegistry {
         })
         .map(async (t) => {
           using _ = log.time(t.id)
-          const tool = await t.init({ agent, directory: Instance.directory })
+          const tool = await t.init({ agent } as any)
           const output = {
             description: tool.description,
             parameters: tool.parameters,

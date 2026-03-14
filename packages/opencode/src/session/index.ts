@@ -297,7 +297,7 @@ export namespace Session {
         .get()
       if (!row) throw new NotFoundError({ message: `Session not found: ${sessionID}` })
       const info = fromRow(row)
-      Database.effect(() => Bus.publish(Event.Updated, { info }))
+      Database.effect(() => Bus.publish(undefined, Event.Updated, { info }))
     })
   })
 
@@ -331,17 +331,17 @@ export namespace Session {
     Database.use((db) => {
       db.insert(SessionTable).values(toRow(result)).run()
       Database.effect(() =>
-        Bus.publish(Event.Created, {
+        Bus.publish(context, Event.Created, {
           info: result,
         }),
       )
     })
-    const cfg = await Config.get()
+    const cfg = await Config.get(context)
     if (!result.parentID && (Flag.OPENCODE_AUTO_SHARE || cfg.share === "auto"))
       share(result.id).catch(() => {
         // Silently ignore sharing errors during session creation
       })
-    Bus.publish(Event.Updated, {
+    Bus.publish(context, Event.Updated, {
       info: result,
     })
     return result
@@ -383,7 +383,7 @@ export namespace Session {
           .get()
         if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
         const info = fromRow(row)
-        Database.effect(() => Bus.publish(Event.Updated, { info }))
+        Database.effect(() => Bus.publish(undefined, Event.Updated, { info }))
         return info
       })
     },
@@ -404,7 +404,7 @@ export namespace Session {
           .get()
         if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
         const info = fromRow(row)
-        Database.effect(() => Bus.publish(Event.Updated, { info }))
+        Database.effect(() => Bus.publish(undefined, Event.Updated, { info }))
         return info
       })
     },
@@ -425,7 +425,7 @@ export namespace Session {
           .get()
         if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
         const info = fromRow(row)
-        Database.effect(() => Bus.publish(Event.Updated, { info }))
+        Database.effect(() => Bus.publish(undefined, Event.Updated, { info }))
         return info
       })
     },
@@ -453,7 +453,7 @@ export namespace Session {
           .get()
         if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
         const info = fromRow(row)
-        Database.effect(() => Bus.publish(Event.Updated, { info }))
+        Database.effect(() => Bus.publish(undefined, Event.Updated, { info }))
         return info
       })
     },
@@ -472,7 +472,7 @@ export namespace Session {
         .get()
       if (!row) throw new NotFoundError({ message: `Session not found: ${sessionID}` })
       const info = fromRow(row)
-      Database.effect(() => Bus.publish(Event.Updated, { info }))
+      Database.effect(() => Bus.publish(undefined, Event.Updated, { info }))
       return info
     })
   })
@@ -497,7 +497,7 @@ export namespace Session {
           .get()
         if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
         const info = fromRow(row)
-        Database.effect(() => Bus.publish(Event.Updated, { info }))
+        Database.effect(() => Bus.publish(undefined, Event.Updated, { info }))
         return info
       })
     },
@@ -505,7 +505,7 @@ export namespace Session {
 
   export const diff = fn(SessionID.zod, async (sessionID) => {
     try {
-      return await Storage.read<Snapshot.FileDiff[]>(["session_diff", sessionID])
+      return await Storage.read<Snapshot.FileDiff[]>(undefined as any, ["session_diff", sessionID])
     } catch {
       return []
     }
@@ -672,7 +672,7 @@ export namespace Session {
       Database.use((db) => {
         db.delete(SessionTable).where(eq(SessionTable.id, sessionID)).run()
         Database.effect(() =>
-          Bus.publish(Event.Deleted, {
+          Bus.publish(context, Event.Deleted, {
             info: session,
           }),
         )
@@ -696,7 +696,7 @@ export namespace Session {
         .onConflictDoUpdate({ target: MessageTable.id, set: { data } })
         .run()
       Database.effect(() =>
-        Bus.publish(MessageV2.Event.Updated, {
+        Bus.publish(undefined, MessageV2.Event.Updated, {
           info: msg,
         }),
       )
@@ -716,7 +716,7 @@ export namespace Session {
           .where(and(eq(MessageTable.id, input.messageID), eq(MessageTable.session_id, input.sessionID)))
           .run()
         Database.effect(() =>
-          Bus.publish(MessageV2.Event.Removed, {
+          Bus.publish(undefined, MessageV2.Event.Removed, {
             sessionID: input.sessionID,
             messageID: input.messageID,
           }),
@@ -738,7 +738,7 @@ export namespace Session {
           .where(and(eq(PartTable.id, input.partID), eq(PartTable.session_id, input.sessionID)))
           .run()
         Database.effect(() =>
-          Bus.publish(MessageV2.Event.PartRemoved, {
+          Bus.publish(undefined, MessageV2.Event.PartRemoved, {
             sessionID: input.sessionID,
             messageID: input.messageID,
             partID: input.partID,
@@ -766,7 +766,7 @@ export namespace Session {
         .onConflictDoUpdate({ target: PartTable.id, set: { data } })
         .run()
       Database.effect(() =>
-        Bus.publish(MessageV2.Event.PartUpdated, {
+        Bus.publish(undefined, MessageV2.Event.PartUpdated, {
           part: structuredClone(part),
         }),
       )
@@ -783,7 +783,7 @@ export namespace Session {
       delta: z.string(),
     }),
     async (input) => {
-      Bus.publish(MessageV2.Event.PartDelta, input)
+      Bus.publish(undefined, MessageV2.Event.PartDelta, input)
     },
   )
 

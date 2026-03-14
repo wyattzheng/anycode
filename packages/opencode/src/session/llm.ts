@@ -44,7 +44,7 @@ export namespace LLM {
 
   export type StreamOutput = StreamTextResult<ToolSet, unknown>
 
-  export async function stream(input: StreamInput) {
+  export async function stream(context: AgentContext, input: StreamInput) {
     const l = log
       .clone()
       .tag("providerID", input.model.providerID)
@@ -58,9 +58,9 @@ export namespace LLM {
       providerID: input.model.providerID,
     })
     const [language, cfg, provider, auth] = await Promise.all([
-      Provider.getLanguage(input.model),
-      Config.get(),
-      Provider.getProvider(input.model.providerID),
+      Provider.getLanguage(context, input.model),
+      Config.get(context),
+      Provider.getProvider(context, input.model.providerID),
       Auth.get(input.model.providerID),
     ])
     const isCodex = provider.id === "openai" && auth?.type === "oauth"

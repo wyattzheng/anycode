@@ -70,10 +70,10 @@ export const EditTool = Tool.define("edit", {
           },
         })
         await ctx.fs.write(filePath, params.newString)
-        await Bus.publish(File.Event.Edited, {
+        await Bus.publish(undefined, File.Event.Edited, {
           file: filePath,
         })
-        await Bus.publish(FileWatcher.Event.Updated, {
+        await Bus.publish(undefined, FileWatcher.Event.Updated, {
           file: filePath,
           event: existed ? "change" : "add",
         })
@@ -84,7 +84,7 @@ export const EditTool = Tool.define("edit", {
       const stats = await ctx.fs.stat(filePath)
       if (!stats) throw new Error(`File ${filePath} not found`)
       if (stats.isDirectory) throw new Error(`Path is a directory, not a file: ${filePath}`)
-      await FileTime.assert(ctx.sessionID, filePath)
+      await FileTime.assert(undefined as any, ctx.sessionID, filePath)
       contentOld = await ctx.fs.readText(filePath)
 
       const ending = detectLineEnding(contentOld)
@@ -107,10 +107,10 @@ export const EditTool = Tool.define("edit", {
       })
 
       await ctx.fs.write(filePath, contentNew)
-      await Bus.publish(File.Event.Edited, {
+      await Bus.publish(undefined, File.Event.Edited, {
         file: filePath,
       })
-      await Bus.publish(FileWatcher.Event.Updated, {
+      await Bus.publish(undefined, FileWatcher.Event.Updated, {
         file: filePath,
         event: "change",
       })

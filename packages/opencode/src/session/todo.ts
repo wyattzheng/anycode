@@ -4,6 +4,7 @@ import { SessionID } from "./schema"
 import z from "zod"
 import { Database, eq, asc } from "../storage/db"
 import { TodoTable } from "./session.sql"
+import type { AgentContext } from "@/agent/context"
 
 export namespace Todo {
   export const Info = z
@@ -25,7 +26,7 @@ export namespace Todo {
     ),
   }
 
-  export function update(input: { sessionID: SessionID; todos: Info[] }) {
+  export function update(context: AgentContext, input: { sessionID: SessionID; todos: Info[] }) {
     Database.transaction((db) => {
       db.delete(TodoTable).where(eq(TodoTable.session_id, input.sessionID)).run()
       if (input.todos.length === 0) return
@@ -41,7 +42,7 @@ export namespace Todo {
         )
         .run()
     })
-    Bus.publish(Event.Updated, input)
+    Bus.publish(context, Event.Updated, input)
   }
 
   export function get(sessionID: SessionID) {

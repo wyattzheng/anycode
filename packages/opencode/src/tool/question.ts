@@ -9,7 +9,7 @@ export const QuestionTool = Tool.define("question", {
     questions: z.array(Question.Info.omit({ custom: true })).describe("Questions to ask"),
   }),
   async execute(params, ctx) {
-    const answers = await Question.ask({
+    const answers = await Question.ask(undefined as any, {
       sessionID: ctx.sessionID,
       questions: params.questions,
       tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,

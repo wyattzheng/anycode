@@ -5,6 +5,7 @@ import { which } from "@/util/which"
 import path from "path"
 import { spawn, type ChildProcess } from "child_process"
 import { setTimeout as sleep } from "node:timers/promises"
+import type { AgentContext } from "@/agent/context"
 
 const SIGKILL_TIMEOUT_MS = 200
 
@@ -41,7 +42,7 @@ export namespace Shell {
   }
   const BLACKLIST = new Set(["fish", "nu"])
 
-  async function fallback() {
+  async function fallback(context: AgentContext) {
     if (process.platform === "win32") {
       if (Flag.OPENCODE_GIT_BASH_PATH) return Flag.OPENCODE_GIT_BASH_PATH
       const git = which("git")
@@ -49,7 +50,7 @@ export namespace Shell {
         // git.exe is typically at: C:\Program Files\Git\cmd\git.exe
         // bash.exe is at: C:\Program Files\Git\bin\bash.exe
         const bash = path.join(git, "..", "..", "bin", "bash.exe")
-        const s = await Filesystem.stat(bash)
+        const s = await Filesystem.stat(context, bash)
         if (s?.size) return bash
       }
       return process.env.COMSPEC || "cmd.exe"
@@ -63,12 +64,12 @@ export namespace Shell {
   export const preferred = lazy(() => {
     const s = process.env.SHELL
     if (s) return s
-    return fallback()
+    return fallback(undefined as any)
   })
 
   export const acceptable = lazy(() => {
     const s = process.env.SHELL
     if (s && !BLACKLIST.has(process.platform === "win32" ? path.win32.basename(s) : path.basename(s))) return s
-    return fallback()
+    return fallback(undefined as any)
   })
 }

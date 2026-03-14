@@ -9,6 +9,7 @@ import { Snapshot } from "@/snapshot"
 
 import { Storage } from "@/storage/storage"
 import { Bus } from "@/bus"
+import type { AgentContext } from "@/agent/context"
 
 export namespace SessionSummary {
   function unquoteGitPath(input: string) {
@@ -91,8 +92,8 @@ export namespace SessionSummary {
         files: diffs.length,
       },
     })
-    await Storage.write(["session_diff", input.sessionID], diffs)
-    Bus.publish(Session.Event.Diff, {
+    await Storage.write(undefined as any, ["session_diff", input.sessionID], diffs)
+    Bus.publish(undefined, Session.Event.Diff, {
       sessionID: input.sessionID,
       diff: diffs,
     })
@@ -117,8 +118,8 @@ export namespace SessionSummary {
       sessionID: SessionID.zod,
       messageID: MessageID.zod.optional(),
     }),
-    async (input) => {
-      const diffs = await Storage.read<Snapshot.FileDiff[]>(["session_diff", input.sessionID]).catch(() => [])
+    async (input: { sessionID: SessionID; messageID?: MessageID }) => {
+      const diffs = await Storage.read<Snapshot.FileDiff[]>(undefined as any, ["session_diff", input.sessionID]).catch(() => [])
       const next = diffs.map((item) => {
         const file = unquoteGitPath(item.file)
         if (file === item.file) return item
@@ -128,7 +129,7 @@ export namespace SessionSummary {
         }
       })
       const changed = next.some((item, i) => item.file !== diffs[i]?.file)
-      if (changed) Storage.write(["session_diff", input.sessionID], next).catch(() => {})
+      if (changed) Storage.write(undefined as any, ["session_diff", input.sessionID], next).catch(() => {})
       return next
     },
   )
@@ -156,7 +157,7 @@ export namespace SessionSummary {
       }
     }
 
-    if (from && to) return Snapshot.diffFull(from, to)
+    if (from && to) return Snapshot.diffFull(undefined as any, from, to)
     return []
   }
 }

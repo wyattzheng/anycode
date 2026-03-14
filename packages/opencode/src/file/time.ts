@@ -1,3 +1,5 @@
+import { createScopedState } from "@/agent/context"
+import type { AgentContext } from "@/agent/context"
 import { Instance } from "../project/instance"
 import { Log } from "../util/log"
 import { Flag } from "../util/flag"
@@ -9,7 +11,7 @@ export namespace FileTime {
   // All tools that overwrite existing files should run their
   // assert/read/write/update sequence inside withLock(filepath, ...)
   // so concurrent writes to the same file are serialized.
-  export const state = Instance.state(() => {
+  export const state = createScopedState(() => {
     const read: {
       [sessionID: string]: {
         [path: string]: Date | undefined
@@ -24,17 +26,17 @@ export namespace FileTime {
 
   export function read(sessionID: string, file: string) {
     log.info("read", { sessionID, file })
-    const { read } = state()
+    const { read } = state(undefined as any)
     read[sessionID] = read[sessionID] || {}
     read[sessionID][file] = new Date()
   }
 
-  export function get(sessionID: string, file: string) {
-    return state().read[sessionID]?.[file]
+  export function get(context: AgentContext, sessionID: string, file: string) {
+    return state(context).read[sessionID]?.[file]
   }
 
   export async function withLock<T>(filepath: string, fn: () => Promise<T>): Promise<T> {
-    const current = state()
+    const current = state(undefined as any)
     const currentLock = current.locks.get(filepath) ?? Promise.resolve()
     let release: () => void = () => {}
     const nextLock = new Promise<void>((resolve) => {
@@ -53,14 +55,14 @@ export namespace FileTime {
     }
   }
 
-  export async function assert(sessionID: string, filepath: string) {
+  export async function assert(context: AgentContext, sessionID: string, filepath: string) {
     if (Flag.OPENCODE_DISABLE_FILETIME_CHECK === true) {
       return
     }
 
-    const time = get(sessionID, filepath)
+    const time = get(context, sessionID, filepath)
     if (!time) throw new Error(`You must read file ${filepath} before overwriting it. Use the Read tool first`)
-    const s = await Filesystem.stat(filepath)
+    const s = await Filesystem.stat(context, filepath)
     const mtimeMs = s?.mtimeMs
     // Allow a 50ms tolerance for Windows NTFS timestamp fuzziness / async flushing
     if (mtimeMs && mtimeMs > time.getTime() + 50) {

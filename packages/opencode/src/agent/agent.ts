@@ -1,3 +1,5 @@
+import { createScopedState } from "@/agent/context"
+import type { AgentContext } from "@/agent/context"
 import { Config } from "../config/config"
 import z from "zod"
 import { Provider } from "../provider/provider"
@@ -48,11 +50,11 @@ export namespace Agent {
     })
   export type Info = z.infer<typeof Info>
 
-  const state = Instance.state(async () => {
-    const cfg = await Config.get()
+  const state = createScopedState(async (context: AgentContext) => {
+    const cfg = await Config.get(context)
 
-    const skillDirs = await Skill.dirs()
-    const whitelistedDirs = [Truncate.GLOB, ...skillDirs.map((dir) => path.join(dir, "*"))]
+    const skillDirs = await Skill.dirs(context)
+    const whitelistedDirs = [Truncate.glob(context), ...skillDirs.map((dir) => path.join(dir, "*"))]
     const defaults = PermissionNext.fromConfig({
       "*": "allow",
       doom_loop: "ask",
@@ -99,12 +101,12 @@ export namespace Agent {
             question: "allow",
             plan_exit: "allow",
             external_directory: {
-              [path.join(Instance.paths.data, "plans", "*")]: "allow",
+              [path.join(context.paths.data, "plans", "*")]: "allow",
             },
             edit: {
               "*": "deny",
               [path.join(".opencode", "plans", "*.md")]: "allow",
-              [path.relative(Instance.worktree, path.join(Instance.paths.data, path.join("plans", "*.md")))]: "allow",
+              [path.relative(context.worktree, path.join(context.paths.data, path.join("plans", "*.md")))]: "allow",
             },
           }),
           user,
@@ -231,41 +233,41 @@ export namespace Agent {
       item.permission = PermissionNext.merge(item.permission, PermissionNext.fromConfig(value.permission ?? {}))
     }
 
-    // Ensure Truncate.GLOB is allowed unless explicitly configured
+    // Ensure Truncate.glob() is allowed unless explicitly configured
     for (const name in result) {
       const agent = result[name]
       const explicit = agent.permission.some((r) => {
         if (r.permission !== "external_directory") return false
         if (r.action !== "deny") return false
-        return r.pattern === Truncate.GLOB
+        return r.pattern === Truncate.glob()
       })
       if (explicit) continue
 
       result[name].permission = PermissionNext.merge(
         result[name].permission,
-        PermissionNext.fromConfig({ external_directory: { [Truncate.GLOB]: "allow" } }),
+        PermissionNext.fromConfig({ external_directory: { [Truncate.glob()]: "allow" } }),
       )
     }
 
     return result
   })
 
-  export async function get(agent: string) {
-    return state().then((x) => x[agent])
+  export async function get(context: AgentContext, agent: string) {
+    return state(context).then((x) => x[agent])
   }
 
   export async function list() {
-    const cfg = await Config.get()
+    const cfg = await Config.get(undefined as any)
     return pipe(
-      await state(),
+      await state(undefined as any),
       values(),
       sortBy([(x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === "build"), "desc"]),
     )
   }
 
   export async function defaultAgent() {
-    const cfg = await Config.get()
-    const agents = await state()
+    const cfg = await Config.get(undefined as any)
+    const agents = await state(undefined as any)
 
     if (cfg.default_agent) {
       const agent = agents[cfg.default_agent]
@@ -281,10 +283,10 @@ export namespace Agent {
   }
 
   export async function generate(input: { description: string; model?: { providerID: ProviderID; modelID: ModelID } }) {
-    const cfg = await Config.get()
-    const defaultModel = input.model ?? (await Provider.defaultModel())
-    const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
-    const language = await Provider.getLanguage(model)
+    const cfg = await Config.get(undefined as any)
+    const defaultModel = input.model ?? (await Provider.defaultModel(undefined as any))
+    const model = await Provider.getModel(undefined as any, defaultModel.providerID, defaultModel.modelID)
+    const language = await Provider.getLanguage(undefined as any, model)
 
     const system = [PROMPT_GENERATE]
     await Plugin.trigger("experimental.chat.system.transform", { model }, { system })

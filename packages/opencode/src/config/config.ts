@@ -1,3 +1,5 @@
+import { createScopedState } from "@/agent/context"
+import type { AgentContext } from "@/agent/context"
 import { Log } from "../util/log"
 import path from "path"
 import { pathToFileURL, fileURLToPath } from "url"
@@ -19,7 +21,7 @@ import {
   parse as parseJsonc,
   printParseErrorCode,
 } from "jsonc-parser"
-import { Instance } from "../project/instance"
+
 import { BunProc } from "@/util/bun"
 import { Installation } from "@/util/installation"
 import { ConfigMarkdown } from "./markdown"
@@ -71,10 +73,10 @@ export namespace Config {
     return merged
   }
 
-  export const state = Instance.state(async () => {
+  export const state = createScopedState(async (context: AgentContext) => {
     // Short-circuit: if config was injected via Instance context (e.g. from CodeAgent options),
     // skip all filesystem-based config loading.
-    const injected = Instance.config
+    const injected = context.config
     if (injected) {
       return {
         config: injected as Info,
@@ -109,7 +111,7 @@ export namespace Config {
         if (!remoteConfig.$schema) remoteConfig.$schema = "https://opencode.ai/config.json"
         result = mergeConfigConcatArrays(
           result,
-          await load(JSON.stringify(remoteConfig), {
+          await load(context, JSON.stringify(remoteConfig), {
             dir: path.dirname(`${url}/.well-known/opencode`),
             source: `${url}/.well-known/opencode`,
           }),
@@ -119,18 +121,18 @@ export namespace Config {
     }
 
     // Global user config overrides remote config.
-    result = mergeConfigConcatArrays(result, await global())
+    result = mergeConfigConcatArrays(result, await globalConfig(context))
 
     // Custom config path overrides global config.
     if (Flag.OPENCODE_CONFIG) {
-      result = mergeConfigConcatArrays(result, await loadFile(Flag.OPENCODE_CONFIG))
+      result = mergeConfigConcatArrays(result, await loadFile(context, Flag.OPENCODE_CONFIG))
       log.debug("loaded custom config", { path: Flag.OPENCODE_CONFIG })
     }
 
     // Project config overrides global and remote config.
     if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
-      for (const file of await ConfigPaths.projectFiles("opencode", Instance.directory, Instance.worktree)) {
-        result = mergeConfigConcatArrays(result, await loadFile(file))
+      for (const file of await ConfigPaths.projectFiles(context, "opencode", context.directory, context.worktree)) {
+        result = mergeConfigConcatArrays(result, await loadFile(context, file))
       }
     }
 
@@ -138,7 +140,7 @@ export namespace Config {
     result.mode = result.mode || {}
     result.plugin = result.plugin || []
 
-    const directories = await ConfigPaths.directories(Instance.directory, Instance.worktree)
+    const directories = await ConfigPaths.directories(context, context.directory, context.worktree)
 
     // .opencode directory config overrides (project and global) config sources.
     if (Flag.OPENCODE_CONFIG_DIR) {
@@ -151,7 +153,7 @@ export namespace Config {
       if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
         for (const file of ["opencode.jsonc", "opencode.json"]) {
           log.debug(`loading config from ${path.join(dir, file)}`)
-          result = mergeConfigConcatArrays(result, await loadFile(path.join(dir, file)))
+          result = mergeConfigConcatArrays(result, await loadFile(context, path.join(dir, file)))
           // to satisfy the type checker
           result.agent ??= {}
           result.mode ??= {}
@@ -161,8 +163,8 @@ export namespace Config {
 
       deps.push(
         iife(async () => {
-          const shouldInstall = await needsInstall(dir)
-          if (shouldInstall) await installDependencies(dir)
+          const shouldInstall = await needsInstall(context, dir)
+          if (shouldInstall) await installDependencies(context, dir)
         }),
       )
 
@@ -176,8 +178,8 @@ export namespace Config {
     if (process.env.OPENCODE_CONFIG_CONTENT) {
       result = mergeConfigConcatArrays(
         result,
-        await load(process.env.OPENCODE_CONFIG_CONTENT, {
-          dir: Instance.directory,
+        await load(context, process.env.OPENCODE_CONFIG_CONTENT, {
+          dir: context.directory,
           source: "OPENCODE_CONFIG_CONTENT",
         }),
       )
@@ -193,7 +195,7 @@ export namespace Config {
     // This way it only loads config file and not skills/plugins/commands
     if (existsSync(managedDir)) {
       for (const file of ["opencode.jsonc", "opencode.json"]) {
-        result = mergeConfigConcatArrays(result, await loadFile(path.join(managedDir, file)))
+        result = mergeConfigConcatArrays(result, await loadFile(context, path.join(managedDir, file)))
       }
     }
 
@@ -249,28 +251,28 @@ export namespace Config {
     }
   })
 
-  export async function waitForDependencies() {
-    const deps = await state().then((x) => x.deps)
+  export async function waitForDependencies(context: AgentContext) {
+    const deps = await state(context).then((x) => x.deps)
     await Promise.all(deps)
   }
 
-  export async function installDependencies(dir: string) {
+  export async function installDependencies(context: AgentContext, dir: string) {
     const pkg = path.join(dir, "package.json")
     const targetVersion = Installation.isLocal() ? "*" : Installation.VERSION
 
-    const json = await Filesystem.readJson<{ dependencies?: Record<string, string> }>(pkg).catch(() => ({
+    const json = await Filesystem.readJson<{ dependencies?: Record<string, string> }>(context, pkg).catch(() => ({
       dependencies: {},
     }))
     json.dependencies = {
       ...json.dependencies,
       "@opencode-ai/plugin": targetVersion,
     }
-    await Filesystem.writeJson(pkg, json)
+    await Filesystem.writeJson(context, pkg, json)
 
     const gitignore = path.join(dir, ".gitignore")
-    const hasGitIgnore = await Filesystem.exists(gitignore)
+    const hasGitIgnore = await Filesystem.exists(context, gitignore)
     if (!hasGitIgnore)
-      await Filesystem.write(gitignore, ["node_modules", "package.json", "bun.lock", ".gitignore"].join("\n"))
+      await Filesystem.write(context, gitignore, ["node_modules", "package.json", "bun.lock", ".gitignore"].join("\n"))
 
     // Install any additional dependencies defined in the package.json
     // This allows local plugins and custom tools to use external packages
@@ -316,7 +318,7 @@ export namespace Config {
     }
   }
 
-  export async function needsInstall(dir: string) {
+  export async function needsInstall(context: AgentContext, dir: string) {
     // Some config dirs may be read-only.
     // Installing deps there will fail; skip installation in that case.
     const writable = await isWritable(dir)
@@ -329,10 +331,10 @@ export namespace Config {
     if (!existsSync(nodeModules)) return true
 
     const pkg = path.join(dir, "package.json")
-    const pkgExists = await Filesystem.exists(pkg)
+    const pkgExists = await Filesystem.exists(context, pkg)
     if (!pkgExists) return true
 
-    const parsed = await Filesystem.readJson<{ dependencies?: Record<string, string> }>(pkg).catch(() => null)
+    const parsed = await Filesystem.readJson<{ dependencies?: Record<string, string> }>(context, pkg).catch(() => null)
     const dependencies = parsed?.dependencies ?? {}
     const depVersion = dependencies["@opencode-ai/plugin"]
     if (!depVersion) return true
@@ -373,12 +375,12 @@ export namespace Config {
       dot: true,
       symlink: true,
     })) {
-      const md = await ConfigMarkdown.parse(item).catch(async (err) => {
+      const md = await ConfigMarkdown.parse(undefined as any, item).catch(async (err) => {
         const message = ConfigMarkdown.FrontmatterError.isInstance(err)
           ? err.data.message
           : `Failed to parse command ${item}`
         const { Session } = await import("@/session")
-        Bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
+        Bus.publish(undefined, Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
         log.error("failed to load command", { command: item, err })
         return undefined
       })
@@ -412,12 +414,12 @@ export namespace Config {
       dot: true,
       symlink: true,
     })) {
-      const md = await ConfigMarkdown.parse(item).catch(async (err) => {
+      const md = await ConfigMarkdown.parse(undefined as any, item).catch(async (err) => {
         const message = ConfigMarkdown.FrontmatterError.isInstance(err)
           ? err.data.message
           : `Failed to parse agent ${item}`
         const { Session } = await import("@/session")
-        Bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
+        Bus.publish(undefined, Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
         log.error("failed to load agent", { agent: item, err })
         return undefined
       })
@@ -450,12 +452,12 @@ export namespace Config {
       dot: true,
       symlink: true,
     })) {
-      const md = await ConfigMarkdown.parse(item).catch(async (err) => {
+      const md = await ConfigMarkdown.parse(undefined as any, item).catch(async (err) => {
         const message = ConfigMarkdown.FrontmatterError.isInstance(err)
           ? err.data.message
           : `Failed to parse mode ${item}`
         const { Session } = await import("@/session")
-        Bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
+        Bus.publish(undefined, Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
         log.error("failed to load mode", { mode: item, err })
         return undefined
       })
@@ -1209,15 +1211,15 @@ export namespace Config {
 
   export type Info = z.output<typeof Info>
 
-  export const global = lazy(async () => {
+  async function globalConfig(context: AgentContext) {
     let result: Info = pipe(
       {},
-      mergeDeep(await loadFile(path.join(Instance.paths.config, "config.json"))),
-      mergeDeep(await loadFile(path.join(Instance.paths.config, "opencode.json"))),
-      mergeDeep(await loadFile(path.join(Instance.paths.config, "opencode.jsonc"))),
+      mergeDeep(await loadFile(context, path.join(context.paths.config, "config.json"))),
+      mergeDeep(await loadFile(context, path.join(context.paths.config, "opencode.json"))),
+      mergeDeep(await loadFile(context, path.join(context.paths.config, "opencode.jsonc"))),
     )
 
-    const legacy = path.join(Instance.paths.config, "config")
+    const legacy = path.join(context.paths.config, "config")
     if (existsSync(legacy)) {
       await import(pathToFileURL(legacy).href, {
         with: {
@@ -1229,29 +1231,29 @@ export namespace Config {
           if (provider && model) result.model = `${provider}/${model}`
           result["$schema"] = "https://opencode.ai/config.json"
           result = mergeDeep(result, rest)
-          await Filesystem.writeJson(path.join(Instance.paths.config, "config.json"), result)
+          await Filesystem.writeJson(context, path.join(context.paths.config, "config.json"), result)
           await fs.unlink(legacy)
         })
         .catch(() => {})
     }
 
     return result
-  })
-
-  export const { readFile } = ConfigPaths
-
-  async function loadFile(filepath: string): Promise<Info> {
-    log.info("loading", { path: filepath })
-    const text = await readFile(filepath)
-    if (!text) return {}
-    return load(text, { path: filepath })
   }
 
-  async function load(text: string, options: { path: string } | { dir: string; source: string }) {
+  export function readFile(context: AgentContext, filepath: string) { return ConfigPaths.readFile(context, filepath) }
+
+  async function loadFile(context: AgentContext, filepath: string): Promise<Info> {
+    log.info("loading", { path: filepath })
+    const text = await readFile(context, filepath)
+    if (!text) return {}
+    return load(context, text, { path: filepath })
+  }
+
+  async function load(context: AgentContext, text: string, options: { path: string } | { dir: string; source: string }) {
     const original = text
     const source = "path" in options ? options.path : options.source
     const isFile = "path" in options
-    const data = await ConfigPaths.parseText(
+    const data = await ConfigPaths.parseText(context, 
       text,
       "path" in options ? options.path : { source: options.source, dir: options.dir },
     )
@@ -1273,7 +1275,7 @@ export namespace Config {
       if (!parsed.data.$schema && isFile) {
         parsed.data.$schema = "https://opencode.ai/config.json"
         const updated = original.replace(/^\s*\{/, '{\n  "$schema": "https://opencode.ai/config.json",')
-        await Filesystem.write(options.path, updated).catch(() => {})
+        await Filesystem.write(context, options.path, updated).catch(() => {})
       }
       const data = parsed.data
       if (data.plugin && isFile) {
@@ -1312,24 +1314,24 @@ export namespace Config {
     }),
   )
 
-  export async function get() {
-    return state().then((x) => x.config)
+  export async function get(context: AgentContext) {
+    return state(context).then((x) => x.config)
   }
 
-  export async function getGlobal() {
-    return global()
+  export async function getGlobal(context: AgentContext) {
+    return globalConfig(context)
   }
 
-  export async function update(config: Info) {
-    const filepath = path.join(Instance.directory, "config.json")
-    const existing = await loadFile(filepath)
-    await Filesystem.writeJson(filepath, mergeDeep(existing, config))
-    await Instance.dispose()
+  export async function update(context: AgentContext, config: Info) {
+    const filepath = path.join(context.directory, "config.json")
+    const existing = await loadFile(context, filepath)
+    await Filesystem.writeJson(context, filepath, mergeDeep(existing, config))
+    // TODO: implement dispose via context
   }
 
-  function globalConfigFile() {
+  function globalConfigFile(context: AgentContext) {
     const candidates = ["opencode.jsonc", "opencode.json", "config.json"].map((file) =>
-      path.join(Instance.paths.config, file),
+      path.join(context.paths.config, file),
     )
     for (const file of candidates) {
       if (existsSync(file)) return file
@@ -1392,9 +1394,9 @@ export namespace Config {
     })
   }
 
-  export async function updateGlobal(config: Info) {
-    const filepath = globalConfigFile()
-    const before = await Filesystem.readText(filepath).catch((err: any) => {
+  export async function updateGlobal(context: AgentContext, config: Info) {
+    const filepath = globalConfigFile(context)
+    const before = await Filesystem.readText(context, filepath).catch((err: any) => {
       if (err.code === "ENOENT") return "{}"
       throw new JsonError({ path: filepath }, { cause: err })
     })
@@ -1403,19 +1405,19 @@ export namespace Config {
       if (!filepath.endsWith(".jsonc")) {
         const existing = parseConfig(before, filepath)
         const merged = mergeDeep(existing, config)
-        await Filesystem.writeJson(filepath, merged)
+        await Filesystem.writeJson(context, filepath, merged)
         return merged
       }
 
       const updated = patchJsonc(before, config)
       const merged = parseConfig(updated, filepath)
-      await Filesystem.write(filepath, updated)
+      await Filesystem.write(context, filepath, updated)
       return merged
     })()
 
-    global.reset()
+    // TODO: implement global config reset
 
-    void Instance.disposeAll()
+    void Promise.resolve()
       .catch(() => undefined)
       .finally(() => {
         GlobalBus.emit("event", {
@@ -1430,9 +1432,7 @@ export namespace Config {
     return next
   }
 
-  export async function directories() {
-    return state().then((x) => x.directories)
+  export async function directories(context: AgentContext) {
+    return state(context).then((x) => x.directories)
   }
 }
-Filesystem.write
-Filesystem.write

@@ -57,7 +57,7 @@ export namespace Command {
   } as const
 
   const state = createScopedState(async (context: AgentContext) => {
-    const cfg = await Config.get()
+    const cfg = await Config.get(context)
 
     const result: Record<string, Info> = {
       [Default.INIT]: {
@@ -98,7 +98,7 @@ export namespace Command {
 
 
     // Add skills as invokable commands
-    for (const skill of await Skill.all()) {
+    for (const skill of await Skill.all(context)) {
       // Skip if a command with this name already exists
       if (result[skill.name]) continue
       result[skill.name] = {

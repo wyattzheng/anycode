@@ -1,6 +1,7 @@
+import { createScopedState } from "@/agent/context"
+import type { AgentContext } from "@/agent/context"
 import z from "zod"
 import { Log } from "../util/log"
-import { Instance } from "../project/instance"
 import { BusEvent } from "./bus-event"
 import { GlobalBus } from "./global"
 
@@ -15,21 +16,21 @@ export namespace Bus {
     }),
   )
 
-  const state = Instance.state(
-    () => {
+  const state = createScopedState(
+    (_context: AgentContext) => {
       const subscriptions = new Map<any, Subscription[]>()
 
       return {
         subscriptions,
       }
     },
-    async (entry) => {
+    async (entry: { subscriptions: Map<any, Subscription[]> }) => {
       const wildcard = entry.subscriptions.get("*")
       if (!wildcard) return
       const event = {
         type: InstanceDisposed.type,
         properties: {
-          directory: Instance.directory,
+          directory: "",
         },
       }
       for (const sub of [...wildcard]) {
@@ -38,7 +39,7 @@ export namespace Bus {
     },
   )
 
-  export async function publish<Definition extends BusEvent.Definition>(
+  export async function publish<Definition extends BusEvent.Definition>(context: AgentContext | undefined, 
     def: Definition,
     properties: z.output<Definition["properties"]>,
   ) {
@@ -50,52 +51,53 @@ export namespace Bus {
       type: def.type,
     })
     const pending = []
-    for (const key of [def.type, "*"]) {
-      const match = state().subscriptions.get(key)
-      for (const sub of match ?? []) {
-        pending.push(sub(payload))
+    if (context) {
+      for (const key of [def.type, "*"]) {
+        const match = state(context).subscriptions.get(key)
+        for (const sub of match ?? []) {
+          pending.push(sub(payload))
+        }
       }
     }
     GlobalBus.emit("event", {
-      directory: Instance.directory,
+      directory: context?.directory,
       payload,
     })
     return Promise.all(pending)
   }
 
   export function subscribe<Definition extends BusEvent.Definition>(
+    context: AgentContext,
     def: Definition,
     callback: (event: { type: Definition["type"]; properties: z.infer<Definition["properties"]> }) => void,
   ) {
-    const res = raw(def.type, callback)
+    const res = raw(context, def.type, callback)
     return res
   }
 
   export function once<Definition extends BusEvent.Definition>(
+    context: AgentContext,
     def: Definition,
     callback: (event: {
       type: Definition["type"]
       properties: z.infer<Definition["properties"]>
     }) => "done" | undefined,
   ) {
-    const unsub = subscribe(def, (event) => {
+    const unsub = subscribe(context, def, (event) => {
       if (callback(event)) unsub()
     })
   }
 
-  export function subscribeAll(callback: (event: any) => void) {
-    return raw("*", callback)
+  export function subscribeAll(context: AgentContext, callback: (event: any) => void) {
+    return raw(context, "*", callback)
   }
 
-  function raw(type: string, callback: (event: any) => void) {
-    console.log("[TRACE] raw entered for", type)
+  function raw(context: AgentContext, type: string, callback: (event: any) => void) {
     log.info("subscribing", { type })
-    const subscriptions = state().subscriptions
-    console.log("[TRACE] state() retrieved")
+    const subscriptions = state(context).subscriptions
     let match = subscriptions.get(type) ?? []
     match.push(callback)
     subscriptions.set(type, match)
-    console.log("[TRACE] subscriptions added")
 
     return () => {
       log.info("unsubscribing", { type })

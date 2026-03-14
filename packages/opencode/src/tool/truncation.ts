@@ -1,5 +1,4 @@
 import path from "path"
-import { Instance } from "../project/instance"
 import { Identifier } from "../util/id"
 import { PermissionNext } from "../permission/next"
 import type { Agent } from "../agent/agent"
@@ -7,15 +6,16 @@ import { Scheduler } from "../util/scheduler"
 import { Filesystem } from "../util/filesystem"
 import { Glob } from "../util/glob"
 import { ToolID } from "./schema"
+import type { AgentContext } from "@/agent/context"
 
 export namespace Truncate {
   export const MAX_LINES = 2000
   export const MAX_BYTES = 50 * 1024
-  export function dir() {
-    return path.join(Instance.paths.data, "tool-output")
+  export function dir(context: AgentContext) {
+    return path.join(context.paths.data, "tool-output")
   }
-  export function glob() {
-    return path.join(dir(), "*")
+  export function glob(context?: AgentContext) {
+    return context ? path.join(dir(context), "*") : path.join("tool-output", "*")
   }
   const RETENTION_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
   const HOUR_MS = 60 * 60 * 1000
@@ -37,12 +37,13 @@ export namespace Truncate {
     })
   }
 
-  export async function cleanup() {
+  export async function cleanup(context?: AgentContext) {
+    if (!context) return
     const cutoff = Identifier.timestamp(Identifier.create("tool", false, Date.now() - RETENTION_MS))
-    const entries = await Glob.scan("tool_*", { cwd: dir(), include: "file" }).catch(() => [] as string[])
+    const entries = await Glob.scan("tool_*", { cwd: dir(context), include: "file" }).catch(() => [] as string[])
     for (const entry of entries) {
       if (Identifier.timestamp(entry) >= cutoff) continue
-      await Filesystem.remove(path.join(dir(), entry)).catch(() => {})
+      await Filesystem.remove(context, path.join(dir(context), entry)).catch(() => {})
     }
   }
 
@@ -52,7 +53,7 @@ export namespace Truncate {
     return rule.action !== "deny"
   }
 
-  export async function output(text: string, options: Options = {}, agent?: Agent.Info): Promise<Result> {
+  export async function output(context: AgentContext, text: string, options: Options = {}, agent?: Agent.Info): Promise<Result> {
     const maxLines = options.maxLines ?? MAX_LINES
     const maxBytes = options.maxBytes ?? MAX_BYTES
     const direction = options.direction ?? "head"
@@ -95,8 +96,8 @@ export namespace Truncate {
     const preview = out.join("\n")
 
     const id = ToolID.ascending()
-    const filepath = path.join(dir(), id)
-    await Filesystem.write(filepath, text)
+    const filepath = path.join(dir(context), id)
+    await Filesystem.write(context, filepath, text)
 
     const hint = hasTaskTool(agent)
       ? `The tool call succeeded but the output was truncated. Full output saved to: ${filepath}\nUse the Task tool to have explore agent process this file with Grep and Read (with offset/limit). Do NOT read the full file yourself - delegate to save context.`

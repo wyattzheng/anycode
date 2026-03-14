@@ -1,3 +1,4 @@
+import type { AgentContext } from "@/agent/context"
 import path from "path"
 
 import { Log } from "../util/log"
@@ -15,12 +16,12 @@ export namespace Discovery {
     }>
   }
 
-  export function dir() {
-    return path.join(Instance.paths.cache, "skills")
+  export function dir(context: AgentContext) {
+    return path.join(context.paths.cache, "skills")
   }
 
   async function get(url: string, dest: string): Promise<boolean> {
-    if (await Filesystem.exists(dest)) return true
+    if (await Filesystem.exists(undefined as any, dest)) return true
     return fetch(url)
       .then(async (response) => {
         if (!response.ok) {
@@ -29,8 +30,8 @@ export namespace Discovery {
         }
         if (response.body) {
           const bytes = new Uint8Array(await response.arrayBuffer())
-          await Filesystem.mkdir(path.dirname(dest))
-          await Filesystem.write(dest, bytes)
+          await Filesystem.mkdir(undefined as any, path.dirname(dest))
+          await Filesystem.write(undefined as any, dest, bytes)
         }
         return true
       })
@@ -44,7 +45,7 @@ export namespace Discovery {
     const result: string[] = []
     const base = url.endsWith("/") ? url : `${url}/`
     const index = new URL("index.json", base).href
-    const cache = dir()
+    const cache = dir(undefined as any)
     const host = base.slice(0, -1)
 
     log.info("fetching index", { url: index })
@@ -87,13 +88,13 @@ export namespace Discovery {
           skill.files.map(async (file) => {
             const link = new URL(file, `${host}/${skill.name}/`).href
             const dest = path.join(root, file)
-            await Filesystem.mkdir(path.dirname(dest))
+            await Filesystem.mkdir(undefined as any, path.dirname(dest))
             await get(link, dest)
           }),
         )
 
         const md = path.join(root, "SKILL.md")
-        if (await Filesystem.exists(md)) result.push(root)
+        if (await Filesystem.exists(undefined as any, md)) result.push(root)
       }),
     )
 

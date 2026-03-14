@@ -13,7 +13,7 @@ async function getLastModel(sessionID: SessionID) {
   for await (const item of MessageV2.stream(sessionID)) {
     if (item.info.role === "user" && item.info.model) return item.info.model
   }
-  return Provider.defaultModel()
+  return Provider.defaultModel(undefined as any)
 }
 
 export const PlanExitTool = Tool.define("plan_exit", {
@@ -22,7 +22,7 @@ export const PlanExitTool = Tool.define("plan_exit", {
   async execute(_params, ctx) {
     const session = await Session.get(ctx.sessionID)
     const plan = path.relative(ctx.worktree, Session.plan(ctx, session))
-    const answers = await Question.ask({
+    const answers = await Question.ask(undefined as any, {
       sessionID: ctx.sessionID,
       questions: [
         {

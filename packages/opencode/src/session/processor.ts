@@ -48,12 +48,12 @@ export namespace SessionProcessor {
       async process(streamInput: LLM.StreamInput) {
         log.info("process")
         needsCompaction = false
-        const shouldBreak = (await Config.get()).experimental?.continue_loop_on_deny !== true
+        const shouldBreak = (await Config.get(input.context)).experimental?.continue_loop_on_deny !== true
         while (true) {
           try {
             let currentText: MessageV2.TextPart | undefined
             let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
-            const stream = await LLM.stream(streamInput)
+            const stream = await LLM.stream(undefined as any, streamInput)
 
             for await (const value of stream.fullStream) {
               input.abort.throwIfAborted()
@@ -164,7 +164,7 @@ export namespace SessionProcessor {
                           JSON.stringify(p.state.input) === JSON.stringify(value.input),
                       )
                     ) {
-                      const agent = await Agent.get(input.assistantMessage.agent)
+                      const agent = await Agent.get(undefined as any, input.assistantMessage.agent)
                       await PermissionNext.ask({
                         permission: "doom_loop",
                         patterns: [value.toolName],
@@ -234,7 +234,7 @@ export namespace SessionProcessor {
                   throw value.error
 
                 case "start-step":
-                  snapshot = await Snapshot.track()
+                  snapshot = await Snapshot.track(input.context)
                   await Session.updatePart({
                     id: PartID.ascending(),
                     messageID: input.assistantMessage.id,
@@ -256,7 +256,7 @@ export namespace SessionProcessor {
                   await Session.updatePart({
                     id: PartID.ascending(),
                     reason: value.finishReason,
-                    snapshot: await Snapshot.track(),
+                    snapshot: await Snapshot.track(input.context),
                     messageID: input.assistantMessage.id,
                     sessionID: input.assistantMessage.sessionID,
                     type: "step-finish",
@@ -265,7 +265,7 @@ export namespace SessionProcessor {
                   })
                   await Session.updateMessage(input.assistantMessage)
                   if (snapshot) {
-                    const patch = await Snapshot.patch(snapshot)
+                    const patch = await Snapshot.patch(input.context, snapshot)
                     if (patch.files.length) {
                       await Session.updatePart({
                         id: PartID.ascending(),
@@ -361,7 +361,7 @@ export namespace SessionProcessor {
             const error = MessageV2.fromError(e, { providerID: input.model.providerID })
             if (MessageV2.ContextOverflowError.isInstance(error)) {
               needsCompaction = true
-              Bus.publish(Session.Event.Error, {
+              Bus.publish(input.context, Session.Event.Error, {
                 sessionID: input.sessionID,
                 error,
               })
@@ -380,7 +380,7 @@ export namespace SessionProcessor {
                 continue
               }
               input.assistantMessage.error = error
-              Bus.publish(Session.Event.Error, {
+              Bus.publish(input.context, Session.Event.Error, {
                 sessionID: input.assistantMessage.sessionID,
                 error: input.assistantMessage.error,
               })
@@ -388,7 +388,7 @@ export namespace SessionProcessor {
             }
           }
           if (snapshot) {
-            const patch = await Snapshot.patch(snapshot)
+            const patch = await Snapshot.patch(input.context, snapshot)
             if (patch.files.length) {
               await Session.updatePart({
                 id: PartID.ascending(),

@@ -1,3 +1,5 @@
+import { createScopedState } from "@/agent/context"
+import type { AgentContext } from "@/agent/context"
 import z from "zod"
 import path from "path"
 import os from "os"
@@ -51,16 +53,16 @@ export namespace Skill {
   const OPENCODE_SKILL_PATTERN = "{skill,skills}/**/SKILL.md"
   const SKILL_PATTERN = "**/SKILL.md"
 
-  export const state = Instance.state(async () => {
+  export const state = createScopedState(async (context: AgentContext) => {
     const skills: Record<string, Info> = {}
     const dirs = new Set<string>()
 
     const addSkill = async (match: string) => {
-      const md = await ConfigMarkdown.parse(match).catch((err) => {
+      const md = await ConfigMarkdown.parse(context, match).catch((err) => {
         const message = ConfigMarkdown.FrontmatterError.isInstance(err)
           ? err.data.message
           : `Failed to parse skill ${match}`
-        Bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
+        Bus.publish(context, Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
         log.error("failed to load skill", { skill: match, err })
         return undefined
       })
@@ -107,22 +109,22 @@ export namespace Skill {
     // Load global (home) first, then project-level (so project-level overwrites)
     if (!Flag.OPENCODE_DISABLE_EXTERNAL_SKILLS) {
       for (const dir of EXTERNAL_DIRS) {
-        const root = path.join(Instance.paths.home, dir)
-        if (!(await Filesystem.isDir(root))) continue
+        const root = path.join(context.paths.home, dir)
+        if (!(await Filesystem.isDir(context, root))) continue
         await scanExternal(root, "global")
       }
 
-      for await (const root of Filesystem.up({
+      for await (const root of Filesystem.up(context, {
         targets: EXTERNAL_DIRS,
-        start: Instance.directory,
-        stop: Instance.worktree,
+        start: context.directory,
+        stop: context.worktree,
       })) {
         await scanExternal(root, "project")
       }
     }
 
     // Scan .opencode/skill/ directories
-    for (const dir of await Config.directories()) {
+    for (const dir of await Config.directories(context)) {
       const matches = await Glob.scan(OPENCODE_SKILL_PATTERN, {
         cwd: dir,
         absolute: true,
@@ -135,11 +137,11 @@ export namespace Skill {
     }
 
     // Scan additional skill paths from config
-    const config = await Config.get()
+    const config = await Config.get(context)
     for (const skillPath of config.skills?.paths ?? []) {
       const expanded = skillPath.startsWith("~/") ? path.join(os.homedir(), skillPath.slice(2)) : skillPath
-      const resolved = path.isAbsolute(expanded) ? expanded : path.join(Instance.directory, expanded)
-      if (!(await Filesystem.isDir(resolved))) {
+      const resolved = path.isAbsolute(expanded) ? expanded : path.join(context.directory, expanded)
+      if (!(await Filesystem.isDir(context, resolved))) {
         log.warn("skill path not found", { path: resolved })
         continue
       }
@@ -177,20 +179,20 @@ export namespace Skill {
     }
   })
 
-  export async function get(name: string) {
-    return state().then((x) => x.skills[name])
+  export async function get(context: AgentContext, name: string) {
+    return state(context).then((x) => x.skills[name])
   }
 
-  export async function all() {
-    return state().then((x) => Object.values(x.skills))
+  export async function all(context: AgentContext) {
+    return state(context).then((x) => Object.values(x.skills))
   }
 
-  export async function dirs() {
-    return state().then((x) => x.dirs)
+  export async function dirs(context: AgentContext) {
+    return state(context).then((x) => x.dirs)
   }
 
-  export async function available(agent?: Agent.Info) {
-    const list = await all()
+  export async function available(context: AgentContext, agent?: Agent.Info) {
+    const list = await all(context)
     if (!agent) return list
     return list.filter((skill) => PermissionNext.evaluate("skill", skill.name, agent.permission).action !== "deny")
   }

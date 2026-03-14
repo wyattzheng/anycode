@@ -1,3 +1,4 @@
+import type { AgentContext } from "@/agent/context"
 import { Effect, ScopedCache, Scope } from "effect"
 
 import { Instance } from "@/project/instance"
@@ -37,11 +38,11 @@ export namespace InstanceState {
       }
     })
 
-  export const get = <A, E, R>(self: State<A, E, R>) => ScopedCache.get(self.cache, Instance.directory)
+  export const get = <A, E, R>(context: AgentContext, self: State<A, E, R>) => ScopedCache.get(self.cache, context.directory)
 
-  export const has = <A, E, R>(self: State<A, E, R>) => ScopedCache.has(self.cache, Instance.directory)
+  export const has = <A, E, R>(context: AgentContext, self: State<A, E, R>) => ScopedCache.has(self.cache, context.directory)
 
-  export const invalidate = <A, E, R>(self: State<A, E, R>) => ScopedCache.invalidate(self.cache, Instance.directory)
+  export const invalidate = <A, E, R>(context: AgentContext, self: State<A, E, R>) => ScopedCache.invalidate(self.cache, context.directory)
 
   export const dispose = (key: string) =>
     Effect.all(

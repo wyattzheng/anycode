@@ -1,3 +1,4 @@
+import type { AgentContext } from "@/agent/context"
 import { Instance } from "../project/instance"
 import { Log } from "../util/log"
 import path from "path"
@@ -13,8 +14,8 @@ import { Filesystem } from "../util/filesystem"
 
 export namespace ModelsDev {
   const log = Log.create({ service: "models.dev" })
-  export function filepath() {
-    return path.join(Instance.paths.cache, "models.json")
+  export function filepath(context: AgentContext) {
+    return path.join(context.paths.cache, "models.json")
   }
 
   export const Model = z.object({
@@ -90,7 +91,7 @@ export namespace ModelsDev {
   export const Data = lazy(async () => {
     let result: any = undefined;
     try {
-      result = await Filesystem.readJson(Flag.OPENCODE_MODELS_PATH ?? filepath()).catch(() => {})
+      result = await Filesystem.readJson(undefined as any, Flag.OPENCODE_MODELS_PATH ?? filepath(undefined as any)).catch(() => {})
     } catch (e) {}
     if (result) return result
     // @ts-ignore
@@ -121,7 +122,7 @@ export namespace ModelsDev {
     })
     if (result && result.ok) {
       try {
-        await Filesystem.write(filepath(), await result.text())
+        await Filesystem.write(undefined as any, filepath(undefined as any), await result.text())
         ModelsDev.Data.reset()
       } catch (e) {
         log.warn("Failed to write models cache. Missing context?", { error: e })

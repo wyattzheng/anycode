@@ -163,7 +163,7 @@ export namespace SessionPrompt {
     const session = await Session.get(input.sessionID)
     await SessionRevert.cleanup(session)
 
-    const message = await createUserMessage(input)
+    const message = await createUserMessage(undefined as any, input)
     await Session.touch(input.sessionID)
 
     // this is backwards compatibility for allowing `tools` to be specified when
@@ -185,10 +185,10 @@ export namespace SessionPrompt {
       return message
     }
 
-    return loop({ sessionID: input.sessionID, context: input.context })
+    return loop(undefined as any, { sessionID: input.sessionID, context: input.context })
   }
 
-  export async function resolvePromptParts(template: string): Promise<PromptInput["parts"]> {
+  export async function resolvePromptParts(context: AgentContext, template: string): Promise<PromptInput["parts"]> {
     const parts: PromptInput["parts"] = [
       {
         type: "text",
@@ -204,11 +204,11 @@ export namespace SessionPrompt {
         seen.add(name)
         const filepath = name.startsWith("~/")
           ? path.join(os.homedir(), name.slice(2))
-          : path.resolve(Instance.worktree, name)
+          : path.resolve(context.worktree, name)
 
-        const stats = await Filesystem.stat(filepath).catch(() => undefined)
+        const stats = await Filesystem.stat(context, filepath).catch(() => undefined)
         if (!stats) {
-          const agent = await Agent.get(name)
+          const agent = await Agent.get(context, name)
           if (agent) {
             parts.push({
               type: "agent",
@@ -277,7 +277,7 @@ export namespace SessionPrompt {
   })
   export type LoopInput = z.infer<typeof LoopInput> & { context: AgentContext }
 
-  export const loop = async (input: LoopInput) => {
+  export const loop = async (_unused: AgentContext | undefined, input: LoopInput) => {
     const { sessionID, resume_existing, context } = input
 
     const abort = resume_existing ? resume(context, sessionID) : start(context, sessionID)
@@ -340,10 +340,10 @@ export namespace SessionPrompt {
           context: input.context,
         })
 
-      const model = await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID).catch((e) => {
+      const model = await Provider.getModel(context, lastUser.model.providerID, lastUser.model.modelID).catch((e) => {
         if (Provider.ModelNotFoundError.isInstance(e)) {
           const hint = e.data.suggestions?.length ? ` Did you mean: ${e.data.suggestions.join(", ")}?` : ""
-          Bus.publish(Session.Event.Error, {
+          Bus.publish(context, Session.Event.Error, {
             sessionID,
             error: new NamedError.Unknown({
               message: `Model not found: ${e.data.providerID}/${e.data.modelID}.${hint}`,
@@ -358,7 +358,7 @@ export namespace SessionPrompt {
       // TODO: centralize "invoke tool" logic
       if (task?.type === "subtask") {
         const taskTool = await TaskTool.init()
-        const taskModel = task.model ? await Provider.getModel(task.model.providerID, task.model.modelID) : model
+        const taskModel = task.model ? await Provider.getModel(context, task.model.providerID, task.model.modelID) : model
         const assistantMessage = (await Session.updateMessage({
           id: MessageID.ascending(),
           role: "assistant",
@@ -368,8 +368,8 @@ export namespace SessionPrompt {
           agent: task.agent,
           variant: lastUser.variant,
           path: {
-            cwd: context?.directory ?? Instance.directory,
-            root: context?.worktree ?? Instance.worktree,
+            cwd: context?.directory ?? context.directory,
+            root: context?.worktree ?? context.worktree,
           },
           cost: 0,
           tokens: {
@@ -420,7 +420,7 @@ export namespace SessionPrompt {
           { args: taskArgs },
         )
         let executionError: Error | undefined
-        const taskAgent = await Agent.get(task.agent)
+        const taskAgent = await Agent.get(undefined as any, task.agent)
         const taskCtx: Tool.Context = {
           ...context,
           agent: task.agent,
@@ -535,7 +535,7 @@ export namespace SessionPrompt {
 
       // pending compaction
       if (task?.type === "compaction") {
-        const result = await SessionCompaction.process({
+        const result = await SessionCompaction.process(undefined as any, {
           messages: msgs,
           parentID: lastUser.id,
           abort,
@@ -564,7 +564,7 @@ export namespace SessionPrompt {
       }
 
       // normal processing
-      const agent = await Agent.get(lastUser.agent)
+      const agent = await Agent.get(undefined as any, lastUser.agent)
       const maxSteps = agent.steps ?? Infinity
       const isLastStep = step >= maxSteps
       msgs = await insertReminders({
@@ -583,8 +583,8 @@ export namespace SessionPrompt {
           agent: agent.name,
           variant: lastUser.variant,
           path: {
-            cwd: context?.directory ?? Instance.directory,
-            root: context?.worktree ?? Instance.worktree,
+            cwd: context?.directory ?? context.directory,
+            root: context?.worktree ?? context.worktree,
           },
           cost: 0,
           tokens: {
@@ -731,7 +731,7 @@ export namespace SessionPrompt {
       }
       continue
     }
-    SessionCompaction.prune({ sessionID })
+    SessionCompaction.prune(context, { sessionID })
     for await (const item of MessageV2.stream(sessionID)) {
       if (item.info.role === "user") continue
       const queued = getState(context)[sessionID]?.callbacks ?? []
@@ -747,7 +747,7 @@ export namespace SessionPrompt {
     for await (const item of MessageV2.stream(sessionID)) {
       if (item.info.role === "user" && item.info.model) return item.info.model
     }
-    return Provider.defaultModel()
+    return Provider.defaultModel(undefined as any)
   }
 
   /** @internal Exported for testing */
@@ -883,13 +883,13 @@ export namespace SessionPrompt {
     })
   }
 
-  async function createUserMessage(input: PromptInput) {
-    const agent = await Agent.get(input.agent ?? (await Agent.defaultAgent()))
+  async function createUserMessage(context: AgentContext, input: PromptInput) {
+    const agent = await Agent.get(context, input.agent ?? (await Agent.defaultAgent()))
 
     const model = input.model ?? agent.model ?? (await lastModel(input.sessionID))
     const full =
       !input.variant && agent.variant
-        ? await Provider.getModel(model.providerID, model.modelID).catch(() => undefined)
+        ? await Provider.getModel(context, model.providerID, model.modelID).catch(() => undefined)
         : undefined
     const variant = input.variant ?? (agent.variant && full?.variants?.[agent.variant] ? agent.variant : undefined)
 
@@ -952,7 +952,7 @@ export namespace SessionPrompt {
               // have to normalize, symbol search returns absolute paths
               // Decode the pathname since URL constructor doesn't automatically decode it
               const filepath = fileURLToPath(part.url)
-              const s = await Filesystem.stat(filepath)
+              const s = await Filesystem.stat(context, filepath)
 
               if (s?.isDirectory) {
                 part.mime = "application/x-directory"
@@ -1007,7 +1007,7 @@ export namespace SessionPrompt {
 
                 await ReadTool.init()
                   .then(async (t) => {
-                    const model = await Provider.getModel(info.model.providerID, info.model.modelID)
+                    const model = await Provider.getModel(context, info.model.providerID, info.model.modelID)
                     const readCtx: Tool.Context = {
                       ...input.context,
                       sessionID: input.sessionID,
@@ -1045,10 +1045,10 @@ export namespace SessionPrompt {
                       })
                     }
                   })
-                  .catch((error) => {
+                  .catch ((error) => {
                     log.error("failed to read file", { error })
                     const message = error instanceof Error ? error.message : error.toString()
-                    Bus.publish(Session.Event.Error, {
+                    Bus.publish(context, Session.Event.Error, {
                       sessionID: input.sessionID,
                       error: new NamedError.Unknown({
                         message,
@@ -1117,7 +1117,7 @@ export namespace SessionPrompt {
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "file",
-                  url: `data:${part.mime};base64,` + Buffer.from(await Filesystem.readBytes(filepath)).toString("base64"),
+                  url: `data:${part.mime};base64,` + Buffer.from(await Filesystem.readBytes(context, filepath)).toString("base64"),
                   mime: part.mime,
                   filename: part.filename!,
                   source: part.source,
@@ -1223,7 +1223,7 @@ export namespace SessionPrompt {
     // Switching from plan mode to build mode
     if (input.agent.name !== "plan" && assistantMessage?.info.agent === "plan") {
       const plan = Session.plan(input.context, input.session)
-      const exists = await Filesystem.exists(plan)
+      const exists = await Filesystem.exists(undefined as any, plan)
       if (exists) {
         const part = await Session.updatePart({
           id: PartID.ascending(),
@@ -1242,8 +1242,8 @@ export namespace SessionPrompt {
     // Entering plan mode
     if (input.agent.name === "plan" && assistantMessage?.info.agent !== "plan") {
       const plan = Session.plan(input.context, input.session)
-      const exists = await Filesystem.exists(plan)
-      if (!exists) await Filesystem.mkdir(path.dirname(plan))
+      const exists = await Filesystem.exists(undefined as any, plan)
+      if (!exists) await Filesystem.mkdir(undefined as any, path.dirname(plan))
       const part = await Session.updatePart({
         id: PartID.ascending(),
         messageID: userMessage.info.id,
@@ -1340,7 +1340,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
   })
   export type ShellInput = z.infer<typeof ShellInput> & { context: AgentContext }
 
-  export async function shell(input: ShellInput) {
+  export async function shell(context: AgentContext, input: ShellInput) {
     const abort = start(input.context, input.sessionID)
     if (!abort) {
       throw new Session.BusyError(input.sessionID)
@@ -1353,7 +1353,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         cancel(input.context, input.sessionID)
       } else {
         // Otherwise, trigger the session loop to process queued items
-        loop({ sessionID: input.sessionID, resume_existing: true, context: input.context }).catch((error) => {
+        loop(context, { sessionID: input.sessionID, resume_existing: true, context: input.context }).catch((error) => {
           log.error("session loop failed to resume after shell command", { sessionID: input.sessionID, error })
         })
       }
@@ -1363,7 +1363,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     if (session.revert) {
       await SessionRevert.cleanup(session)
     }
-    const agent = await Agent.get(input.agent)
+    const agent = await Agent.get(context, input.agent)
     const model = input.model ?? agent.model ?? (await lastModel(input.sessionID))
     const userMsg: MessageV2.User = {
       id: MessageID.ascending(),
@@ -1397,8 +1397,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       agent: input.agent,
       cost: 0,
       path: {
-        cwd: Instance.directory,
-        root: Instance.worktree,
+        cwd: context.directory,
+        root: context.worktree,
       },
       time: {
         created: Date.now(),
@@ -1487,7 +1487,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     const matchingInvocation = invocations[shellName] ?? invocations[""]
     const args = matchingInvocation?.args
 
-    const cwd = Instance.directory
+    const cwd = context.directory
     const shellEnv = await Plugin.trigger(
       "shell.env",
       { cwd, sessionID: input.sessionID, callID: part.callID },
@@ -1667,7 +1667,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         return Provider.parseModel(command.model)
       }
       if (command.agent) {
-        const cmdAgent = await Agent.get(command.agent)
+        const cmdAgent = await Agent.get(undefined as any, command.agent)
         if (cmdAgent?.model) {
           return cmdAgent.model
         }
@@ -1677,31 +1677,31 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     })()
 
     try {
-      await Provider.getModel(taskModel.providerID, taskModel.modelID)
+      await Provider.getModel(undefined as any, taskModel.providerID, taskModel.modelID)
     } catch (e) {
       if (Provider.ModelNotFoundError.isInstance(e)) {
         const { providerID, modelID, suggestions } = e.data
         const hint = suggestions?.length ? ` Did you mean: ${suggestions.join(", ")}?` : ""
-        Bus.publish(Session.Event.Error, {
+        Bus.publish(undefined, Session.Event.Error, {
           sessionID: input.sessionID,
           error: new NamedError.Unknown({ message: `Model not found: ${providerID}/${modelID}.${hint}` }).toObject(),
         })
       }
       throw e
     }
-    const agent = await Agent.get(agentName)
+    const agent = await Agent.get(undefined as any, agentName)
     if (!agent) {
       const available = await Agent.list().then((agents) => agents.filter((a) => !a.hidden).map((a) => a.name))
       const hint = available.length ? ` Available agents: ${available.join(", ")}` : ""
       const error = new NamedError.Unknown({ message: `Agent not found: "${agentName}".${hint}` })
-      Bus.publish(Session.Event.Error, {
+      Bus.publish(undefined, Session.Event.Error, {
         sessionID: input.sessionID,
         error: error.toObject(),
       })
       throw error
     }
 
-    const templateParts = await resolvePromptParts(template)
+    const templateParts = await resolvePromptParts(undefined as any, template)
     const isSubtask = (agent.mode === "subagent" && command.subtask !== false) || command.subtask === true
     const parts = isSubtask
       ? [
@@ -1747,7 +1747,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       context: input.context,
     })) as MessageV2.WithParts
 
-    Bus.publish(Command.Event.Executed, {
+    Bus.publish(undefined, Command.Event.Executed, {
       name: input.command,
       sessionID: input.sessionID,
       arguments: input.arguments,
@@ -1788,15 +1788,15 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     const subtaskParts = firstRealUser.parts.filter((p) => p.type === "subtask") as MessageV2.SubtaskPart[]
     const hasOnlySubtaskParts = subtaskParts.length > 0 && firstRealUser.parts.every((p) => p.type === "subtask")
 
-    const agent = await Agent.get("title")
+    const agent = await Agent.get(undefined as any, "title")
     if (!agent) return
     const model = await iife(async () => {
-      if (agent.model) return await Provider.getModel(agent.model.providerID, agent.model.modelID)
+      if (agent.model) return await Provider.getModel(undefined as any, agent.model.providerID, agent.model.modelID)
       return (
-        (await Provider.getSmallModel(input.providerID)) ?? (await Provider.getModel(input.providerID, input.modelID))
+        (await Provider.getSmallModel(undefined as any, input.providerID)) ?? (await Provider.getModel(undefined as any, input.providerID, input.modelID))
       )
     })
-    const result = await LLM.stream({
+    const result = await LLM.stream(undefined as any, {
       agent,
       user: firstRealUser.info as MessageV2.User,
       system: [],

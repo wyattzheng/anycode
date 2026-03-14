@@ -1,3 +1,4 @@
+import type { AgentContext } from "@/agent/context"
 import z from "zod"
 import { Filesystem } from "../util/filesystem"
 import path from "path"
@@ -88,18 +89,18 @@ export namespace Project {
     }
   }
 
-  function readCachedId(dir: string) {
-    return Filesystem.readText(path.join(dir, "opencode"))
+  function readCachedId(context: AgentContext, dir: string) {
+    return Filesystem.readText(context, path.join(dir, "opencode"))
       .then((x) => x.trim())
       .then(ProjectID.make)
       .catch(() => undefined)
   }
 
-  export async function fromDirectory(directory: string) {
+  export async function fromDirectory(context: AgentContext, directory: string) {
     log.info("fromDirectory", { directory })
 
     const data = await iife(async () => {
-      const matches = Filesystem.up({ targets: [".git"], start: directory })
+      const matches = Filesystem.up(context, { targets: [".git"], start: directory })
       const dotgit = await matches.next().then((x) => x.value)
       await matches.return()
       if (dotgit) {
@@ -108,7 +109,7 @@ export namespace Project {
         const gitBinary = which("git")
 
         // cached id calculation
-        let id = await readCachedId(dotgit)
+        let id = await readCachedId(context, dotgit)
 
         if (!gitBinary) {
           return {
@@ -142,7 +143,7 @@ export namespace Project {
         // because `.git` is not a folder, but it always needs the
         // same project id as the common dir, so we resolve it now
         if (id == null) {
-          id = await readCachedId(path.join(worktree, ".git"))
+          id = await readCachedId(undefined as any, path.join(worktree, ".git"))
         }
 
         // generate id from root commit
@@ -171,7 +172,7 @@ export namespace Project {
           id = roots[0] ? ProjectID.make(roots[0]) : undefined
           if (id) {
             // Write to common dir so the cache is shared across worktrees.
-            await Filesystem.write(path.join(worktree, ".git", "opencode"), id).catch(() => undefined)
+            await Filesystem.write(context, path.join(worktree, ".git", "opencode"), id).catch(() => undefined)
           }
         }
 
@@ -231,7 +232,7 @@ export namespace Project {
           },
         }
 
-    if (Flag.OPENCODE_EXPERIMENTAL_ICON_DISCOVERY) discover(existing)
+    if (Flag.OPENCODE_EXPERIMENTAL_ICON_DISCOVERY) discover(context, existing)
 
     const result: Info = {
       ...existing,
@@ -244,7 +245,7 @@ export namespace Project {
     }
     if (data.sandbox !== result.worktree && !result.sandboxes.includes(data.sandbox))
       result.sandboxes.push(data.sandbox)
-    result.sandboxes = (await Promise.all(result.sandboxes.map(async (x) => ({ x, exists: await Filesystem.exists(x) })))).filter(r => r.exists).map(r => r.x)
+    result.sandboxes = (await Promise.all(result.sandboxes.map(async (x) => ({ x, exists: await Filesystem.exists(context, x) })))).filter(r => r.exists).map(r => r.x)
     const insert = {
       id: result.id,
       worktree: result.worktree,
@@ -293,7 +294,7 @@ export namespace Project {
     return { project: result, sandbox: data.sandbox }
   }
 
-  export async function discover(input: Info) {
+  export async function discover(context: AgentContext, input: Info) {
     if (input.vcs !== "git") return
     if (input.icon?.override) return
     if (input.icon?.url) return
@@ -304,7 +305,7 @@ export namespace Project {
     })
     const shortest = matches.sort((a, b) => a.length - b.length)[0]
     if (!shortest) return
-    const buffer = await Filesystem.readBytes(shortest)
+    const buffer = await Filesystem.readBytes(context, shortest)
     const base64 = Buffer.from(buffer).toString("base64")
     const mime = Filesystem.mimeType(shortest) || "image/png"
     const url = `data:${mime};base64,${base64}`
@@ -357,7 +358,7 @@ export namespace Project {
       throw new Error(text || "Failed to initialize git repository")
     }
 
-    return (await fromDirectory(input.directory)).project
+    return (await fromDirectory(undefined as any, input.directory)).project
   }
 
   export const update = fn(
@@ -395,13 +396,13 @@ export namespace Project {
     },
   )
 
-  export async function sandboxes(id: ProjectID) {
+  export async function sandboxes(context: AgentContext, id: ProjectID) {
     const row = Database.use((db) => db.select().from(ProjectTable).where(eq(ProjectTable.id, id)).get())
     if (!row) return []
     const data = fromRow(row)
     const valid: string[] = []
     for (const dir of data.sandboxes) {
-      const s = await Filesystem.stat(dir)
+      const s = await Filesystem.stat(context, dir)
       if (s?.isDirectory) valid.push(dir)
     }
     return valid

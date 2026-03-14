@@ -162,35 +162,11 @@ export const WebFetchTool = Tool.define("webfetch", {
 })
 
 async function extractTextFromHTML(html: string) {
-  let text = ""
-  let skipContent = false
-
-  const rewriter = new HTMLRewriter()
-    .on("script, style, noscript, iframe, object, embed", {
-      element() {
-        skipContent = true
-      },
-      text() {
-        // Skip text content inside these elements
-      },
-    })
-    .on("*", {
-      element(element: any) {
-        // Reset skip flag when entering other elements
-        if (!["script", "style", "noscript", "iframe", "object", "embed"].includes(element.tagName)) {
-          skipContent = false
-        }
-      },
-      text(input: any) {
-        if (!skipContent) {
-          text += input.text
-        }
-      },
-    })
-    .transform(new Response(html))
-
-  await rewriter.text()
-  return text.trim()
+  let cleaned = html.replace(/<(script|style|noscript|iframe|object|embed)[^>]*>[\s\S]*?<\/\1>/gi, "")
+  cleaned = cleaned.replace(/<[^>]+>/g, " ")
+  cleaned = cleaned.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ")
+  cleaned = cleaned.replace(/\s+/g, " ")
+  return cleaned.trim()
 }
 
 function convertHTMLToMarkdown(html: string): string {

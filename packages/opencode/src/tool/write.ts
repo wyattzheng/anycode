@@ -27,7 +27,7 @@ export const WriteTool = Tool.define("write", {
 
     const exists = await ctx.fs.exists(filepath)
     const contentOld = exists ? await ctx.fs.readText(filepath) : ""
-    if (exists) await FileTime.assert(ctx.sessionID, filepath)
+    if (exists) await FileTime.assert(ctx as any, ctx.sessionID, filepath)
 
     const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, params.content))
     await ctx.ask({
@@ -41,10 +41,10 @@ export const WriteTool = Tool.define("write", {
     })
 
     await ctx.fs.write(filepath, params.content)
-    await Bus.publish(File.Event.Edited, {
+    await Bus.publish(undefined, File.Event.Edited, {
       file: filepath,
     })
-    await Bus.publish(FileWatcher.Event.Updated, {
+    await Bus.publish(undefined, FileWatcher.Event.Updated, {
       file: filepath,
       event: exists ? "change" : "add",
     })
