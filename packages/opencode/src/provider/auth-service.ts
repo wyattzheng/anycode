@@ -4,7 +4,7 @@ import { Plugin } from "../plugin"
 import { filter, fromEntries, map, pipe } from "remeda"
 // AuthOauthResult inlined (opencode-plugin removed)
 type AuthOauthResult = { url: string; instructions: string; method: string; callback: (...args: any[]) => Promise<any> }
-import { NamedError } from "@opencode-ai/util/error"
+import { NamedError } from "@/util/error"
 import * as Auth from "@/auth/service"
 import { InstanceState } from "@/util/instance-state"
 import { ProviderID } from "./schema"

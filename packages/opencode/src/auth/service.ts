@@ -4,7 +4,7 @@
  */
 import { Effect, Context, Layer } from "effect"
 import z from "zod"
-import { NamedError } from "@opencode-ai/util/error"
+import { NamedError } from "@/util/error"
 
 export const AuthServiceError = NamedError.create("AuthServiceError", z.object({}))
 export type AuthServiceError = InstanceType<typeof AuthServiceError>

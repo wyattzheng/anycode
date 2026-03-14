@@ -53,7 +53,6 @@
     "@octokit/graphql": "9.0.2",
     "@octokit/rest": "22.0.0",
     "@openauthjs/openauth": "0.0.0-20250322224806",
-    "@opencode-ai/util": "workspace:*",
     "@openrouter/ai-sdk-provider": "1.5.4",
     "@parcel/watcher": "2.5.1",
     "@pierre/diffs": "1.1.0-beta.18",
