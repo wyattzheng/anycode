@@ -1,40 +1,35 @@
 import { testPaths } from "./_test-paths"
 /**
- * Test: Skill module — skill discovery and loading from filesystem
+ * Test: Skill module — skill discovery and loading
  *
  * Verifies:
- *   1. Loading skills from .opencode/skills/ directory
- *   2. Skill.get() returns specific skill by name
- *   3. Skill.all() returns all loaded skills
- *   4. Malformed SKILL.md files are ignored gracefully
- *   5. Skill.fmt() produces correct formatted output
+ *   1. Auto-loading skills from .opencode/skills/ directory
+ *   2. Auto-loading from .agents/skills/ (external agent-compatible)
+ *   3. Nested skill directories
+ *   4. Skill.get() / Skill.all() / Skill.available() / Skill.dirs()
+ *   5. Malformed SKILL.md files silently ignored
+ *   6. Skill.fmt() produces correct formatted output
+ *
+ * Uses InMemoryFS + InMemorySearchProvider — no real disk I/O.
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest"
-import { CodeAgent, NodeFS } from "../src/index"
-import { createTempDir, cleanupTempDir } from "./setup"
+import { describe, it, expect, beforeAll } from "vitest"
+import { CodeAgent } from "../src/index"
+import { InMemoryFS } from "./fixtures/in-memory-fs"
+import { InMemorySearchProvider } from "./fixtures/search-memory"
 import path from "path"
-import fs from "fs"
 
-describe("Skill: filesystem loading", () => {
-    let tmpDir: string
+describe("Skill: auto-loading from designated directories", () => {
     let agent: CodeAgent
+    let memfs: InMemoryFS
     let paths: ReturnType<typeof testPaths>
+    const workDir = "/virtual/skill-test"
 
     beforeAll(async () => {
-        tmpDir = createTempDir("skill-test-")
         paths = testPaths()
+        memfs = new InMemoryFS()
 
-        // Create .opencode/skills/ structure with SKILL.md files
-        const skillDir1 = path.join(tmpDir, ".opencode", "skills", "greet")
-        const skillDir2 = path.join(tmpDir, ".opencode", "skills", "deploy")
-        const skillDirBad = path.join(tmpDir, ".opencode", "skills", "broken")
-
-        fs.mkdirSync(skillDir1, { recursive: true })
-        fs.mkdirSync(skillDir2, { recursive: true })
-        fs.mkdirSync(skillDirBad, { recursive: true })
-
-        // Valid skill 1
-        fs.writeFileSync(path.join(skillDir1, "SKILL.md"), [
+        // ── .opencode/skills/ — primary skill directory ──
+        await memfs.write(`${workDir}/.opencode/skills/greet/SKILL.md`, [
             "---",
             "name: greet",
             "description: Greets the user",
@@ -44,8 +39,7 @@ describe("Skill: filesystem loading", () => {
             "Say hello to the user.",
         ].join("\n"))
 
-        // Valid skill 2
-        fs.writeFileSync(path.join(skillDir2, "SKILL.md"), [
+        await memfs.write(`${workDir}/.opencode/skills/deploy/SKILL.md`, [
             "---",
             "name: deploy",
             "description: Deploy the application",
@@ -55,18 +49,42 @@ describe("Skill: filesystem loading", () => {
             "Run the deploy pipeline.",
         ].join("\n"))
 
-        // Broken skill — no name field
-        fs.writeFileSync(path.join(skillDirBad, "SKILL.md"), [
+        // Broken skill — no name field, should be silently ignored
+        await memfs.write(`${workDir}/.opencode/skills/broken/SKILL.md`, [
             "---",
             "title: not-a-name",
             "---",
             "This skill has no name field.",
         ].join("\n"))
 
+        // ── .agents/skills/ — external agent-compatible directory ──
+        await memfs.write(`${workDir}/.agents/skills/lint/SKILL.md`, [
+            "---",
+            "name: lint",
+            "description: Run linting checks",
+            "---",
+            "",
+            "# Lint Skill",
+            "Run eslint on the project.",
+        ].join("\n"))
+
+        // ── Nested skill directory ──
+        await memfs.write(`${workDir}/.opencode/skills/tools/formatter/SKILL.md`, [
+            "---",
+            "name: formatter",
+            "description: Format code",
+            "---",
+            "",
+            "# Formatter Skill",
+            "Run prettier on source files.",
+        ].join("\n"))
+
         agent = new CodeAgent({
-            directory: tmpDir,
+            directory: workDir,
+            worktree: workDir,
             skipPlugins: true,
-            fs: new NodeFS(),
+            fs: memfs,
+            search: new InMemorySearchProvider(memfs),
             paths,
             provider: {
                 id: "openai",
@@ -78,21 +96,19 @@ describe("Skill: filesystem loading", () => {
         await agent.init()
     }, 60_000)
 
-    afterAll(() => cleanupTempDir(tmpDir))
-
-    it("should load all valid skills from .opencode/skills/", async () => {
+    it("should auto-discover skills from .opencode/skills/ and load them", async () => {
         const { Instance } = await import("@any-code/opencode/project/instance")
         const skills = await Instance.provide(agent.agentContext, async () => {
             const { Skill } = await import("@any-code/opencode/skill/skill")
             return Skill.all(agent.agentContext)
         })
 
-        expect(skills.length).toBe(2)
         const names = skills.map((s: any) => s.name).sort()
-        expect(names).toEqual(["deploy", "greet"])
+        expect(names).toContain("greet")
+        expect(names).toContain("deploy")
     })
 
-    it("should return a specific skill by name via get()", async () => {
+    it("should load the full skill content and resolve the SKILL.md location", async () => {
         const { Instance } = await import("@any-code/opencode/project/instance")
         const skill = await Instance.provide(agent.agentContext, async () => {
             const { Skill } = await import("@any-code/opencode/skill/skill")
@@ -103,7 +119,46 @@ describe("Skill: filesystem loading", () => {
         expect(skill!.name).toBe("greet")
         expect(skill!.description).toBe("Greets the user")
         expect(skill!.content).toContain("# Greet Skill")
+        expect(skill!.content).toContain("Say hello to the user.")
         expect(skill!.location).toContain("SKILL.md")
+    })
+
+    it("should auto-discover skills from .agents/skills/ (external agent-compatible)", async () => {
+        const { Instance } = await import("@any-code/opencode/project/instance")
+        const skill = await Instance.provide(agent.agentContext, async () => {
+            const { Skill } = await import("@any-code/opencode/skill/skill")
+            return Skill.get(agent.agentContext, "lint")
+        })
+
+        expect(skill).toBeDefined()
+        expect(skill!.name).toBe("lint")
+        expect(skill!.description).toBe("Run linting checks")
+        expect(skill!.content).toContain("# Lint Skill")
+    })
+
+    it("should auto-discover nested skill directories", async () => {
+        const { Instance } = await import("@any-code/opencode/project/instance")
+        const skill = await Instance.provide(agent.agentContext, async () => {
+            const { Skill } = await import("@any-code/opencode/skill/skill")
+            return Skill.get(agent.agentContext, "formatter")
+        })
+
+        expect(skill).toBeDefined()
+        expect(skill!.name).toBe("formatter")
+        expect(skill!.description).toBe("Format code")
+        expect(skill!.content).toContain("# Formatter Skill")
+    })
+
+    it("should make auto-loaded skills visible via available()", async () => {
+        const { Instance } = await import("@any-code/opencode/project/instance")
+        const availableSkills = await Instance.provide(agent.agentContext, async () => {
+            const { Skill } = await import("@any-code/opencode/skill/skill")
+            return Skill.available(agent.agentContext)
+        })
+
+        const names = availableSkills.map((s: any) => s.name)
+        expect(names).toContain("greet")
+        expect(names).toContain("deploy")
     })
 
     it("should return undefined for non-existent skill name", async () => {
@@ -116,20 +171,19 @@ describe("Skill: filesystem loading", () => {
         expect(skill).toBeUndefined()
     })
 
-    it("should ignore malformed SKILL.md without crashing", async () => {
+    it("should silently ignore malformed SKILL.md (no name field)", async () => {
         const { Instance } = await import("@any-code/opencode/project/instance")
         const skills = await Instance.provide(agent.agentContext, async () => {
             const { Skill } = await import("@any-code/opencode/skill/skill")
             return Skill.all(agent.agentContext)
         })
 
-        // "broken" skill has no name, should be ignored
         const names = skills.map((s: any) => s.name)
         expect(names).not.toContain("broken")
         expect(names).not.toContain("not-a-name")
     })
 
-    it("should return skill directories via dirs()", async () => {
+    it("should track skill directories for all loaded skills", async () => {
         const { Instance } = await import("@any-code/opencode/project/instance")
         const dirs = await Instance.provide(agent.agentContext, async () => {
             const { Skill } = await import("@any-code/opencode/skill/skill")

@@ -2,7 +2,6 @@ import path from "path"
 import fs from "fs/promises"
 import { createWriteStream } from "fs"
 import z from "zod"
-import { Glob } from "./glob"
 
 export namespace Log {
   export const Level = z.enum(["DEBUG", "INFO", "WARN", "ERROR"]).meta({ ref: "LogLevel", description: "Log level" })
@@ -77,15 +76,19 @@ export namespace Log {
   }
 
   async function cleanup(dir: string) {
-    const files = await Glob.scan("????-??-??T??????.log", {
-      cwd: dir,
-      absolute: true,
-      include: "file",
-    })
-    if (files.length <= 5) return
-
-    const filesToDelete = files.slice(0, -10)
-    await Promise.all(filesToDelete.map((file) => fs.unlink(file).catch(() => {})))
+    try {
+      const entries = await fs.readdir(dir)
+      const logPattern = /^\d{4}-\d{2}-\d{2}T\d{6}\.log$/
+      const files = entries
+        .filter(e => logPattern.test(e))
+        .map(e => path.join(dir, e))
+        .sort()
+      if (files.length <= 5) return
+      const filesToDelete = files.slice(0, -10)
+      await Promise.all(filesToDelete.map((file) => fs.unlink(file).catch(() => {})))
+    } catch {
+      // dir may not exist yet
+    }
   }
 
   function formatError(error: Error, depth = 0): string {

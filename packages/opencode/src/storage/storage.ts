@@ -26,7 +26,7 @@ export namespace Storage {
     async (context, dir) => {
       const project = path.resolve(dir, "../project")
       if (!(await Filesystem.isDir(context, project))) return
-      const projectDirs = await Glob.scan("*", {
+      const projectDirs = await Glob.scan(context, "*", {
         cwd: project,
         include: "all",
       })
@@ -39,7 +39,7 @@ export namespace Storage {
         let worktree = "/"
 
         if (projectID !== "global") {
-          for (const msgFile of await Glob.scan("storage/session/message/*/*.json", {
+          for (const msgFile of await Glob.scan(context, "storage/session/message/*/*.json", {
             cwd: path.join(project, projectDir),
             absolute: true,
           })) {
@@ -72,7 +72,7 @@ export namespace Storage {
           })
 
           log.info(`migrating sessions for project ${projectID}`)
-          for (const sessionFile of await Glob.scan("storage/session/info/*.json", {
+          for (const sessionFile of await Glob.scan(context, "storage/session/info/*.json", {
             cwd: fullProjectDir,
             absolute: true,
           })) {
@@ -84,7 +84,7 @@ export namespace Storage {
             const session = await Filesystem.readJson<any>(context, sessionFile)
             await Filesystem.writeJson(context, dest, session)
             log.info(`migrating messages for session ${session.id}`)
-            for (const msgFile of await Glob.scan(`storage/session/message/${session.id}/*.json`, {
+            for (const msgFile of await Glob.scan(context, `storage/session/message/${session.id}/*.json`, {
               cwd: fullProjectDir,
               absolute: true,
             })) {
@@ -97,7 +97,7 @@ export namespace Storage {
               await Filesystem.writeJson(context, dest, message)
 
               log.info(`migrating parts for message ${message.id}`)
-              for (const partFile of await Glob.scan(`storage/session/part/${session.id}/${message.id}/*.json`, {
+              for (const partFile of await Glob.scan(context, `storage/session/part/${session.id}/${message.id}/*.json`, {
                 cwd: fullProjectDir,
                 absolute: true,
               })) {
@@ -115,7 +115,7 @@ export namespace Storage {
       }
     },
     async (context, dir) => {
-      for (const item of await Glob.scan("session/*/*.json", {
+      for (const item of await Glob.scan(context, "session/*/*.json", {
         cwd: dir,
         absolute: true,
       })) {
@@ -202,7 +202,7 @@ export namespace Storage {
   export async function list(context: AgentContext, prefix: string[]) {
     const dir = await getDir(context)
     try {
-      const result = await Glob.scan("**/*", {
+      const result = await Glob.scan(context, "**/*", {
         cwd: path.join(dir, ...prefix),
         include: "file",
       }).then((results) => results.map((x) => [...prefix, ...x.slice(0, -5).split(path.sep)]))

@@ -38,11 +38,10 @@ export namespace ToolRegistry {
   export const state = createScopedState(async (context: AgentContext) => {
     const custom = [] as Tool.Info[]
 
-    const matches = await Config.directories(context).then((dirs) =>
-      dirs.flatMap((dir) =>
-        Glob.scanSync("{tool,tools}/*.{js,ts}", { cwd: dir, absolute: true, dot: true, symlink: true }),
-      ),
-    )
+    const matches: string[] = []
+    for (const dir of await Config.directories(context)) {
+      matches.push(...await Glob.scan(context, "{tool,tools}/*.{js,ts}", { cwd: dir, absolute: true, dot: true, symlink: true }))
+    }
     if (matches.length) await Config.waitForDependencies(context)
     for (const match of matches) {
       const namespace = path.basename(match, path.extname(match))

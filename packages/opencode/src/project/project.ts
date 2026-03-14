@@ -298,7 +298,7 @@ export namespace Project {
     if (input.vcs !== "git") return
     if (input.icon?.override) return
     if (input.icon?.url) return
-    const matches = await Glob.scan("**/favicon.{ico,png,svg,jpg,jpeg,webp}", {
+    const matches = await Glob.scan(context, "**/favicon.{ico,png,svg,jpg,jpeg,webp}", {
       cwd: input.worktree,
       absolute: true,
       include: "file",

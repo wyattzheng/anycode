@@ -118,13 +118,13 @@ export namespace Filesystem {
     }
   }
 
-  export async function globUp(pattern: string, start: string, stop?: string) {
+  export async function globUp(context: AgentContext, pattern: string, start: string, stop?: string) {
     let current = start
     const result = []
     while (true) {
       try {
         const { Glob } = await import("./glob")
-        const matches = await Glob.scan(pattern, {
+        const matches = await Glob.scan(context, pattern, {
           cwd: current,
           absolute: true,
           include: "file",

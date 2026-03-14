@@ -157,4 +157,79 @@ export class InMemoryFS implements VirtualFileSystem {
         this.files.clear()
         this.dirs.clear()
     }
+
+    async glob(pattern: string, options: {
+        cwd?: string
+        absolute?: boolean
+        dot?: boolean
+        follow?: boolean
+        nodir?: boolean
+    } = {}): Promise<string[]> {
+        const cwd = options.cwd ?? "/"
+        const cwdPrefix = cwd.endsWith("/") ? cwd : cwd + "/"
+        const results: string[] = []
+
+        for (const filePath of this.files.keys()) {
+            if (!filePath.startsWith(cwdPrefix) && filePath !== cwd) continue
+
+            const relativePath = filePath.slice(cwdPrefix.length)
+            if (!relativePath) continue
+
+            // Skip hidden files unless dot is true
+            if (!options.dot && relativePath.split("/").some(p => p.startsWith("."))) continue
+
+            // Simple glob matching
+            if (simpleGlobMatchPath(relativePath, pattern)) {
+                results.push(options.absolute ? filePath : relativePath)
+            }
+        }
+
+        // Also check directories if nodir is not set
+        if (!options.nodir) {
+            for (const dirPath of this.dirs) {
+                if (!dirPath.startsWith(cwdPrefix)) continue
+                const relativePath = dirPath.slice(cwdPrefix.length)
+                if (!relativePath) continue
+                if (!options.dot && relativePath.split("/").some(p => p.startsWith("."))) continue
+                if (simpleGlobMatchPath(relativePath, pattern)) {
+                    results.push(options.absolute ? dirPath : relativePath)
+                }
+            }
+        }
+
+        return results
+    }
+}
+
+/**
+ * Match a relative file path against a glob pattern.
+ * Supports: *, **, ?, {a,b}, and *.ext patterns.
+ */
+function simpleGlobMatchPath(filepath: string, pattern: string): boolean {
+    // Collect brace expansions and glob tokens, replace with numbered placeholders,
+    // then escape regex chars, then restore placeholders as regex equivalents.
+    const placeholders: string[] = []
+    function ph(regexPart: string): string {
+        const idx = placeholders.length
+        placeholders.push(regexPart)
+        return `\0PH${idx}\0`
+    }
+
+    let work = pattern
+    // 1. Replace {a,b,c} with placeholder for (a|b|c)
+    work = work.replace(/\{([^}]+)\}/g, (_m, alts: string) =>
+        ph(`(${alts.split(",").map(a => a.trim()).join("|")})`)
+    )
+    // 2. Replace ** with placeholder for .*
+    work = work.replace(/\*\*/g, ph(".*"))
+    // 3. Replace * with placeholder for [^/]*
+    work = work.replace(/\*/g, ph("[^/]*"))
+    // 4. Replace ? with placeholder for [^/]
+    work = work.replace(/\?/g, ph("[^/]"))
+    // 5. Escape remaining regex-special chars
+    work = work.replace(/[.+^$|\\()[\]{}]/g, "\\$&")
+    // 6. Restore all placeholders
+    work = work.replace(/\0PH(\d+)\0/g, (_m, idx) => placeholders[parseInt(idx)])
+
+    return new RegExp(`^${work}$`).test(filepath)
 }

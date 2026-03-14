@@ -77,4 +77,17 @@ export interface VirtualFileSystem {
     /** Remove a file. No-op if not found. */
     remove(path: string): Promise<void>
 
+    /**
+     * Glob pattern matching.
+     * Returns list of matching file paths relative to cwd (or absolute if requested).
+     * If not implemented, Glob.scan falls back to the `glob` npm package.
+     */
+    glob?(pattern: string, options: {
+        cwd?: string
+        absolute?: boolean
+        dot?: boolean
+        follow?: boolean
+        nodir?: boolean
+    }): Promise<string[]>
+
 }

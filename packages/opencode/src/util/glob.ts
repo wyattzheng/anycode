@@ -1,4 +1,4 @@
-import { glob, globSync, type GlobOptions } from "glob"
+import type { AgentContext } from "@/agent/context"
 import { minimatch } from "minimatch"
 
 export namespace Glob {
@@ -10,22 +10,14 @@ export namespace Glob {
     symlink?: boolean
   }
 
-  function toGlobOptions(options: Options): GlobOptions {
-    return {
+  export async function scan(context: AgentContext, pattern: string, options: Options = {}): Promise<string[]> {
+    return context.fs.glob!(pattern, {
       cwd: options.cwd,
       absolute: options.absolute,
       dot: options.dot,
       follow: options.symlink ?? false,
       nodir: options.include !== "all",
-    }
-  }
-
-  export async function scan(pattern: string, options: Options = {}): Promise<string[]> {
-    return glob(pattern, toGlobOptions(options)) as Promise<string[]>
-  }
-
-  export function scanSync(pattern: string, options: Options = {}): string[] {
-    return globSync(pattern, toGlobOptions(options)) as string[]
+    })
   }
 
   export function match(pattern: string, filepath: string): boolean {

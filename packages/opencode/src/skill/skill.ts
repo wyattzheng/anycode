@@ -92,7 +92,7 @@ export namespace Skill {
     }
 
     const scanExternal = async (root: string, scope: "global" | "project") => {
-      return Glob.scan(EXTERNAL_SKILL_PATTERN, {
+      return Glob.scan(context, EXTERNAL_SKILL_PATTERN, {
         cwd: root,
         absolute: true,
         include: "file",
@@ -125,7 +125,7 @@ export namespace Skill {
 
     // Scan .opencode/skill/ directories
     for (const dir of await Config.directories(context)) {
-      const matches = await Glob.scan(OPENCODE_SKILL_PATTERN, {
+      const matches = await Glob.scan(context, OPENCODE_SKILL_PATTERN, {
         cwd: dir,
         absolute: true,
         include: "file",
@@ -145,7 +145,7 @@ export namespace Skill {
         log.warn("skill path not found", { path: resolved })
         continue
       }
-      const matches = await Glob.scan(SKILL_PATTERN, {
+      const matches = await Glob.scan(context, SKILL_PATTERN, {
         cwd: resolved,
         absolute: true,
         include: "file",
@@ -161,7 +161,7 @@ export namespace Skill {
       const list = await Discovery.pull(context, url)
       for (const dir of list) {
         dirs.add(dir)
-        const matches = await Glob.scan(SKILL_PATTERN, {
+        const matches = await Glob.scan(context, SKILL_PATTERN, {
           cwd: dir,
           absolute: true,
           include: "file",

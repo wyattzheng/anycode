@@ -171,7 +171,7 @@ export namespace Config {
       result.command = mergeDeep(result.command ?? {}, await loadCommand(context, dir))
       result.agent = mergeDeep(result.agent, await loadAgent(context, dir))
       result.agent = mergeDeep(result.agent, await loadMode(context, dir))
-      result.plugin.push(...(await loadPlugin(dir)))
+      result.plugin.push(...(await loadPlugin(context, dir)))
     }
 
     // Inline config content overrides all non-managed config sources.
@@ -369,7 +369,7 @@ export namespace Config {
 
   async function loadCommand(context: AgentContext, dir: string) {
     const result: Record<string, Command> = {}
-    for (const item of await Glob.scan("{command,commands}/**/*.md", {
+    for (const item of await Glob.scan(context, "{command,commands}/**/*.md", {
       cwd: dir,
       absolute: true,
       dot: true,
@@ -408,7 +408,7 @@ export namespace Config {
   async function loadAgent(context: AgentContext, dir: string) {
     const result: Record<string, Agent> = {}
 
-    for (const item of await Glob.scan("{agent,agents}/**/*.md", {
+    for (const item of await Glob.scan(context, "{agent,agents}/**/*.md", {
       cwd: dir,
       absolute: true,
       dot: true,
@@ -446,7 +446,7 @@ export namespace Config {
 
   async function loadMode(context: AgentContext, dir: string) {
     const result: Record<string, Agent> = {}
-    for (const item of await Glob.scan("{mode,modes}/*.md", {
+    for (const item of await Glob.scan(context, "{mode,modes}/*.md", {
       cwd: dir,
       absolute: true,
       dot: true,
@@ -480,10 +480,10 @@ export namespace Config {
     return result
   }
 
-  async function loadPlugin(dir: string) {
+  async function loadPlugin(context: AgentContext, dir: string) {
     const plugins: string[] = []
 
-    for (const item of await Glob.scan("{plugin,plugins}/*.{ts,js}", {
+    for (const item of await Glob.scan(context, "{plugin,plugins}/*.{ts,js}", {
       cwd: dir,
       absolute: true,
       dot: true,

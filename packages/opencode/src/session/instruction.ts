@@ -30,7 +30,7 @@ function globalFiles(context: AgentContext) {
 
 async function resolveRelative(context: AgentContext, instruction: string): Promise<string[]> {
   if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
-    return Filesystem.globUp(instruction, context.directory, context.worktree).catch(() => [])
+    return Filesystem.globUp(context, instruction, context.directory, context.worktree).catch(() => [])
   }
   if (!Flag.OPENCODE_CONFIG_DIR) {
     log.warn(
@@ -38,7 +38,7 @@ async function resolveRelative(context: AgentContext, instruction: string): Prom
     )
     return []
   }
-  return Filesystem.globUp(instruction, Flag.OPENCODE_CONFIG_DIR, Flag.OPENCODE_CONFIG_DIR).catch(() => [])
+  return Filesystem.globUp(context, instruction, Flag.OPENCODE_CONFIG_DIR, Flag.OPENCODE_CONFIG_DIR).catch(() => [])
 }
 
 export namespace InstructionPrompt {
@@ -98,7 +98,7 @@ export namespace InstructionPrompt {
           instruction = path.join(os.homedir(), instruction.slice(2))
         }
         const matches = path.isAbsolute(instruction)
-          ? await Glob.scan(path.basename(instruction), {
+          ? await Glob.scan(context, path.basename(instruction), {
               cwd: path.dirname(instruction),
               absolute: true,
               include: "file",

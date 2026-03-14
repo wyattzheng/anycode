@@ -40,7 +40,7 @@ export namespace Truncate {
   export async function cleanup(context?: AgentContext) {
     if (!context) return
     const cutoff = Identifier.timestamp(Identifier.create("tool", false, Date.now() - RETENTION_MS))
-    const entries = await Glob.scan("tool_*", { cwd: dir(context), include: "file" }).catch(() => [] as string[])
+    const entries = await Glob.scan(context, "tool_*", { cwd: dir(context), include: "file" }).catch(() => [] as string[])
     for (const entry of entries) {
       if (Identifier.timestamp(entry) >= cutoff) continue
       await Filesystem.remove(context, path.join(dir(context), entry)).catch(() => {})

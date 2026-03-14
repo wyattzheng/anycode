@@ -112,14 +112,25 @@ export class NodeFS implements VirtualFileSystem {
         })
     }
 
-    async glob(pattern: string, searchPath: string): Promise<string[]> {
+    async glob(pattern: string, options: {
+        cwd?: string
+        absolute?: boolean
+        dot?: boolean
+        follow?: boolean
+        nodir?: boolean
+    } = {}): Promise<string[]> {
+        const searchPath = options.cwd ?? process.cwd()
         // Use Node.js fs.glob (available in Node 22+) or fall back to manual walk
         const { glob: fsGlob } = await import("fs/promises").catch(() => ({ glob: undefined }))
         if (fsGlob) {
             try {
                 const results: string[] = []
                 for await (const entry of (fsGlob as any)(pattern, { cwd: searchPath })) {
-                    results.push(path.resolve(searchPath, entry))
+                    if (options.absolute) {
+                        results.push(path.resolve(searchPath, entry))
+                    } else {
+                        results.push(entry)
+                    }
                 }
                 return results
             } catch {
