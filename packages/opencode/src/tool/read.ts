@@ -28,9 +28,9 @@ export const ReadTool = Tool.define("read", {
     }
     let filepath = params.filePath
     if (!path.isAbsolute(filepath)) {
-      filepath = path.resolve(Instance.directory, filepath)
+      filepath = path.resolve(ctx.directory, filepath)
     }
-    const title = path.relative(Instance.worktree, filepath)
+    const title = path.relative(ctx.worktree, filepath)
 
     const stat = await ctx.fs.stat(filepath)
 

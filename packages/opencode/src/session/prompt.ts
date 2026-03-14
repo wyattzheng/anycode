@@ -765,6 +765,12 @@ export namespace SessionPrompt {
       agent: input.agent.name,
       messages: input.messages,
       fs: vfs,
+      project: Instance.project,
+      search: Instance.search,
+      directory: Instance.directory,
+      worktree: Instance.worktree,
+      paths: Instance.paths,
+      containsPath: (filepath) => Instance.containsPath(filepath),
       metadata: async (val: { title?: string; metadata?: any }) => {
         const match = input.processor.partFromToolCall(options.toolCallId)
         if (match && match.state.status === "running") {

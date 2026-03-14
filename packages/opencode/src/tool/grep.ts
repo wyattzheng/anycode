@@ -31,11 +31,11 @@ export const GrepTool = Tool.define("grep", {
       },
     })
 
-    let searchPath = params.path ?? Instance.directory
-    searchPath = path.isAbsolute(searchPath) ? searchPath : path.resolve(Instance.directory, searchPath)
+    let searchPath = params.path ?? ctx.directory
+    searchPath = path.isAbsolute(searchPath) ? searchPath : path.resolve(ctx.directory, searchPath)
     await assertExternalDirectory(ctx, searchPath, { kind: "directory" })
 
-    const matches = await Instance.search.grep({
+    const matches = await ctx.search.grep({
       pattern: params.pattern,
       path: searchPath,
       include: params.include,
@@ -96,7 +96,7 @@ export const GrepTool = Tool.define("grep", {
 
     for (const fm of fileMatches) {
       const matchLimit = 15
-      output.push(`[${path.relative(Instance.worktree, fm.file)}]`)
+      output.push(`[${path.relative(ctx.worktree, fm.file)}]`)
       for (const match of fm.lines.slice(0, matchLimit)) {
         output.push(`  ${match.line}: ${match.content}`)
       }

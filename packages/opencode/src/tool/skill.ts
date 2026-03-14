@@ -60,7 +60,7 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
 
       const limit = 10
       const files = await iife(async () => {
-        const filePaths = await Instance.search.listFiles({
+        const filePaths = await ctx.search.listFiles({
           cwd: dir,
           follow: false,
           hidden: true,

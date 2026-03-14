@@ -28,12 +28,12 @@ export const GlobTool = Tool.define("glob", {
       },
     })
 
-    let search = params.path ?? Instance.directory
-    search = path.isAbsolute(search) ? search : path.resolve(Instance.directory, search)
+    let search = params.path ?? ctx.directory
+    search = path.isAbsolute(search) ? search : path.resolve(ctx.directory, search)
     await assertExternalDirectory(ctx, search, { kind: "directory" })
 
     const limit = 100
-    const filePaths = await Instance.search.listFiles({
+    const filePaths = await ctx.search.listFiles({
       cwd: search,
       glob: [params.pattern],
       limit: limit + 1, // +1 to detect truncation
@@ -68,7 +68,7 @@ export const GlobTool = Tool.define("glob", {
     }
 
     return {
-      title: path.relative(Instance.worktree, search),
+      title: path.relative(ctx.worktree, search),
       metadata: {
         count: files.length,
         truncated,

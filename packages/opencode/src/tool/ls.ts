@@ -41,7 +41,7 @@ export const ListTool = Tool.define("list", {
     ignore: z.array(z.string()).describe("List of glob patterns to ignore").optional(),
   }),
   async execute(params, ctx) {
-    const searchPath = path.resolve(Instance.directory, params.path || ".")
+    const searchPath = path.resolve(ctx.directory, params.path || ".")
     await assertExternalDirectory(ctx, searchPath, { kind: "directory" })
 
     await ctx.ask({
@@ -55,7 +55,7 @@ export const ListTool = Tool.define("list", {
 
     const ignoreGlobs = IGNORE_PATTERNS.map((p) => `!${p}*`).concat(params.ignore?.map((p) => `!${p}`) || [])
     
-    const filePaths = await Instance.search.listFiles({
+    const filePaths = await ctx.search.listFiles({
       cwd: searchPath,
       glob: ignoreGlobs,
       limit: LIMIT,
@@ -113,7 +113,7 @@ export const ListTool = Tool.define("list", {
     const output = `${searchPath}/\n` + renderDir(".", 0)
 
     return {
-      title: path.relative(Instance.worktree, searchPath),
+      title: path.relative(ctx.worktree, searchPath),
       metadata: {
         count: files.length,
         truncated: files.length >= LIMIT,
