@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { MicIcon, KeyboardIcon, SendIcon, CloseIcon, ChatIcon } from "./Icons";
 import "./ConversationOverlay.css";
 
@@ -9,6 +9,13 @@ export function ConversationOverlay() {
     const [position, setPosition] = useState({ x: 0, y: 0 });
     const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
     const recordStartTime = useRef<number>(0);
+    const [elapsed, setElapsed] = useState(0);
+
+    useEffect(() => {
+        if (!recording) { setElapsed(0); return; }
+        const timer = setInterval(() => setElapsed(Math.floor((Date.now() - recordStartTime.current) / 1000)), 100);
+        return () => clearInterval(timer);
+    }, [recording]);
 
     // --- 文本输入 ---
     const handleSend = () => {
@@ -123,7 +130,7 @@ export function ConversationOverlay() {
                     <>
                         <div className="mic-wrapper">
                             {recording && (
-                                <div className="mic-tooltip">录音中<span className="dot-anim" /></div>
+                                <div className="mic-tooltip">录音中 {elapsed}s</div>
                             )}
                             <button
                                 className={`mic-btn ${recording ? "recording" : ""}`}
