@@ -515,7 +515,7 @@ export namespace Patch {
   }
 
   // Apply hunks to filesystem
-  export async function applyHunksToFiles(hunks: Hunk[]): Promise<AffectedPaths> {
+  export async function applyHunksToFiles(context: AgentContext, hunks: Hunk[]): Promise<AffectedPaths> {
     if (hunks.length === 0) {
       throw new Error("No files were modified.")
     }
@@ -530,37 +530,37 @@ export namespace Patch {
           // Create parent directories
           const addDir = path.dirname(hunk.path)
           if (addDir !== "." && addDir !== "/") {
-            await Filesystem.mkdir(undefined as any, addDir)
+            await Filesystem.mkdir(context, addDir)
           }
 
-          await Filesystem.write(undefined as any, hunk.path, hunk.contents)
+          await Filesystem.write(context, hunk.path, hunk.contents)
           added.push(hunk.path)
           log.info(`Added file: ${hunk.path}`)
           break
 
         case "delete":
-          await Filesystem.remove(undefined as any, hunk.path)
+          await Filesystem.remove(context, hunk.path)
           deleted.push(hunk.path)
           log.info(`Deleted file: ${hunk.path}`)
           break
 
         case "update":
-          const fileUpdate = await deriveNewContentsFromChunks(undefined as any, hunk.path, hunk.chunks)
+          const fileUpdate = await deriveNewContentsFromChunks(context, hunk.path, hunk.chunks)
 
           if (hunk.move_path) {
             // Handle file move
             const moveDir = path.dirname(hunk.move_path)
             if (moveDir !== "." && moveDir !== "/") {
-              await Filesystem.mkdir(undefined as any, moveDir)
+              await Filesystem.mkdir(context, moveDir)
             }
 
-            await Filesystem.write(undefined as any, hunk.move_path, fileUpdate.content)
-            await Filesystem.remove(undefined as any, hunk.path)
+            await Filesystem.write(context, hunk.move_path, fileUpdate.content)
+            await Filesystem.remove(context, hunk.path)
             modified.push(hunk.move_path)
             log.info(`Moved file: ${hunk.path} -> ${hunk.move_path}`)
           } else {
             // Regular update
-            await Filesystem.write(undefined as any, hunk.path, fileUpdate.content)
+            await Filesystem.write(context, hunk.path, fileUpdate.content)
             modified.push(hunk.path)
             log.info(`Updated file: ${hunk.path}`)
           }
@@ -572,13 +572,14 @@ export namespace Patch {
   }
 
   // Main patch application function
-  export async function applyPatch(patchText: string): Promise<AffectedPaths> {
+  export async function applyPatch(context: AgentContext, patchText: string): Promise<AffectedPaths> {
     const { hunks } = parsePatch(patchText)
-    return applyHunksToFiles(hunks)
+    return applyHunksToFiles(context, hunks)
   }
 
   // Async version of maybeParseApplyPatchVerified
   export async function maybeParseApplyPatchVerified(
+    context: AgentContext,
     argv: string[],
     cwd: string,
   ): Promise<
@@ -625,7 +626,7 @@ export namespace Patch {
               // For delete, we need to read the current content
               const deletePath = path.resolve(effectiveCwd, hunk.path)
               try {
-                const content = await Filesystem.readText(undefined as any, deletePath)
+                const content = await Filesystem.readText(context, deletePath)
                 changes.set(resolvedPath, {
                   type: "delete",
                   content,
@@ -641,7 +642,7 @@ export namespace Patch {
             case "update":
               const updatePath = path.resolve(effectiveCwd, hunk.path)
               try {
-                const fileUpdate = await deriveNewContentsFromChunks(undefined as any, updatePath, hunk.chunks)
+                const fileUpdate = await deriveNewContentsFromChunks(context, updatePath, hunk.chunks)
                 changes.set(resolvedPath, {
                   type: "update",
                   unified_diff: fileUpdate.unified_diff,

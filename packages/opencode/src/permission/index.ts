@@ -81,8 +81,8 @@ export namespace Permission {
     return state(context).pending
   }
 
-  export function list() {
-    const { pending } = state(undefined as any)
+  export function list(context: AgentContext) {
+    const { pending } = state(context)
     const result: Info[] = []
     for (const session of pending.values()) {
       for (const item of session.values()) {
@@ -92,7 +92,7 @@ export namespace Permission {
     return result.sort((a, b) => a.id.localeCompare(b.id))
   }
 
-  export async function ask(input: {
+  export async function ask(context: AgentContext, input: {
     type: Info["type"]
     message: Info["message"]
     pattern?: Info["pattern"]
@@ -101,7 +101,7 @@ export namespace Permission {
     messageID: Info["messageID"]
     metadata: Info["metadata"]
   }) {
-    const { pending, approved } = state(undefined as any)
+    const { pending, approved } = state(context)
     log.info("asking", {
       sessionID: input.sessionID,
       messageID: input.messageID,
@@ -143,22 +143,22 @@ export namespace Permission {
         resolve,
         reject,
       })
-      Bus.publish(undefined, Event.Updated, info)
+      Bus.publish(context, Event.Updated, info)
     })
   }
 
   export const Response = z.enum(["once", "always", "reject"])
   export type Response = z.infer<typeof Response>
 
-  export function respond(input: { sessionID: Info["sessionID"]; permissionID: Info["id"]; response: Response }) {
+  export function respond(context: AgentContext, input: { sessionID: Info["sessionID"]; permissionID: Info["id"]; response: Response }) {
     log.info("response", input)
-    const { pending, approved } = state(undefined as any)
+    const { pending, approved } = state(context)
     const session = pending.get(input.sessionID)
     const match = session?.get(input.permissionID)
     if (!session || !match) return
     session.delete(input.permissionID)
     if (session.size === 0) pending.delete(input.sessionID)
-    Bus.publish(undefined, Event.Replied, {
+    Bus.publish(context, Event.Replied, {
       sessionID: input.sessionID,
       permissionID: input.permissionID,
       response: input.response,
@@ -185,7 +185,7 @@ export namespace Permission {
         }
       }
       for (const item of toRespond) {
-        respond({
+        respond(context, {
           sessionID: item.sessionID,
           permissionID: item.id,
           response: input.response,

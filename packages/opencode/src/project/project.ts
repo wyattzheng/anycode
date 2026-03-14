@@ -143,7 +143,7 @@ export namespace Project {
         // because `.git` is not a folder, but it always needs the
         // same project id as the common dir, so we resolve it now
         if (id == null) {
-          id = await readCachedId(undefined as any, path.join(worktree, ".git"))
+          id = await readCachedId(context, path.join(worktree, ".git"))
         }
 
         // generate id from root commit
@@ -346,7 +346,7 @@ export namespace Project {
     return fromRow(row)
   }
 
-  export async function initGit(input: { directory: string; project: Info }) {
+  export async function initGit(context: AgentContext, input: { directory: string; project: Info }) {
     if (input.project.vcs === "git") return input.project
     if (!which("git")) throw new Error("Git is not installed")
 
@@ -358,7 +358,7 @@ export namespace Project {
       throw new Error(text || "Failed to initialize git repository")
     }
 
-    return (await fromDirectory(undefined as any, input.directory)).project
+    return (await fromDirectory(context, input.directory)).project
   }
 
   export const update = fn(

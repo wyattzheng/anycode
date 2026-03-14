@@ -810,7 +810,7 @@ export namespace Provider {
   const state = createScopedState(async (context: AgentContext) => {
     using _ = log.time("state")
     const config = await Config.get(context)
-    const modelsDev = await ModelsDev.get()
+    const modelsDev = await ModelsDev.get(context)
     const database = mapValues(modelsDev, fromModelsDevProvider)
 
     const disabled = new Set(config.disabled_providers ?? [])

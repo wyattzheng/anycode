@@ -48,7 +48,7 @@ export const WriteTool = Tool.define("write", {
       file: filepath,
       event: exists ? "change" : "add",
     })
-    FileTime.read(ctx.sessionID, filepath)
+    FileTime.read(ctx, ctx.sessionID, filepath)
 
     let output = "Wrote file successfully."
     await LSP.touchFile(filepath, true)

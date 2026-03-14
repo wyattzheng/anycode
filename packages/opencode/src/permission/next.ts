@@ -267,8 +267,8 @@ export namespace PermissionNext {
     }
   }
 
-  export async function list() {
-    const s = await state(undefined as any)
+  export async function list(context: import("../agent/context").AgentContext) {
+    const s = await state(context)
     return Array.from(s.pending.values(), (x) => x.info)
   }
 }

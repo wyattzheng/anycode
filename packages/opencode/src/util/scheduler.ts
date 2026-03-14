@@ -38,9 +38,9 @@ export namespace Scheduler {
     },
   )
 
-  export function register(task: Task) {
+  export function register(context: AgentContext, task: Task) {
     const scope = task.scope ?? "instance"
-    const entry = scope === "global" ? shared : state(undefined as any)
+    const entry = scope === "global" ? shared : state(context)
     const current = entry.timers.get(task.id)
     if (current && scope === "global") return
     if (current) clearInterval(current)

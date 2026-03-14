@@ -20,8 +20,8 @@ export namespace Discovery {
     return path.join(context.paths.cache, "skills")
   }
 
-  async function get(url: string, dest: string): Promise<boolean> {
-    if (await Filesystem.exists(undefined as any, dest)) return true
+  async function get(context: AgentContext, url: string, dest: string): Promise<boolean> {
+    if (await Filesystem.exists(context, dest)) return true
     return fetch(url)
       .then(async (response) => {
         if (!response.ok) {
@@ -30,8 +30,8 @@ export namespace Discovery {
         }
         if (response.body) {
           const bytes = new Uint8Array(await response.arrayBuffer())
-          await Filesystem.mkdir(undefined as any, path.dirname(dest))
-          await Filesystem.write(undefined as any, dest, bytes)
+          await Filesystem.mkdir(context, path.dirname(dest))
+          await Filesystem.write(context, dest, bytes)
         }
         return true
       })
@@ -41,11 +41,11 @@ export namespace Discovery {
       })
   }
 
-  export async function pull(url: string): Promise<string[]> {
+  export async function pull(context: AgentContext, url: string): Promise<string[]> {
     const result: string[] = []
     const base = url.endsWith("/") ? url : `${url}/`
     const index = new URL("index.json", base).href
-    const cache = dir(undefined as any)
+    const cache = dir(context)
     const host = base.slice(0, -1)
 
     log.info("fetching index", { url: index })
@@ -88,13 +88,13 @@ export namespace Discovery {
           skill.files.map(async (file) => {
             const link = new URL(file, `${host}/${skill.name}/`).href
             const dest = path.join(root, file)
-            await Filesystem.mkdir(undefined as any, path.dirname(dest))
-            await get(link, dest)
+            await Filesystem.mkdir(context, path.dirname(dest))
+            await get(context, link, dest)
           }),
         )
 
         const md = path.join(root, "SKILL.md")
-        if (await Filesystem.exists(undefined as any, md)) result.push(root)
+        if (await Filesystem.exists(context, md)) result.push(root)
       }),
     )
 

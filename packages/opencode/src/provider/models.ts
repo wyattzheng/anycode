@@ -1,11 +1,10 @@
+import { createScopedState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
-import { Instance } from "../project/instance"
 import { Log } from "../util/log"
 import path from "path"
 import z from "zod"
 import { Installation } from "../util/installation"
 import { Flag } from "../util/flag"
-import { lazy } from "@/util/lazy"
 import { Filesystem } from "../util/filesystem"
 
 // Try to import bundled snapshot (generated at build time)
@@ -88,28 +87,30 @@ export namespace ModelsDev {
     return Flag.OPENCODE_MODELS_URL || "https://models.dev"
   }
 
-  export const Data = lazy(async () => {
-    let result: any = undefined;
-    try {
-      result = await Filesystem.readJson(undefined as any, Flag.OPENCODE_MODELS_PATH ?? filepath(undefined as any)).catch(() => {})
-    } catch (e) {}
-    if (result) return result
-    // @ts-ignore
-    const snapshot = await import("./models-snapshot")
-      .then((m) => m.snapshot as Record<string, unknown>)
-      .catch(() => undefined)
-    if (snapshot) return snapshot
-    if (Flag.OPENCODE_DISABLE_MODELS_FETCH) return {}
-    const json = await fetch(`${url()}/api.json`).then((x) => x.text())
-    return JSON.parse(json)
-  })
+  const state = createScopedState(
+    async (context: AgentContext) => {
+      let data: Record<string, unknown> | undefined
+      try {
+        data = await Filesystem.readJson(context, Flag.OPENCODE_MODELS_PATH ?? filepath(context)).catch(() => undefined)
+      } catch {}
+      if (data) return { data }
+      // @ts-ignore
+      const snapshot = await import("./models-snapshot")
+        .then((m) => m.snapshot as Record<string, unknown>)
+        .catch(() => undefined)
+      if (snapshot) return { data: snapshot }
+      if (Flag.OPENCODE_DISABLE_MODELS_FETCH) return { data: {} as Record<string, unknown> }
+      const json = await fetch(`${url()}/api.json`).then((x) => x.text())
+      return { data: JSON.parse(json) as Record<string, unknown> }
+    },
+  )
 
-  export async function get() {
-    const result = await Data()
-    return result as Record<string, Provider>
+  export async function get(context: AgentContext) {
+    const s = await state(context)
+    return s.data as Record<string, Provider>
   }
 
-  export async function refresh() {
+  export async function refresh(context: AgentContext) {
     const result = await fetch(`${url()}/api.json`, {
       headers: {
         "User-Agent": Installation.USER_AGENT,
@@ -122,21 +123,10 @@ export namespace ModelsDev {
     })
     if (result && result.ok) {
       try {
-        await Filesystem.write(undefined as any, filepath(undefined as any), await result.text())
-        ModelsDev.Data.reset()
+        await Filesystem.write(context, filepath(context), await result.text())
       } catch (e) {
-        log.warn("Failed to write models cache. Missing context?", { error: e })
+        log.warn("Failed to write models cache", { error: e })
       }
     }
   }
-}
-
-if (!Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.includes("--get-yargs-completions")) {
-  ModelsDev.refresh()
-  setInterval(
-    async () => {
-      await ModelsDev.refresh()
-    },
-    60 * 1000 * 60,
-  ).unref()
 }

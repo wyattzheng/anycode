@@ -28,8 +28,8 @@ export namespace Truncate {
     direction?: "head" | "tail"
   }
 
-  export function init() {
-    Scheduler.register({
+  export function init(context: AgentContext) {
+    Scheduler.register(context, {
       id: "tool.truncation.cleanup",
       interval: HOUR_MS,
       run: cleanup,

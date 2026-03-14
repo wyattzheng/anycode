@@ -1,3 +1,4 @@
+import type { AgentContext } from "@/agent/context"
 import { Slug } from "@/util/slug"
 import path from "path"
 import { BusEvent } from "@/bus/bus-event"
@@ -503,13 +504,13 @@ export namespace Session {
     },
   )
 
-  export const diff = fn(SessionID.zod, async (sessionID) => {
+  export async function diff(context: AgentContext, sessionID: SessionID) {
     try {
-      return await Storage.read<Snapshot.FileDiff[]>(undefined as any, ["session_diff", sessionID])
+      return await Storage.read<Snapshot.FileDiff[]>(context, ["session_diff", sessionID])
     } catch {
       return []
     }
-  })
+  }
 
   export const messages = fn(
     z.object({

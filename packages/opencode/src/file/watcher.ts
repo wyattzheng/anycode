@@ -119,10 +119,10 @@ export namespace FileWatcher {
     },
   )
 
-  export function init() {
+  export function init(context: AgentContext) {
     if (Flag.OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER) {
       return
     }
-    state(undefined as any)
+    state(context)
   }
 }

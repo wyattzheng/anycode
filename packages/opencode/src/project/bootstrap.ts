@@ -14,11 +14,11 @@ import { Truncate } from "../tool/truncation"
 export async function InstanceBootstrap(context: AgentContext) {
   Log.Default.info("bootstrapping", { directory: context.directory })
   await Plugin.init()
-  FileWatcher.init()
-  File.init()
-  Vcs.init()
-  Snapshot.init()
-  Truncate.init()
+  FileWatcher.init(context)
+  File.init(context)
+  Vcs.init(context)
+  Snapshot.init(context)
+  Truncate.init(context)
 
   Bus.subscribe(context, Command.Event.Executed, async (payload) => {
     if (payload.properties.name === Command.Default.INIT) {

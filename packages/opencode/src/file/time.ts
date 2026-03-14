@@ -24,9 +24,9 @@ export namespace FileTime {
     }
   })
 
-  export function read(sessionID: string, file: string) {
+  export function read(context: AgentContext, sessionID: string, file: string) {
     log.info("read", { sessionID, file })
-    const { read } = state(undefined as any)
+    const { read } = state(context)
     read[sessionID] = read[sessionID] || {}
     read[sessionID][file] = new Date()
   }
@@ -35,8 +35,8 @@ export namespace FileTime {
     return state(context).read[sessionID]?.[file]
   }
 
-  export async function withLock<T>(filepath: string, fn: () => Promise<T>): Promise<T> {
-    const current = state(undefined as any)
+  export async function withLock<T>(context: AgentContext, filepath: string, fn: () => Promise<T>): Promise<T> {
+    const current = state(context)
     const currentLock = current.locks.get(filepath) ?? Promise.resolve()
     let release: () => void = () => {}
     const nextLock = new Promise<void>((resolve) => {

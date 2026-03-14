@@ -1046,7 +1046,7 @@ export namespace SessionPrompt {
                       })
                     }
                   })
-                  .catch ((error) => {
+                  .catch((error) => {
                     log.error("failed to read file", { error })
                     const message = error instanceof Error ? error.message : error.toString()
                     Bus.publish(context, Session.Event.Error, {
@@ -1104,7 +1104,7 @@ export namespace SessionPrompt {
                 ]
               }
 
-              FileTime.read(input.sessionID, filepath)
+              FileTime.read(context, input.sessionID, filepath)
               return [
                 {
                   messageID: info.id,
@@ -1433,7 +1433,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       },
     }
     await Session.updatePart(part)
-    const shell = await Shell.preferred()
+    const shell = await Shell.preferred(context)
     const shellName = (
       process.platform === "win32" ? path.win32.basename(shell, ".exe") : path.basename(shell)
     ).toLowerCase()

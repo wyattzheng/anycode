@@ -52,7 +52,7 @@ const parser = lazy(async () => {
 
 // TODO: we may wanna rename this tool so it works better on other shells
 export const BashTool = Tool.define("bash", async (initCtx?: Tool.InitContext) => {
-  const shell = Shell.acceptable()
+  const shell = await Shell.acceptable(initCtx as any)
   log.info("bash tool using shell", { shell })
 
   return {

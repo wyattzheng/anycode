@@ -68,8 +68,8 @@ export namespace Vcs {
     },
   )
 
-  export async function init() {
-    return state(undefined as any)
+  export async function init(context: AgentContext) {
+    return state(context)
   }
 
   export async function branch(context: AgentContext) {

@@ -168,9 +168,9 @@ export namespace Config {
         }),
       )
 
-      result.command = mergeDeep(result.command ?? {}, await loadCommand(dir))
-      result.agent = mergeDeep(result.agent, await loadAgent(dir))
-      result.agent = mergeDeep(result.agent, await loadMode(dir))
+      result.command = mergeDeep(result.command ?? {}, await loadCommand(context, dir))
+      result.agent = mergeDeep(result.agent, await loadAgent(context, dir))
+      result.agent = mergeDeep(result.agent, await loadMode(context, dir))
       result.plugin.push(...(await loadPlugin(dir)))
     }
 
@@ -367,7 +367,7 @@ export namespace Config {
     return ext.length ? file.slice(0, -ext.length) : file
   }
 
-  async function loadCommand(dir: string) {
+  async function loadCommand(context: AgentContext, dir: string) {
     const result: Record<string, Command> = {}
     for (const item of await Glob.scan("{command,commands}/**/*.md", {
       cwd: dir,
@@ -375,7 +375,7 @@ export namespace Config {
       dot: true,
       symlink: true,
     })) {
-      const md = await ConfigMarkdown.parse(undefined as any, item).catch(async (err) => {
+      const md = await ConfigMarkdown.parse(context, item).catch(async (err) => {
         const message = ConfigMarkdown.FrontmatterError.isInstance(err)
           ? err.data.message
           : `Failed to parse command ${item}`
@@ -405,7 +405,7 @@ export namespace Config {
     return result
   }
 
-  async function loadAgent(dir: string) {
+  async function loadAgent(context: AgentContext, dir: string) {
     const result: Record<string, Agent> = {}
 
     for (const item of await Glob.scan("{agent,agents}/**/*.md", {
@@ -414,7 +414,7 @@ export namespace Config {
       dot: true,
       symlink: true,
     })) {
-      const md = await ConfigMarkdown.parse(undefined as any, item).catch(async (err) => {
+      const md = await ConfigMarkdown.parse(context, item).catch(async (err) => {
         const message = ConfigMarkdown.FrontmatterError.isInstance(err)
           ? err.data.message
           : `Failed to parse agent ${item}`
@@ -444,7 +444,7 @@ export namespace Config {
     return result
   }
 
-  async function loadMode(dir: string) {
+  async function loadMode(context: AgentContext, dir: string) {
     const result: Record<string, Agent> = {}
     for (const item of await Glob.scan("{mode,modes}/*.md", {
       cwd: dir,
@@ -452,7 +452,7 @@ export namespace Config {
       dot: true,
       symlink: true,
     })) {
-      const md = await ConfigMarkdown.parse(undefined as any, item).catch(async (err) => {
+      const md = await ConfigMarkdown.parse(context, item).catch(async (err) => {
         const message = ConfigMarkdown.FrontmatterError.isInstance(err)
           ? err.data.message
           : `Failed to parse mode ${item}`

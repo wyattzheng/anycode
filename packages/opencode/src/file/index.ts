@@ -410,8 +410,8 @@ export namespace File {
     }
   })
 
-  export function init() {
-    state(undefined as any)
+  export function init(context: AgentContext) {
+    state(context)
   }
 
   export async function status(context: AgentContext) {
@@ -612,13 +612,13 @@ export namespace File {
     })
   }
 
-  export async function search(input: { query: string; limit?: number; dirs?: boolean; type?: "file" | "directory" }) {
+  export async function search(context: AgentContext, input: { query: string; limit?: number; dirs?: boolean; type?: "file" | "directory" }) {
     const query = input.query.trim()
     const limit = input.limit ?? 100
     const kind = input.type ?? (input.dirs === false ? "file" : "all")
     log.info("search", { query, kind })
 
-    const result = await state(undefined as any).then((x) => x.files())
+    const result = await state(context).then((x) => x.files())
 
     const hidden = (item: string) => {
       const normalized = item.replaceAll("\\", "/").replace(/\/+$/, "")

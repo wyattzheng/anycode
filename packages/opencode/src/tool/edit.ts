@@ -55,7 +55,7 @@ export const EditTool = Tool.define("edit", {
     let diff = ""
     let contentOld = ""
     let contentNew = ""
-    await FileTime.withLock(filePath, async () => {
+    await FileTime.withLock(ctx, filePath, async () => {
       if (params.oldString === "") {
         const existed = await ctx.fs.exists(filePath)
         contentNew = params.newString
@@ -77,7 +77,7 @@ export const EditTool = Tool.define("edit", {
           file: filePath,
           event: existed ? "change" : "add",
         })
-        FileTime.read(ctx.sessionID, filePath)
+        FileTime.read(ctx, ctx.sessionID, filePath)
         return
       }
 
@@ -118,7 +118,7 @@ export const EditTool = Tool.define("edit", {
       diff = trimDiff(
         createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
       )
-      FileTime.read(ctx.sessionID, filePath)
+      FileTime.read(ctx, ctx.sessionID, filePath)
     })
 
     const filediff: Snapshot.FileDiff = {

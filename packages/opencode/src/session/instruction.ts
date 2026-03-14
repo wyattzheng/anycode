@@ -181,7 +181,7 @@ export namespace InstructionPrompt {
     const root = path.resolve(context.directory)
 
     while (current.startsWith(root) && current !== root) {
-      const found = await find(undefined as any, current)
+      const found = await find(context, current)
 
       if (found && found !== target && !system.has(found) && !already.has(found) && !isClaimed(context, messageID, found)) {
         claim(context, messageID, found)

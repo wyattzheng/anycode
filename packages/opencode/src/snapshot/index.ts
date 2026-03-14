@@ -18,8 +18,8 @@ export namespace Snapshot {
     return ["--git-dir", git, "--work-tree", context.worktree, ...cmd]
   }
 
-  export function init() {
-    Scheduler.register({
+  export function init(context: AgentContext) {
+    Scheduler.register(context, {
       id: "snapshot.cleanup",
       interval: hour,
       run: cleanup,

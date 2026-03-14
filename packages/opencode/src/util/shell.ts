@@ -61,15 +61,15 @@ export namespace Shell {
     return "/bin/sh"
   }
 
-  export const preferred = lazy(() => {
+  export async function preferred(context: AgentContext) {
     const s = process.env.SHELL
     if (s) return s
-    return fallback(undefined as any)
-  })
+    return fallback(context)
+  }
 
-  export const acceptable = lazy(() => {
+  export async function acceptable(context: AgentContext) {
     const s = process.env.SHELL
     if (s && !BLACKLIST.has(process.platform === "win32" ? path.win32.basename(s) : path.basename(s))) return s
-    return fallback(undefined as any)
-  })
+    return fallback(context)
+  }
 }
