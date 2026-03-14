@@ -6,7 +6,9 @@ export function ConversationOverlay() {
     const [recording, setRecording] = useState(false);
     const [position, setPosition] = useState({ x: 0, y: 0 });
     const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+    const recordStartTime = useRef<number>(0);
 
+    // --- 文本输入 ---
     const handleSend = () => {
         if (!input.trim()) return;
         // TODO: send message to server
@@ -20,11 +22,35 @@ export function ConversationOverlay() {
         }
     };
 
-    const handleMicClick = () => {
-        setRecording((v) => !v);
-        // TODO: start/stop audio recording via Web Audio API
+    // --- 对讲机模式：按住录音，松手发送 ---
+    const startRecording = () => {
+        setRecording(true);
+        recordStartTime.current = Date.now();
+        // TODO: start audio recording via Web Audio API
     };
 
+    const stopRecording = () => {
+        setRecording(false);
+        const duration = Date.now() - recordStartTime.current;
+        if (duration < 300) return; // 短按不发送
+        // TODO: stop recording, send audio to server
+    };
+
+    const handleMicMouseDown = (e: React.MouseEvent) => {
+        e.preventDefault();
+        startRecording();
+        const onUp = () => { stopRecording(); window.removeEventListener("mouseup", onUp); };
+        window.addEventListener("mouseup", onUp);
+    };
+
+    const handleMicTouchStart = (e: React.TouchEvent) => {
+        e.preventDefault();
+        startRecording();
+        const onUp = () => { stopRecording(); window.removeEventListener("touchend", onUp); };
+        window.addEventListener("touchend", onUp);
+    };
+
+    // --- 拖拽面板 ---
     const onDragStart = useCallback((clientX: number, clientY: number) => {
         dragRef.current = { startX: clientX, startY: clientY, origX: position.x, origY: position.y };
     }, [position]);
@@ -87,8 +113,9 @@ export function ConversationOverlay() {
                 />
                 <button
                     className={`mic-btn ${recording ? "recording" : ""}`}
-                    onClick={handleMicClick}
-                    title={recording ? "停止录音" : "开始录音"}
+                    onMouseDown={handleMicMouseDown}
+                    onTouchStart={handleMicTouchStart}
+                    title="按住说话，松手发送"
                 >
                     🎤
                 </button>
