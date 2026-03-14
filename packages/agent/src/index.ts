@@ -79,7 +79,12 @@ export interface CodeAgentOptions {
     /** Custom tools the agent can use */
     tools?: Record<string, ToolDefinition>
 
-    /** Additional opencode config overrides */
+    /**
+     * Pre-built configuration object.
+     * When provided, bypasses all filesystem-based config loading
+     * (opencode.json, .opencode/ directories, etc.).
+     * Should conform to opencode's Config.Info schema.
+     */
     config?: Record<string, unknown>
 
     /** Skip plugin initialization (useful for testing when MCP/server deps are not available) */
@@ -106,6 +111,13 @@ export interface CodeAgentOptions {
      * backend (in-memory, remote, browser, etc.).
      */
     fs: import("./vfs").VirtualFileSystem
+
+    /**
+     * Pre-built instruction texts.
+     * When provided, bypasses AGENTS.md / CLAUDE.md file reading.
+     * Each string is a complete instruction block.
+     */
+    instructions?: string[]
 }
 
 export interface CodeAgentSession {
@@ -191,6 +203,8 @@ export class CodeAgent {
         await Instance.provide({
             directory: this.options.directory,
             vfs: this.options.fs as any,
+            config: this.options.config,
+            instructions: this.options.instructions,
             init: async () => {
                 // Register custom tools
                 if (this.options.tools) {
@@ -247,6 +261,8 @@ export class CodeAgent {
         return Instance.provide({
             directory: this.options.directory,
             vfs: this.options.fs as any,
+            config: this.options.config,
+            instructions: this.options.instructions,
             fn: async () => {
                 const sessionMod = await import("@any-code/opencode/session/index")
                 const session = await sessionMod.Session.create({
@@ -291,6 +307,8 @@ export class CodeAgent {
         const promptPromise = Instance.provide({
             directory: this.options.directory,
             vfs: this.options.fs as any,
+            config: this.options.config,
+            instructions: this.options.instructions,
             fn: async () => {
                 const busMod = await import("@any-code/opencode/bus/index")
                 const Bus = busMod.Bus
@@ -471,6 +489,8 @@ export class CodeAgent {
         await Instance.provide({
             directory: this.options.directory,
             vfs: this.options.fs as any,
+            config: this.options.config,
+            instructions: this.options.instructions,
             fn: async () => {
                 const { SessionPrompt } = await import("@any-code/opencode/session/prompt")
                 SessionPrompt.cancel(sessionId as any)
@@ -496,6 +516,8 @@ export class CodeAgent {
             await Instance.provide({
                 directory: this.options.directory,
                 vfs: this.options.fs as any,
+            config: this.options.config,
+            instructions: this.options.instructions,
                 fn: async () => {
                     ToolRegistry.register({
                         id: name,

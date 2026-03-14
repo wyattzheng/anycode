@@ -14,6 +14,8 @@ interface Context {
   worktree: string
   project: Project.Info
   vfs?: VFS
+  config?: Record<string, unknown>
+  instructions?: string[]
 }
 const context = Context.create<Context>("instance")
 const cache = new Map<string, Promise<Context>>()
@@ -34,7 +36,7 @@ function emit(directory: string) {
   })
 }
 
-function boot(input: { directory: string; init?: () => Promise<any>; project?: Project.Info; worktree?: string; vfs?: VFS }) {
+function boot(input: { directory: string; init?: () => Promise<any>; project?: Project.Info; worktree?: string; vfs?: VFS; config?: Record<string, unknown>; instructions?: string[] }) {
   return iife(async () => {
     const ctx: Context =
       input.project && input.worktree
@@ -43,6 +45,8 @@ function boot(input: { directory: string; init?: () => Promise<any>; project?: P
             worktree: input.worktree,
             project: input.project,
             vfs: input.vfs,
+            config: input.config,
+            instructions: input.instructions,
           }
         : {
             ...(await Project.fromDirectory(input.directory).then(({ project, sandbox }) => ({
@@ -51,6 +55,8 @@ function boot(input: { directory: string; init?: () => Promise<any>; project?: P
               project,
             }))),
             vfs: input.vfs,
+            config: input.config,
+            instructions: input.instructions,
           }
     await context.provide(ctx, async () => {
       await input.init?.()
@@ -69,7 +75,7 @@ function track(directory: string, next: Promise<Context>) {
 }
 
 export const Instance = {
-  async provide<R>(input: { directory: string; init?: () => Promise<any>; fn: () => R; vfs?: VFS }): Promise<R> {
+  async provide<R>(input: { directory: string; init?: () => Promise<any>; fn: () => R; vfs?: VFS; config?: Record<string, unknown>; instructions?: string[] }): Promise<R> {
     const directory = Filesystem.resolve(input.directory)
     let existing = cache.get(directory)
     if (!existing) {
@@ -83,9 +89,11 @@ export const Instance = {
       )
     }
     const ctx = await existing
-    // Allow overriding VFS per provide() call
-    const ctxWithVfs = input.vfs ? { ...ctx, vfs: input.vfs } : ctx
-    return context.provide(ctxWithVfs, async () => {
+    // Allow overriding VFS/config/instructions per provide() call
+    const ctxWithOverrides = (input.vfs || input.config || input.instructions)
+      ? { ...ctx, ...(input.vfs && { vfs: input.vfs }), ...(input.config && { config: input.config }), ...(input.instructions && { instructions: input.instructions }) }
+      : ctx
+    return context.provide(ctxWithOverrides, async () => {
       return input.fn()
     })
   },
@@ -102,6 +110,12 @@ export const Instance = {
     const ctx = context.use()
     if (!ctx.vfs) throw new Error("VFS not provided. Pass a VFS implementation via Instance.provide({ vfs })")
     return ctx.vfs
+  },
+  get config(): Record<string, unknown> | undefined {
+    return context.use().config
+  },
+  get instructions(): string[] | undefined {
+    return context.use().instructions
   },
   /**
    * Check if a path is within the project boundary.

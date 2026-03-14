@@ -76,6 +76,17 @@ export namespace Config {
   }
 
   export const state = Instance.state(async () => {
+    // Short-circuit: if config was injected via Instance context (e.g. from CodeAgent options),
+    // skip all filesystem-based config loading.
+    const injected = Instance.config
+    if (injected) {
+      return {
+        config: injected as Info,
+        directories: [] as string[],
+        deps: [] as Promise<void>[],
+      }
+    }
+
     const auth = await Auth.all()
 
     // Config loading order (low -> high precedence): https://opencode.ai/docs/config#precedence-order

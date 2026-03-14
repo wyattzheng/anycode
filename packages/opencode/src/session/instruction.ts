@@ -115,6 +115,13 @@ export namespace InstructionPrompt {
   }
 
   export async function system() {
+    // Short-circuit: if instructions were injected via Instance context,
+    // skip all filesystem-based instruction loading.
+    const injected = Instance.instructions
+    if (injected) {
+      return injected
+    }
+
     const config = await Config.get()
     const paths = await systemPaths()
 
