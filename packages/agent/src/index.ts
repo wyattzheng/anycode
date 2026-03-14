@@ -31,8 +31,10 @@
  */
 
 import type { ToolDefinition } from "@any-code/opencode/util/plugin"
-export type { VirtualFileSystem, VFSStat, VFSDirEntry, GrepOptions, GrepMatch } from "./vfs"
+export type { VirtualFileSystem, VFSStat, VFSDirEntry } from "./vfs"
 export { NodeFS } from "./vfs-node"
+export { NodeSearchProvider } from "./search-node"
+import { NodeSearchProvider } from "./search-node"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -113,6 +115,12 @@ export interface CodeAgentOptions {
     fs: import("./vfs").VirtualFileSystem
 
     /**
+     * Search Provider implementation.
+     * Abstracted from VFS to separate file I/O from complex CLI tasks (grep/list).
+     */
+    search?: import("@any-code/opencode/util/search").SearchProvider
+
+    /**
      * Pre-built instruction texts.
      * When provided, bypasses AGENTS.md / CLAUDE.md file reading.
      * Each string is a complete instruction block.
@@ -175,6 +183,7 @@ export class CodeAgent {
     private options: CodeAgentOptions
     private initialized = false
     private _fs: import("./vfs").VirtualFileSystem | undefined
+    private _search: import("@any-code/opencode/util/search").SearchProvider
     /** Unique scope identifier for Instance isolation */
     readonly scopeId: string
 
@@ -185,6 +194,7 @@ export class CodeAgent {
         if (options.fs) {
             this._fs = options.fs
         }
+        this._search = options.search ?? new NodeSearchProvider()
     }
 
     /**
@@ -329,7 +339,8 @@ export class CodeAgent {
         const promptPromise = Instance.provide({
             directory: this.options.directory,
             scopeId: this.scopeId,
-            vfs: this.options.fs as any,
+            vfs: this._fs as any,
+            search: this._search as any,
             config: this.options.config,
             instructions: this.options.instructions,
             fn: async () => {

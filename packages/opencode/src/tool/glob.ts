@@ -3,7 +3,6 @@ import path from "path"
 import { Tool } from "./tool"
 
 import DESCRIPTION from "./glob.txt"
-import { Ripgrep } from "../file/ripgrep"
 import { Instance } from "../project/instance"
 import { assertExternalDirectory } from "./external-directory"
 
@@ -34,17 +33,18 @@ export const GlobTool = Tool.define("glob", {
     await assertExternalDirectory(ctx, search, { kind: "directory" })
 
     const limit = 100
-    const files = []
-    let truncated = false
-    for await (const file of Ripgrep.files({
+    const filePaths = await Instance.search.listFiles({
       cwd: search,
       glob: [params.pattern],
+      limit: limit + 1, // +1 to detect truncation
       signal: ctx.abort,
-    })) {
-      if (files.length >= limit) {
-        truncated = true
-        break
-      }
+    })
+
+    const truncated = filePaths.length > limit
+    const displayPaths = truncated ? filePaths.slice(0, limit) : filePaths
+
+    const files = []
+    for (const file of displayPaths) {
       const full = path.resolve(search, file)
       const s = await ctx.fs.stat(full)
       const stats = s?.mtimeMs ?? 0

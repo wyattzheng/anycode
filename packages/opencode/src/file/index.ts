@@ -7,7 +7,7 @@ import ignore from "ignore"
 import { Log } from "../util/log"
 import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
-import { Ripgrep } from "./ripgrep"
+import { Bus } from "../bus"
 import fuzzysort from "fuzzysort"
 import { git } from "@/util/git"
 import { Protected } from "./protected"
@@ -376,7 +376,8 @@ export namespace File {
       }
 
       const set = new Set<string>()
-      for await (const file of Ripgrep.files({ cwd: Instance.directory })) {
+      const filePaths = await Instance.search.listFiles({ cwd: Instance.directory })
+      for (const file of filePaths) {
         result.files.push(file)
         let current = file
         while (true) {

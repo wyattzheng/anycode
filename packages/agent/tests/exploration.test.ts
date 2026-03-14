@@ -12,6 +12,9 @@ import { http, HttpResponse } from "msw"
 import fs from "fs"
 import path from "path"
 import { CodeAgent, NodeFS } from "../src/index"
+import { InMemoryFS } from "./fixtures/in-memory-fs"
+import { InMemorySearchProvider } from "./fixtures/search-memory"
+import { NodeSearchProvider } from "../src/search-node"
 import { createTempDir, cleanupTempDir, server } from "./setup"
 import { buildExplorationFixtures } from "./fixtures/exploration-stream"
 import { RESPONSES_API_BODY } from "./fixtures/text-stream"
@@ -72,6 +75,7 @@ describe("CodeAgent: multi-tool exploration", () => {
             directory: tmpDir,
             skipPlugins: true,
             fs: new NodeFS(),
+            search: new NodeSearchProvider(),
             paths: testPaths(),
             provider: {
                 id: "openai",
@@ -175,6 +179,206 @@ describe("CodeAgent: multi-tool exploration", () => {
         )
         expect(readDone).toBeDefined()
         expect(readDone!.toolOutput).toContain(SECRET_PHRASE)
+
+        // ── Verify confirmation text ──────────────────────────────────────
+        let fullText = ""
+        for (const event of events) {
+            if (event.type === "text_delta" && event.content) {
+                fullText += event.content
+            }
+        }
+        expect(fullText).toContain("secret.ts")
+        expect(fullText).toContain("让编程发生在任何地方")
+    })
+})
+
+/**
+ * Virtual FS exploration — same flow but all files live in InMemoryFS.
+ *
+ * Uses read(directory) → read(file) instead of grep (which needs ripgrep binary).
+ * This proves the VFS integration works end-to-end: tools read from InMemoryFS,
+ * no real project files exist on disk.
+ */
+describe("CodeAgent: virtual-FS exploration", () => {
+    let agent: CodeAgent
+    let tmpDir: string
+    const memfs = new InMemoryFS()
+    const search = new InMemorySearchProvider(memfs)
+
+    beforeAll(async () => {
+        // tmpDir is only used for Instance bootstrapping (DB, git, etc.)
+        // All project files live only in InMemoryFS.
+        tmpDir = createTempDir()
+
+        // ── Populate InMemoryFS with project files ────────────────────────
+        const root = tmpDir
+        await memfs.write(
+            path.join(root, "src", "config.ts"),
+            `export const config = {\n  port: 3000,\n  host: "localhost",\n}\n`,
+        )
+        await memfs.write(
+            path.join(root, "src", "utils", "helpers.ts"),
+            `export function formatDate(d: Date) {\n  return d.toISOString()\n}\n`,
+        )
+        await memfs.write(
+            path.join(root, "docs", "README.md"),
+            `# Project\n\nThis is a sample project for testing.\n`,
+        )
+        await memfs.write(
+            path.join(root, "src", "core", "secret.ts"),
+            [
+                `/**`,
+                ` * Core module`,
+                ` *`,
+                ` * This file contains the project's core philosophy.`,
+                ` */`,
+                ``,
+                `// ${SECRET_PHRASE}`,
+                `export const CORE_MISSION = "${SECRET_PHRASE}"`,
+                ``,
+                `export function getCoreMessage(): string {`,
+                `  return CORE_MISSION`,
+                `}`,
+                ``,
+            ].join("\n"),
+        )
+
+        // ── Init agent with InMemoryFS ────────────────────────────────────
+        agent = new CodeAgent({
+            directory: tmpDir,
+            skipPlugins: true,
+            fs: memfs,
+            search: search,
+            paths: testPaths(),
+            provider: {
+                id: "openai",
+                apiKey: "test-key-not-real",
+                model: "gpt-4o",
+                baseUrl: "http://localhost:19283/v1",
+            },
+        })
+
+        await agent.init()
+    }, 60_000)
+
+    afterAll(() => {
+        cleanupTempDir(tmpDir)
+    })
+
+    beforeEach(() => {
+        let mainCallCount = 0
+
+        // ── Build SSE fixtures for read(dir) → read(file) → confirmation ──
+        const readDirArgs = JSON.stringify({ filePath: "src/core" })
+        const readDirEscaped = JSON.stringify(readDirArgs).slice(1, -1)
+
+        const readDirBody = [
+            `data: {"type":"response.created","response":{"id":"resp_vfs001","object":"response","created_at":1700000000,"model":"gpt-4o","status":"in_progress","output":[]}}\n\n`,
+            `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_rd01","call_id":"call_rd_01","name":"read","arguments":"","status":"in_progress"}}\n\n`,
+            `data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_rd01","delta":"${readDirEscaped}"}\n\n`,
+            `data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_rd01","call_id":"call_rd_01","name":"read","arguments":"${readDirEscaped}","status":"completed"}}\n\n`,
+            `data: {"type":"response.completed","response":{"id":"resp_vfs001","object":"response","created_at":1700000000,"model":"gpt-4o","status":"completed","output":[{"type":"function_call","id":"fc_rd01","call_id":"call_rd_01","name":"read","arguments":"${readDirEscaped}","status":"completed"}],"usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120,"output_tokens_details":{"reasoning_tokens":0},"input_tokens_details":{"cached_tokens":0}}}}\n\n`,
+        ].join("")
+
+        const readFileArgs = JSON.stringify({ filePath: "src/core/secret.ts" })
+        const readFileEscaped = JSON.stringify(readFileArgs).slice(1, -1)
+
+        const readFileBody = [
+            `data: {"type":"response.created","response":{"id":"resp_vfs002","object":"response","created_at":1700000001,"model":"gpt-4o","status":"in_progress","output":[]}}\n\n`,
+            `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_rf01","call_id":"call_rf_01","name":"read","arguments":"","status":"in_progress"}}\n\n`,
+            `data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_rf01","delta":"${readFileEscaped}"}\n\n`,
+            `data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_rf01","call_id":"call_rf_01","name":"read","arguments":"${readFileEscaped}","status":"completed"}}\n\n`,
+            `data: {"type":"response.completed","response":{"id":"resp_vfs002","object":"response","created_at":1700000001,"model":"gpt-4o","status":"completed","output":[{"type":"function_call","id":"fc_rf01","call_id":"call_rf_01","name":"read","arguments":"${readFileEscaped}","status":"completed"}],"usage":{"input_tokens":200,"output_tokens":20,"total_tokens":220,"output_tokens_details":{"reasoning_tokens":0},"input_tokens_details":{"cached_tokens":0}}}}\n\n`,
+        ].join("")
+
+        const confirmText = '在虚拟文件系统的 `src/core/secret.ts` 中找到了核心理念：\\"AnyCode: 让编程发生在任何地方\\"。'
+        const confirmBody = [
+            `data: {"type":"response.created","response":{"id":"resp_vfs003","object":"response","created_at":1700000002,"model":"gpt-4o","status":"in_progress","output":[]}}\n\n`,
+            `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"msg_vfs003","role":"assistant","content":[]}}\n\n`,
+            `data: {"type":"response.content_part.added","output_index":0,"content_index":0,"part":{"type":"output_text","text":""}}\n\n`,
+            `data: {"type":"response.output_text.delta","output_index":0,"content_index":0,"item_id":"msg_vfs003","delta":"${confirmText}"}\n\n`,
+            `data: {"type":"response.output_text.done","output_index":0,"content_index":0,"text":"${confirmText}"}\n\n`,
+            `data: {"type":"response.content_part.done","output_index":0,"content_index":0,"part":{"type":"output_text","text":"${confirmText}"}}\n\n`,
+            `data: {"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":"msg_vfs003","role":"assistant","content":[{"type":"output_text","text":"${confirmText}"}]}}\n\n`,
+            `data: {"type":"response.completed","response":{"id":"resp_vfs003","object":"response","created_at":1700000002,"model":"gpt-4o","status":"completed","output":[{"type":"message","id":"msg_vfs003","role":"assistant","content":[{"type":"output_text","text":"${confirmText}"}]}],"usage":{"input_tokens":300,"output_tokens":30,"total_tokens":330,"output_tokens_details":{"reasoning_tokens":0},"input_tokens_details":{"cached_tokens":0}}}}\n\n`,
+        ].join("")
+
+        server.use(
+            http.post("*/v1/responses", async ({ request }) => {
+                const body = (await request
+                    .clone()
+                    .json()
+                    .catch(() => ({}))) as Record<string, unknown>
+                const model = (body?.model ?? "") as string
+
+                // Background models get generic response
+                if (model !== "gpt-4o") {
+                    return new HttpResponse(RESPONSES_API_BODY, {
+                        headers: {
+                            "Content-Type": "text/event-stream",
+                            "Cache-Control": "no-cache",
+                            Connection: "keep-alive",
+                        },
+                    })
+                }
+
+                mainCallCount++
+                // Round 1: read dir, Round 2: read file, Round 3+: confirmation
+                let responseBody: string
+                if (mainCallCount === 1) responseBody = readDirBody
+                else if (mainCallCount === 2) responseBody = readFileBody
+                else responseBody = confirmBody
+
+                return new HttpResponse(responseBody, {
+                    headers: {
+                        "Content-Type": "text/event-stream",
+                        "Cache-Control": "no-cache",
+                        Connection: "keep-alive",
+                    },
+                })
+            }),
+        )
+    })
+
+    it("should explore files through InMemoryFS using read(dir) → read(file)", async () => {
+        const session = await agent.createSession()
+        const events: Array<{
+            type: string
+            content?: string
+            toolName?: string
+            toolOutput?: string
+            error?: string
+        }> = []
+
+        for await (const event of agent.chat(
+            session.id,
+            "在项目文件中找到最核心的那句话",
+        )) {
+            events.push(event)
+        }
+
+        // Should end with done
+        const lastEvent = events[events.length - 1]
+        console.log(events.map(e => `${e.type} ${e.toolName || ""}`)); expect(lastEvent.type).toBe("done")
+
+        // ── Verify tool calls ─────────────────────────────────────────────
+        const toolStarts = events.filter((e) => e.type === "tool_call_start")
+        const toolNames = toolStarts.map((e) => e.toolName)
+
+        // Should have called read twice (directory then file)
+        expect(toolNames.filter((n) => n === "read").length).toBe(2)
+
+        // ── Verify directory read listed the file ──────────────────────────
+        const readDone = events.filter(
+            (e) => e.type === "tool_call_done" && e.toolName === "read",
+        )
+        expect(readDone.length).toBe(2)
+        // First read is directory listing → should contain "secret.ts"
+        expect(readDone[0].toolOutput).toContain("secret.ts")
+
+        // ── Verify file read got the secret phrase from InMemoryFS ────────
+        // Second read is file content → should contain the secret phrase
+        expect(readDone[1].toolOutput).toContain(SECRET_PHRASE)
 
         // ── Verify confirmation text ──────────────────────────────────────
         let fullText = ""

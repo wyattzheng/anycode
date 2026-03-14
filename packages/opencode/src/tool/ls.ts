@@ -3,7 +3,6 @@ import { Tool } from "./tool"
 import * as path from "path"
 import DESCRIPTION from "./ls.txt"
 import { Instance } from "../project/instance"
-import { Ripgrep } from "../file/ripgrep"
 import { assertExternalDirectory } from "./external-directory"
 
 export const IGNORE_PATTERNS = [
@@ -55,11 +54,15 @@ export const ListTool = Tool.define("list", {
     })
 
     const ignoreGlobs = IGNORE_PATTERNS.map((p) => `!${p}*`).concat(params.ignore?.map((p) => `!${p}`) || [])
-    const files = []
-    for await (const file of Ripgrep.files({ cwd: searchPath, glob: ignoreGlobs, signal: ctx.abort })) {
-      files.push(file)
-      if (files.length >= LIMIT) break
-    }
+    
+    const filePaths = await Instance.search.listFiles({
+      cwd: searchPath,
+      glob: ignoreGlobs,
+      limit: LIMIT,
+      signal: ctx.abort
+    })
+
+    const files = filePaths
 
     // Build directory structure
     const dirs = new Set<string>()

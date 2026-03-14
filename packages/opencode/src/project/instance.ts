@@ -25,6 +25,7 @@ interface Context {
   project: Project.Info
   scopeId: string
   vfs?: VFS
+  search?: import("../util/search").SearchProvider
   paths?: InstancePaths
   config?: Record<string, unknown>
   instructions?: string[]
@@ -59,6 +60,7 @@ function boot(input: {
   project?: Project.Info
   worktree?: string
   vfs?: VFS
+  search?: import("../util/search").SearchProvider
   paths?: InstancePaths
   config?: Record<string, unknown>
   instructions?: string[]
@@ -71,6 +73,7 @@ function boot(input: {
         project: input.project,
         scopeId: input.scopeId,
         vfs: input.vfs,
+        search: input.search,
         paths: input.paths,
         config: input.config,
         instructions: input.instructions,
@@ -89,6 +92,7 @@ function boot(input: {
       project: { id: "temp", path: input.directory } as any,
       scopeId: input.scopeId,
       vfs: input.vfs,
+      search: input.search,
       paths: input.paths,
       config: input.config,
       instructions: input.instructions,
@@ -102,6 +106,7 @@ function boot(input: {
       project,
       scopeId: input.scopeId,
       vfs: input.vfs,
+      search: input.search,
       paths: input.paths,
       config: input.config,
       instructions: input.instructions,
@@ -132,6 +137,7 @@ export const Instance = {
     init?: () => Promise<any>
     fn: () => R
     vfs?: VFS
+    search?: import("../util/search").SearchProvider
     paths?: InstancePaths
     config?: Record<string, unknown>
     instructions?: string[]
@@ -149,6 +155,7 @@ export const Instance = {
           scopeId,
           init: input.init,
           vfs: input.vfs,
+          search: input.search,
           paths: input.paths,
           config: input.config,
           instructions: input.instructions,
@@ -158,10 +165,11 @@ export const Instance = {
     const ctx = await existing
     // Allow overriding VFS/config/instructions per provide() call
     const ctxWithOverrides =
-      input.vfs || input.paths || input.config || input.instructions
+      input.vfs || input.paths || input.config || input.instructions || input.search
         ? {
             ...ctx,
             ...(input.vfs && { vfs: input.vfs }),
+            ...(input.search && { search: input.search }),
             ...(input.paths && { paths: input.paths }),
             ...(input.config && { config: input.config }),
             ...(input.instructions && { instructions: input.instructions }),
@@ -190,6 +198,11 @@ export const Instance = {
   },
   get config(): Record<string, unknown> | undefined {
     return context.use().config
+  },
+  get search() {
+    const search = context.use().search
+    if (!search) throw new Error("SearchProvider is not configured for this instance")
+    return search
   },
   get paths(): InstancePaths {
     const ctx = context.use()

@@ -2,7 +2,7 @@
  * In-Memory VFS implementation for testing.
  * Records all file operations so tests can assert what was written.
  */
-import type { VirtualFileSystem, VFSStat, VFSDirEntry, GrepMatch, GrepOptions } from "../../src/vfs"
+import type { VirtualFileSystem, VFSStat, VFSDirEntry } from "../../src/vfs"
 import * as path from "path"
 
 export class InMemoryFS implements VirtualFileSystem {
@@ -10,6 +10,16 @@ export class InMemoryFS implements VirtualFileSystem {
     private files = new Map<string, string | Uint8Array>()
     /** Tracks directories that were explicitly created */
     private dirs = new Set<string>()
+
+    // ── Internal ──
+
+    entries(): IterableIterator<[string, string | Uint8Array]> {
+        return this.files.entries()
+    }
+
+    keys(): IterableIterator<string> {
+        return this.files.keys()
+    }
 
     // ── Read operations ──
 
@@ -117,50 +127,6 @@ export class InMemoryFS implements VirtualFileSystem {
         this.dirs.delete(p)
     }
 
-    // ── Search operations ──
-
-    async grep(pattern: string, searchPath: string, options?: GrepOptions): Promise<GrepMatch[]> {
-        const results: GrepMatch[] = []
-        for (const [filePath, content] of this.files.entries()) {
-            if (!filePath.startsWith(searchPath)) continue
-            if (options?.include) {
-                const ext = path.extname(filePath)
-                const matches = options.include.some((glob: string) => {
-                    if (glob.startsWith("*.")) return ext === glob.slice(1)
-                    return filePath.includes(glob)
-                })
-                if (!matches) continue
-            }
-            const text = typeof content === "string" ? content : new TextDecoder().decode(content)
-            const lines = text.split("\n")
-            for (let i = 0; i < lines.length; i++) {
-                if (lines[i].includes(pattern)) {
-                    results.push({
-                        file: filePath,
-                        line: i + 1,
-                        column: 0,
-                        content: lines[i],
-                    })
-                }
-            }
-        }
-        return results
-    }
-
-    async glob(pattern: string, searchPath: string): Promise<string[]> {
-        const results: string[] = []
-        for (const filePath of this.files.keys()) {
-            if (!filePath.startsWith(searchPath)) continue
-            const basename = path.basename(filePath)
-            // Simple glob: *.ext matching
-            if (pattern.startsWith("*.")) {
-                if (basename.endsWith(pattern.slice(1))) results.push(filePath)
-            } else if (basename.includes(pattern) || filePath.includes(pattern)) {
-                results.push(filePath)
-            }
-        }
-        return results
-    }
 
     // ── Test helpers ──
 

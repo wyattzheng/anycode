@@ -3,8 +3,8 @@ import { pathToFileURL } from "url"
 import z from "zod"
 import { Tool } from "./tool"
 import { Skill } from "../skill"
-import { Ripgrep } from "../file/ripgrep"
 import { iife } from "@/util/iife"
+import { Instance } from "@/project/instance"
 
 export const SkillTool = Tool.define("skill", async (ctx) => {
   const list = await Skill.available(ctx?.agent)
@@ -60,13 +60,16 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
 
       const limit = 10
       const files = await iife(async () => {
-        const arr = []
-        for await (const file of Ripgrep.files({
+        const filePaths = await Instance.search.listFiles({
           cwd: dir,
           follow: false,
           hidden: true,
+          limit: limit + 1, // Extra to filter out SKILL.md
           signal: ctx.abort,
-        })) {
+        })
+        
+        const arr = []
+        for (const file of filePaths) {
           if (file.includes("SKILL.md")) {
             continue
           }
