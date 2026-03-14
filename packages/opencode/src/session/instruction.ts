@@ -2,7 +2,7 @@ import path from "path"
 import os from "os"
 import { Filesystem } from "../util/filesystem"
 import { Config } from "../config/config"
-import { Instance } from "../project/instance"
+import { createScopedState, AgentContext } from "@/agent/context"
 import { Flag } from "@/util/flag"
 import { Log } from "../util/log"
 import { Glob } from "../util/glob"
@@ -16,21 +16,21 @@ const FILES = [
   "CONTEXT.md", // deprecated
 ]
 
-function globalFiles() {
+function globalFiles(context: AgentContext) {
   const files = []
   if (Flag.OPENCODE_CONFIG_DIR) {
     files.push(path.join(Flag.OPENCODE_CONFIG_DIR, "AGENTS.md"))
   }
-  files.push(path.join(Instance.paths.config, "AGENTS.md"))
+  files.push(path.join(context.paths.config, "AGENTS.md"))
   if (!Flag.OPENCODE_DISABLE_CLAUDE_CODE_PROMPT) {
     files.push(path.join(os.homedir(), ".claude", "CLAUDE.md"))
   }
   return files
 }
 
-async function resolveRelative(instruction: string): Promise<string[]> {
+async function resolveRelative(context: AgentContext, instruction: string): Promise<string[]> {
   if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
-    return Filesystem.globUp(instruction, Instance.directory, Instance.worktree).catch(() => [])
+    return Filesystem.globUp(instruction, context.directory, context.worktree).catch(() => [])
   }
   if (!Flag.OPENCODE_CONFIG_DIR) {
     log.warn(
@@ -42,20 +42,20 @@ async function resolveRelative(instruction: string): Promise<string[]> {
 }
 
 export namespace InstructionPrompt {
-  const state = Instance.state(() => {
+  const state = createScopedState(() => {
     return {
       claims: new Map<string, Set<string>>(),
     }
   })
 
-  function isClaimed(messageID: string, filepath: string) {
-    const claimed = state().claims.get(messageID)
+  function isClaimed(context: AgentContext, messageID: string, filepath: string) {
+    const claimed = state(context).claims.get(messageID)
     if (!claimed) return false
     return claimed.has(filepath)
   }
 
-  function claim(messageID: string, filepath: string) {
-    const current = state()
+  function claim(context: AgentContext, messageID: string, filepath: string) {
+    const current = state(context)
     let claimed = current.claims.get(messageID)
     if (!claimed) {
       claimed = new Set()
@@ -64,17 +64,17 @@ export namespace InstructionPrompt {
     claimed.add(filepath)
   }
 
-  export function clear(messageID: string) {
-    state().claims.delete(messageID)
+  export function clear(context: AgentContext, messageID: string) {
+    state(context).claims.delete(messageID)
   }
 
-  export async function systemPaths() {
+  export async function systemPaths(context: AgentContext) {
     const config = await Config.get()
     const paths = new Set<string>()
 
     if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
       for (const file of FILES) {
-        const matches = await Filesystem.findUp(file, Instance.directory, Instance.worktree)
+        const matches = await Filesystem.findUp(file, context.directory, context.worktree)
         if (matches.length > 0) {
           matches.forEach((p) => {
             paths.add(path.resolve(p))
@@ -84,7 +84,7 @@ export namespace InstructionPrompt {
       }
     }
 
-    for (const file of globalFiles()) {
+    for (const file of globalFiles(context)) {
       if (await Filesystem.exists(file)) {
         paths.add(path.resolve(file))
         break
@@ -103,7 +103,7 @@ export namespace InstructionPrompt {
               absolute: true,
               include: "file",
             }).catch(() => [])
-          : await resolveRelative(instruction)
+          : await resolveRelative(context, instruction)
         matches.forEach((p) => {
           paths.add(path.resolve(p))
         })
@@ -113,16 +113,16 @@ export namespace InstructionPrompt {
     return paths
   }
 
-  export async function system() {
-    // Short-circuit: if instructions were injected via Instance context,
+  export async function system(context: AgentContext) {
+    // Short-circuit: if instructions were injected via AgentContext context,
     // skip all filesystem-based instruction loading.
-    const injected = Instance.instructions
+    const injected = context.instructions
     if (injected) {
       return injected
     }
 
     const config = await Config.get()
-    const paths = await systemPaths()
+    const paths = await systemPaths(context)
 
     const files = Array.from(paths).map(async (p) => {
       const content = await Filesystem.readText(p).catch(() => "")
@@ -171,20 +171,20 @@ export namespace InstructionPrompt {
     }
   }
 
-  export async function resolve(messages: MessageV2.WithParts[], filepath: string, messageID: string) {
-    const system = await systemPaths()
+  export async function resolve(context: AgentContext, messages: MessageV2.WithParts[], filepath: string, messageID: string) {
+    const system = await systemPaths(context)
     const already = loaded(messages)
     const results: { filepath: string; content: string }[] = []
 
     const target = path.resolve(filepath)
     let current = path.dirname(target)
-    const root = path.resolve(Instance.directory)
+    const root = path.resolve(context.directory)
 
     while (current.startsWith(root) && current !== root) {
       const found = await find(current)
 
-      if (found && found !== target && !system.has(found) && !already.has(found) && !isClaimed(messageID, found)) {
-        claim(messageID, found)
+      if (found && found !== target && !system.has(found) && !already.has(found) && !isClaimed(context, messageID, found)) {
+        claim(context, messageID, found)
         const content = await Filesystem.readText(found).catch(() => undefined)
         if (content) {
           results.push({ filepath: found, content: "Instructions from: " + found + "\n" + content })

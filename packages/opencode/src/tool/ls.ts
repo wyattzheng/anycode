@@ -55,6 +55,7 @@ export const ListTool = Tool.define("list", {
 
     const ignoreGlobs = IGNORE_PATTERNS.map((p) => `!${p}*`).concat(params.ignore?.map((p) => `!${p}`) || [])
     
+    if (!ctx.search) throw new Error("Search is not available.")
     const filePaths = await ctx.search.listFiles({
       cwd: searchPath,
       glob: ignoreGlobs,

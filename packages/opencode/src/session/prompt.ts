@@ -19,6 +19,7 @@ import { ProviderTransform } from "../provider/transform"
 import { SystemPrompt } from "./system"
 import { InstructionPrompt } from "./instruction"
 import { Plugin } from "../util/plugin"
+import { AgentContext, createScopedState } from "../agent/context"
 import PROMPT_PLAN from "../session/prompt/plan.txt"
 import BUILD_SWITCH from "../session/prompt/build-switch.txt"
 import MAX_STEPS from "../session/prompt/max-steps.txt"
@@ -62,20 +63,10 @@ IMPORTANT:
 
 const STRUCTURED_OUTPUT_SYSTEM_PROMPT = `IMPORTANT: The user has requested structured output. You MUST use the StructuredOutput tool to provide your final response. Do NOT respond with plain text - you MUST call the StructuredOutput tool with your answer formatted according to the schema.`
 
-export interface AgentContext {
-  directory: string
-  worktree: string
-  project: import("../project/project").Project.Info
-  fs: import("../util/vfs").VFS
-  search?: import("../util/search").SearchProvider
-  paths: import("../project/instance").InstancePaths
-  containsPath: (filepath: string) => boolean
-}
-
 export namespace SessionPrompt {
   const log = Log.create({ service: "session.prompt" })
 
-  const state = Instance.state(
+  const getState = createScopedState(
     () => {
       const data: Record<
         string,
@@ -96,8 +87,8 @@ export namespace SessionPrompt {
     },
   )
 
-  export function assertNotBusy(sessionID: SessionID) {
-    const match = state()[sessionID]
+  export function assertNotBusy(context: AgentContext, sessionID: SessionID) {
+    const match = getState(context)[sessionID]
     if (match) throw new Session.BusyError(sessionID)
   }
 
@@ -165,11 +156,10 @@ export namespace SessionPrompt {
           }),
       ]),
     ),
-    context: z.custom<AgentContext>().optional(),
   })
-  export type PromptInput = z.infer<typeof PromptInput>
+  export type PromptInput = z.infer<typeof PromptInput> & { context: AgentContext }
 
-  export const prompt = fn(PromptInput, async (input) => {
+  export const prompt = async (input: PromptInput) => {
     const session = await Session.get(input.sessionID)
     await SessionRevert.cleanup(session)
 
@@ -196,7 +186,7 @@ export namespace SessionPrompt {
     }
 
     return loop({ sessionID: input.sessionID, context: input.context })
-  })
+  }
 
   export async function resolvePromptParts(template: string): Promise<PromptInput["parts"]> {
     const parts: PromptInput["parts"] = [
@@ -249,8 +239,8 @@ export namespace SessionPrompt {
     return parts
   }
 
-  function start(sessionID: SessionID) {
-    const s = state()
+  function start(context: AgentContext, sessionID: SessionID) {
+    const s = getState(context)
     if (s[sessionID]) return
     const controller = new AbortController()
     s[sessionID] = {
@@ -260,44 +250,45 @@ export namespace SessionPrompt {
     return controller.signal
   }
 
-  function resume(sessionID: SessionID) {
-    const s = state()
+  function resume(context: AgentContext, sessionID: SessionID) {
+    const s = getState(context)
     if (!s[sessionID]) return
 
     return s[sessionID].abort.signal
   }
 
-  export function cancel(sessionID: SessionID) {
+  export function cancel(context: AgentContext, sessionID: SessionID) {
     log.info("cancel", { sessionID })
-    const s = state()
+    const s = getState(context)
     const match = s[sessionID]
     if (!match) {
-      SessionStatus.set(sessionID, { type: "idle" })
+      SessionStatus.set(context, sessionID, { type: "idle" })
       return
     }
     match.abort.abort()
     delete s[sessionID]
-    SessionStatus.set(sessionID, { type: "idle" })
+    SessionStatus.set(context, sessionID, { type: "idle" })
     return
   }
 
   export const LoopInput = z.object({
     sessionID: SessionID.zod,
     resume_existing: z.boolean().optional(),
-    context: z.custom<AgentContext>().optional(),
   })
-  export const loop = fn(LoopInput, async (input) => {
+  export type LoopInput = z.infer<typeof LoopInput> & { context: AgentContext }
+
+  export const loop = async (input: LoopInput) => {
     const { sessionID, resume_existing, context } = input
 
-    const abort = resume_existing ? resume(sessionID) : start(sessionID)
+    const abort = resume_existing ? resume(context, sessionID) : start(context, sessionID)
     if (!abort) {
       return new Promise<MessageV2.WithParts>((resolve, reject) => {
-        const callbacks = state()[sessionID].callbacks
+        const callbacks = getState(context)[sessionID].callbacks
         callbacks.push({ resolve, reject })
       })
     }
 
-    using _ = defer(() => cancel(sessionID))
+    using _ = defer(() => cancel(context, sessionID))
 
     // Structured output state
     // Note: On session resumption, state is reset but outputFormat is preserved
@@ -307,7 +298,7 @@ export namespace SessionPrompt {
     let step = 0
     const session = await Session.get(sessionID)
     while (true) {
-      SessionStatus.set(sessionID, { type: "busy" })
+      SessionStatus.set(context, sessionID, { type: "busy" })
       log.info("loop", { step, sessionID })
       if (abort.aborted) break
       let msgs = await MessageV2.filterCompacted(MessageV2.stream(sessionID))
@@ -346,6 +337,7 @@ export namespace SessionPrompt {
           modelID: lastUser.model.modelID,
           providerID: lastUser.model.providerID,
           history: msgs,
+          context: input.context,
         })
 
       const model = await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID).catch((e) => {
@@ -430,6 +422,7 @@ export namespace SessionPrompt {
         let executionError: Error | undefined
         const taskAgent = await Agent.get(task.agent)
         const taskCtx: Tool.Context = {
+          ...context,
           agent: task.agent,
           messageID: assistantMessage.id,
           sessionID: sessionID,
@@ -437,13 +430,6 @@ export namespace SessionPrompt {
           callID: part.callID,
           extra: { bypassAgentCheck: true },
           messages: msgs,
-          fs: context?.fs ?? Instance.vfs,
-          project: context?.project ?? Instance.project,
-          search: context?.search ?? Instance.search,
-          directory: context?.directory ?? Instance.directory,
-          worktree: context?.worktree ?? Instance.worktree,
-          paths: context?.paths ?? Instance.paths,
-          containsPath: context ? context.containsPath : (filepath) => Instance.containsPath(filepath),
           async metadata(input) {
             part = (await Session.updatePart({
               ...part,
@@ -556,6 +542,7 @@ export namespace SessionPrompt {
           sessionID,
           auto: task.auto,
           overflow: task.overflow,
+          context,
         })
         if (result === "stop") break
         continue
@@ -581,6 +568,7 @@ export namespace SessionPrompt {
       const maxSteps = agent.steps ?? Infinity
       const isLastStep = step >= maxSteps
       msgs = await insertReminders({
+        context: input.context,
         messages: msgs,
         agent,
         session,
@@ -615,8 +603,9 @@ export namespace SessionPrompt {
         sessionID: sessionID,
         model,
         abort,
+        context,
       })
-      using _ = defer(() => InstructionPrompt.clear(processor.message.id))
+      using _ = defer(() => InstructionPrompt.clear(context, processor.message.id))
 
       // Check if user explicitly invoked an agent via @ in this turn
       const lastUserMsg = msgs.findLast((m) => m.info.role === "user")
@@ -674,9 +663,9 @@ export namespace SessionPrompt {
       // Build system prompt, adding structured output instruction if needed
       const skills = await SystemPrompt.skills(agent)
       const system = [
-        ...(await SystemPrompt.environment(model)),
+        ...(await SystemPrompt.environment(model, context)),
         ...(skills ? [skills] : []),
-        ...(await InstructionPrompt.system()),
+        ...(await InstructionPrompt.system(context)),
       ]
       const format = lastUser.format ?? { type: "text" }
       if (format.type === "json_schema") {
@@ -689,6 +678,7 @@ export namespace SessionPrompt {
         abort,
         sessionID,
         system,
+        context,
         messages: [
           ...MessageV2.toModelMessages(msgs, model),
           ...(isLastStep
@@ -744,14 +734,14 @@ export namespace SessionPrompt {
     SessionCompaction.prune({ sessionID })
     for await (const item of MessageV2.stream(sessionID)) {
       if (item.info.role === "user") continue
-      const queued = state()[sessionID]?.callbacks ?? []
+      const queued = getState(context)[sessionID]?.callbacks ?? []
       for (const q of queued) {
         q.resolve(item)
       }
       return item
     }
     throw new Error("Impossible")
-  })
+  }
 
   async function lastModel(sessionID: SessionID) {
     for await (const item of MessageV2.stream(sessionID)) {
@@ -769,14 +759,14 @@ export namespace SessionPrompt {
     processor: SessionProcessor.Info
     bypassAgentCheck: boolean
     messages: MessageV2.WithParts[]
-    agentContext?: AgentContext
+    agentContext: AgentContext
   }) {
     using _ = log.time("resolveTools")
     const tools: Record<string, AITool> = {}
 
-    const vfs = input.agentContext?.fs ?? Instance.vfs
 
     const context = (args: any, options: ToolCallOptions): Tool.Context => ({
+      ...input.agentContext,
       sessionID: input.session.id,
       abort: options.abortSignal!,
       messageID: input.processor.message.id,
@@ -784,13 +774,6 @@ export namespace SessionPrompt {
       extra: { model: input.model, bypassAgentCheck: input.bypassAgentCheck },
       agent: input.agent.name,
       messages: input.messages,
-      fs: vfs,
-      project: input.agentContext?.project ?? Instance.project,
-      search: input.agentContext?.search ?? Instance.search,
-      directory: input.agentContext?.directory ?? Instance.directory,
-      worktree: input.agentContext?.worktree ?? Instance.worktree,
-      paths: input.agentContext?.paths ?? Instance.paths,
-      containsPath: input.agentContext ? input.agentContext.containsPath : (filepath) => Instance.containsPath(filepath),
       metadata: async (val: { title?: string; metadata?: any }) => {
         const match = input.processor.partFromToolCall(options.toolCallId)
         if (match && match.state.status === "running") {
@@ -924,7 +907,7 @@ export namespace SessionPrompt {
       format: input.format,
       variant,
     }
-    using _ = defer(() => InstructionPrompt.clear(info.id))
+    using _ = defer(() => InstructionPrompt.clear(input.context, info.id))
 
     type Draft<T> = T extends MessageV2.Part ? Omit<T, "id"> & { id?: string } : never
     const assign = (part: Draft<MessageV2.Part>): MessageV2.Part => ({
@@ -991,7 +974,7 @@ export namespace SessionPrompt {
                   // symbol in the document to get the full range
                   if (start === end) {
                     const symbols = await LSP.documentSymbol(filePathURI).catch(() => [])
-                    for (const symbol of symbols) {
+                    for (const symbol of symbols as any[]) {
                       let range: LSP.Range | undefined
                       if ("range" in symbol) {
                         range = symbol.range
@@ -1026,6 +1009,7 @@ export namespace SessionPrompt {
                   .then(async (t) => {
                     const model = await Provider.getModel(info.model.providerID, info.model.modelID)
                     const readCtx: Tool.Context = {
+                      ...input.context,
                       sessionID: input.sessionID,
                       abort: new AbortController().signal,
                       agent: input.agent!,
@@ -1034,7 +1018,6 @@ export namespace SessionPrompt {
                       messages: [],
                       metadata: async () => { },
                       ask: async () => { },
-                      fs: Instance.vfs,
                     }
                     const result = await t.execute(args, readCtx)
                     pieces.push({
@@ -1086,6 +1069,7 @@ export namespace SessionPrompt {
               if (part.mime === "application/x-directory") {
                 const args = { filePath: filepath }
                 const listCtx: Tool.Context = {
+                  ...input.context,
                   sessionID: input.sessionID,
                   abort: new AbortController().signal,
                   agent: input.agent!,
@@ -1094,7 +1078,6 @@ export namespace SessionPrompt {
                   messages: [],
                   metadata: async () => { },
                   ask: async () => { },
-                  fs: Instance.vfs,
                 }
                 const result = await ReadTool.init().then((t) => t.execute(args, listCtx))
                 return [
@@ -1134,7 +1117,7 @@ export namespace SessionPrompt {
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "file",
-                  url: `data:${part.mime};base64,` + (await Filesystem.readBytes(filepath)).toString("base64"),
+                  url: `data:${part.mime};base64,` + Buffer.from(await Filesystem.readBytes(filepath)).toString("base64"),
                   mime: part.mime,
                   filename: part.filename!,
                   source: part.source,
@@ -1204,7 +1187,7 @@ export namespace SessionPrompt {
     }
   }
 
-  async function insertReminders(input: { messages: MessageV2.WithParts[]; agent: Agent.Info; session: Session.Info }) {
+  async function insertReminders(input: { context: AgentContext; messages: MessageV2.WithParts[]; agent: Agent.Info; session: Session.Info }) {
     const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
     if (!userMessage) return input.messages
 
@@ -1239,7 +1222,7 @@ export namespace SessionPrompt {
 
     // Switching from plan mode to build mode
     if (input.agent.name !== "plan" && assistantMessage?.info.agent === "plan") {
-      const plan = Session.plan(input.session)
+      const plan = Session.plan(input.context, input.session)
       const exists = await Filesystem.exists(plan)
       if (exists) {
         const part = await Session.updatePart({
@@ -1258,7 +1241,7 @@ export namespace SessionPrompt {
 
     // Entering plan mode
     if (input.agent.name === "plan" && assistantMessage?.info.agent !== "plan") {
-      const plan = Session.plan(input.session)
+      const plan = Session.plan(input.context, input.session)
       const exists = await Filesystem.exists(plan)
       if (!exists) await Filesystem.mkdir(path.dirname(plan))
       const part = await Session.updatePart({
@@ -1355,21 +1338,22 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       .optional(),
     command: z.string(),
   })
-  export type ShellInput = z.infer<typeof ShellInput>
+  export type ShellInput = z.infer<typeof ShellInput> & { context: AgentContext }
+
   export async function shell(input: ShellInput) {
-    const abort = start(input.sessionID)
+    const abort = start(input.context, input.sessionID)
     if (!abort) {
       throw new Session.BusyError(input.sessionID)
     }
 
     using _ = defer(() => {
       // If no queued callbacks, cancel (the default)
-      const callbacks = state()[input.sessionID]?.callbacks ?? []
+      const callbacks = getState(input.context)[input.sessionID]?.callbacks ?? []
       if (callbacks.length === 0) {
-        cancel(input.sessionID)
+        cancel(input.context, input.sessionID)
       } else {
         // Otherwise, trigger the session loop to process queued items
-        loop({ sessionID: input.sessionID, resume_existing: true }).catch((error) => {
+        loop({ sessionID: input.sessionID, resume_existing: true, context: input.context }).catch((error) => {
           log.error("session loop failed to resume after shell command", { sessionID: input.sessionID, error })
         })
       }
@@ -1448,7 +1432,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       },
     }
     await Session.updatePart(part)
-    const shell = Shell.preferred()
+    const shell = await Shell.preferred()
     const shellName = (
       process.platform === "win32" ? path.win32.basename(shell, ".exe") : path.basename(shell)
     ).toLowerCase()
@@ -1610,11 +1594,11 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             messageID: true,
             sessionID: true,
           }).partial({
-            id: true,
           }),
         ]),
       )
       .optional(),
+    context: z.any() as z.ZodType<AgentContext>,
   })
   export type CommandInput = z.infer<typeof CommandInput>
   const bashRegex = /!`([^`]+)`/g
@@ -1630,7 +1614,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
   export async function command(input: CommandInput) {
     log.info("command", input)
-    const command = await Command.get(input.command)
+    const command = await Command.get(input.context, input.command)
     const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
 
     const raw = input.arguments.match(argsRegex) ?? []
@@ -1646,7 +1630,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     }
 
     // Let the final placeholder swallow any extra arguments so prompts read naturally
-    const withArgs = templateCommand.replaceAll(placeholderRegex, (_, index) => {
+    const withArgs = templateCommand.replaceAll(placeholderRegex, (_: any, index: any) => {
       const position = Number(index)
       const argIndex = position - 1
       if (argIndex >= args.length) return ""
@@ -1760,6 +1744,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       agent: userAgent,
       parts,
       variant: input.variant,
+      context: input.context,
     })) as MessageV2.WithParts
 
     Bus.publish(Command.Event.Executed, {
@@ -1777,6 +1762,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     history: MessageV2.WithParts[]
     providerID: ProviderID
     modelID: ModelID
+    context: AgentContext
   }) {
     if (input.session.parentID) return
     if (!Session.isDefaultTitle(input.session.title)) return
@@ -1820,6 +1806,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       abort: new AbortController().signal,
       sessionID: input.session.id,
       retries: 2,
+      context: input.context,
       messages: [
         {
           role: "user",

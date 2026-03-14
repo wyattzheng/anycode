@@ -31,7 +31,17 @@ export interface VFSDirEntry {
     isFile: boolean
 }
 
+export interface GrepOptions {
+    maxResults?: number
+    include?: string[]
+}
 
+export interface GrepMatch {
+    file: string
+    line: number
+    column: number
+    content: string
+}
 
 /**
  * Virtual File System interface.

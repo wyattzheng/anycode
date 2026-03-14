@@ -70,7 +70,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           if (found) return found
         }
 
-        return await Session.create({
+        return await Session.create(ctx, {
           parentID: ctx.sessionID,
           title: params.description + ` (@${agent.name} subagent)`,
           permission: [
@@ -120,7 +120,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       const messageID = MessageID.ascending()
 
       function cancel() {
-        SessionPrompt.cancel(session.id)
+        SessionPrompt.cancel(ctx, session.id)
       }
       ctx.abort.addEventListener("abort", cancel)
       using _ = defer(() => ctx.abort.removeEventListener("abort", cancel))
@@ -141,6 +141,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           ...Object.fromEntries((config.experimental?.primary_tools ?? []).map((t) => [t, false])),
         },
         parts: promptParts,
+        context: ctx,
       })
 
       const text = result.parts.findLast((x) => x.type === "text")?.text ?? ""

@@ -175,13 +175,13 @@ async function extractTextFromHTML(html: string) {
       },
     })
     .on("*", {
-      element(element) {
+      element(element: any) {
         // Reset skip flag when entering other elements
         if (!["script", "style", "noscript", "iframe", "object", "embed"].includes(element.tagName)) {
           skipContent = false
         }
       },
-      text(input) {
+      text(input: any) {
         if (!skipContent) {
           text += input.text
         }

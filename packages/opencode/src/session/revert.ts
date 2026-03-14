@@ -21,8 +21,8 @@ export namespace SessionRevert {
   })
   export type RevertInput = z.infer<typeof RevertInput>
 
-  export async function revert(input: RevertInput) {
-    SessionPrompt.assertNotBusy(input.sessionID)
+  export async function revert(input: RevertInput, context: import("../agent/context").AgentContext) {
+    SessionPrompt.assertNotBusy(context, input.sessionID)
     const all = await Session.messages({ sessionID: input.sessionID })
     let lastUser: MessageV2.User | undefined
     const session = await Session.get(input.sessionID)
@@ -79,9 +79,9 @@ export namespace SessionRevert {
     return session
   }
 
-  export async function unrevert(input: { sessionID: SessionID }) {
+  export async function unrevert(input: { sessionID: SessionID }, context: import("../agent/context").AgentContext) {
     log.info("unreverting", input)
-    SessionPrompt.assertNotBusy(input.sessionID)
+    SessionPrompt.assertNotBusy(context, input.sessionID)
     const session = await Session.get(input.sessionID)
     if (!session.revert) return session
     if (session.revert.snapshot) await Snapshot.restore(session.revert.snapshot)

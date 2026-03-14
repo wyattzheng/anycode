@@ -17,7 +17,7 @@ import { Storage } from "@/storage/storage"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
 import { Instance } from "../project/instance"
-import { SessionPrompt } from "./prompt"
+
 import { fn } from "@/util/fn"
 import { Command } from "../command"
 import { Snapshot } from "@/snapshot"
@@ -221,37 +221,40 @@ export namespace Session {
     ),
   }
 
-  export const create = fn(
-    z
-      .object({
-        parentID: SessionID.zod.optional(),
-        title: z.string().optional(),
-        permission: Info.shape.permission,
-        workspaceID: WorkspaceID.zod.optional(),
-      })
-      .optional(),
-    async (input) => {
-      return createNext({
+  export type CreateInput = {
+    parentID?: SessionID
+    title?: string
+    permission?: PermissionNext.Ruleset
+    workspaceID?: WorkspaceID
+  }
+
+  export const create = async (
+    context: import("@any-code/opencode/agent/context").AgentContext,
+    input?: CreateInput,
+  ) => {
+      return createNext(context, {
         parentID: input?.parentID,
-        directory: Instance.directory,
+        directory: context.directory,
         title: input?.title,
         permission: input?.permission,
         workspaceID: input?.workspaceID,
       })
-    },
-  )
+    }
 
-  export const fork = fn(
-    z.object({
-      sessionID: SessionID.zod,
-      messageID: MessageID.zod.optional(),
-    }),
-    async (input) => {
+  export type ForkInput = {
+    sessionID: SessionID
+    messageID?: MessageID
+  }
+
+  export const fork = async (
+    context: import("@any-code/opencode/agent/context").AgentContext,
+    input: ForkInput,
+  ) => {
       const original = await get(input.sessionID)
       if (!original) throw new Error("session not found")
       const title = getForkedTitle(original.title)
-      const session = await createNext({
-        directory: Instance.directory,
+      const session = await createNext(context, {
+        directory: context.directory,
         workspaceID: original.workspaceID,
         title,
       })
@@ -281,8 +284,7 @@ export namespace Session {
         }
       }
       return session
-    },
-  )
+    }
 
   export const touch = fn(SessionID.zod, async (sessionID) => {
     const now = Date.now()
@@ -299,19 +301,22 @@ export namespace Session {
     })
   })
 
-  export async function createNext(input: {
-    id?: SessionID
-    title?: string
-    parentID?: SessionID
-    workspaceID?: WorkspaceID
-    directory: string
-    permission?: PermissionNext.Ruleset
-  }) {
+  export async function createNext(
+    context: import("@any-code/opencode/agent/context").AgentContext,
+    input: {
+      id?: SessionID
+      title?: string
+      parentID?: SessionID
+      workspaceID?: WorkspaceID
+      directory: string
+      permission?: PermissionNext.Ruleset
+    },
+  ) {
     const result: Info = {
       id: SessionID.descending(input.id),
       slug: Slug.create(),
       version: Installation.VERSION,
-      projectID: Instance.project.id,
+      projectID: context.project.id,
       directory: input.directory,
       workspaceID: input.workspaceID,
       parentID: input.parentID,
@@ -342,10 +347,10 @@ export namespace Session {
     return result
   }
 
-  export function plan(input: { slug: string; time: { created: number } }) {
-    const base = Instance.project.vcs
-      ? path.join(Instance.worktree, ".opencode", "plans")
-      : path.join(Instance.paths.data, "plans")
+  export function plan(context: import("@any-code/opencode/agent/context").AgentContext, input: { slug: string; time: { created: number } }) {
+    const base = context.project.vcs
+      ? path.join(context.worktree, ".opencode", "plans")
+      : path.join(context.paths.data, "plans")
     return path.join(base, [input.time.created, input.slug].join("-") + ".md")
   }
 
@@ -522,15 +527,18 @@ export namespace Session {
     },
   )
 
-  export function* list(input?: {
-    directory?: string
-    workspaceID?: WorkspaceID
-    roots?: boolean
-    start?: number
-    search?: string
-    limit?: number
-  }) {
-    const project = Instance.project
+  export function* list(
+    context: import("@any-code/opencode/agent/context").AgentContext,
+    input?: {
+      directory?: string
+      workspaceID?: WorkspaceID
+      roots?: boolean
+      start?: number
+      search?: string
+      limit?: number
+    },
+  ) {
+    const project = context.project
     const conditions = [eq(SessionTable.project_id, project.id)]
 
     if (WorkspaceContext.workspaceID) {
@@ -634,8 +642,11 @@ export namespace Session {
     }
   }
 
-  export const children = fn(SessionID.zod, async (parentID) => {
-    const project = Instance.project
+  export const children = async (
+    context: import("@any-code/opencode/agent/context").AgentContext,
+    parentID: SessionID,
+  ) => {
+    const project = context.project
     const rows = Database.use((db) =>
       db
         .select()
@@ -644,14 +655,17 @@ export namespace Session {
         .all(),
     )
     return rows.map(fromRow)
-  })
+  }
 
-  export const remove = fn(SessionID.zod, async (sessionID) => {
-    const project = Instance.project
+  export const remove = async (
+    context: import("@any-code/opencode/agent/context").AgentContext,
+    sessionID: SessionID,
+  ) => {
+    const project = context.project
     try {
       const session = await get(sessionID)
-      for (const child of await children(sessionID)) {
-        await remove(child.id)
+      for (const child of await children(context, sessionID)) {
+        await remove(context, child.id)
       }
       await unshare(sessionID).catch(() => {})
       // CASCADE delete handles messages and parts automatically
@@ -666,7 +680,7 @@ export namespace Session {
     } catch (e) {
       log.error(e)
     }
-  })
+  }
 
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
     const time_created = msg.time.created
@@ -864,14 +878,17 @@ export namespace Session {
       modelID: ModelID.zod,
       providerID: ProviderID.zod,
       messageID: MessageID.zod,
-    }),
-    async (input) => {
+    }).passthrough(),
+    async (rawInput) => {
+      const input = rawInput as typeof rawInput & { context: import("../agent/context").AgentContext }
+      const { SessionPrompt } = await import("./prompt")
       await SessionPrompt.command({
         sessionID: input.sessionID,
         messageID: input.messageID,
         model: input.providerID + "/" + input.modelID,
         command: Command.Default.INIT,
         arguments: "",
+        context: input.context,
       })
     },
   )

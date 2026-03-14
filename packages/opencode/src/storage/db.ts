@@ -4,7 +4,7 @@ import { type SQLiteTransaction } from "drizzle-orm/sqlite-core"
 export * from "drizzle-orm"
 import { Context } from "../util/context"
 import { lazy } from "../util/lazy"
-import { Instance } from "../project/instance"
+
 import { Log } from "../util/log"
 import { NamedError } from "@/util/error"
 import z from "zod"
@@ -27,18 +27,24 @@ export const NotFoundError = NamedError.create(
 const log = Log.create({ service: "db" })
 
 export namespace Database {
+  let _dataPath: string | undefined
+
+  export function init(dataPath: string) {
+    _dataPath = dataPath
+  }
+
   export const Path = lazy(() => {
+    if (!_dataPath) throw new Error("Database dataPath not initialized")
     const channel = Installation.CHANNEL
     if (["latest", "beta"].includes(channel) || Flag.OPENCODE_DISABLE_CHANNEL_DB)
-      return path.join(Instance.paths.data, "opencode.db")
+      return path.join(_dataPath, "opencode.db")
     const safe = channel.replace(/[^a-zA-Z0-9._-]/g, "-")
-    return path.join(Instance.paths.data, `opencode-${safe}.db`)
+    return path.join(_dataPath, `opencode-${safe}.db`)
   })
 
   type Schema = typeof schema
-  export type Transaction = SQLiteTransaction<"sync", void, Schema>
-
-  type Client = BetterSQLite3Database
+  export type Client = ReturnType<typeof drizzle<Schema>>
+  export type Transaction = Parameters<Parameters<Client["transaction"]>[0]>[0]
 
   type Journal = { sql: string; timestamp: number; name: string }[]
 
@@ -136,7 +142,7 @@ export namespace Database {
     sqlite.pragma("foreign_keys = ON")
     sqlite.pragma("wal_checkpoint(PASSIVE)")
 
-    const db = drizzle({ client: sqlite })
+    const db = drizzle({ client: sqlite, schema })
 
     // Apply schema migrations
     const entries =
@@ -167,7 +173,7 @@ export namespace Database {
     Client.reset()
   }
 
-  export type TxOrDb = SQLiteTransaction<"sync", void, any, any> | Client
+  export type TxOrDb = Transaction | Client
 
   const ctx = Context.create<{
     tx: TxOrDb

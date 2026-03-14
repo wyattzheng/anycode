@@ -75,7 +75,7 @@ export class NodeFS implements VirtualFileSystem {
                 "--column",
                 "--no-heading",
                 ...(options?.maxResults ? ["--max-count", String(options.maxResults)] : []),
-                ...(options?.include?.flatMap((g) => ["--glob", g]) ?? []),
+                ...(options?.include?.flatMap((g: string) => ["--glob", g]) ?? []),
                 pattern,
                 searchPath,
             ]

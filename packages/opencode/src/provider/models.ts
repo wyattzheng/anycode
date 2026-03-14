@@ -13,7 +13,9 @@ import { Filesystem } from "../util/filesystem"
 
 export namespace ModelsDev {
   const log = Log.create({ service: "models.dev" })
-  const filepath = path.join(Instance.paths.cache, "models.json")
+  export function filepath() {
+    return path.join(Instance.paths.cache, "models.json")
+  }
 
   export const Model = z.object({
     id: z.string(),
@@ -86,7 +88,10 @@ export namespace ModelsDev {
   }
 
   export const Data = lazy(async () => {
-    const result = await Filesystem.readJson(Flag.OPENCODE_MODELS_PATH ?? filepath).catch(() => {})
+    let result: any = undefined;
+    try {
+      result = await Filesystem.readJson(Flag.OPENCODE_MODELS_PATH ?? filepath()).catch(() => {})
+    } catch (e) {}
     if (result) return result
     // @ts-ignore
     const snapshot = await import("./models-snapshot")
@@ -115,8 +120,12 @@ export namespace ModelsDev {
       })
     })
     if (result && result.ok) {
-      await Filesystem.write(filepath, await result.text())
-      ModelsDev.Data.reset()
+      try {
+        await Filesystem.write(filepath(), await result.text())
+        ModelsDev.Data.reset()
+      } catch (e) {
+        log.warn("Failed to write models cache. Missing context?", { error: e })
+      }
     }
   }
 }

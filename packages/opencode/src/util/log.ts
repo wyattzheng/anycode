@@ -1,7 +1,6 @@
 import path from "path"
 import fs from "fs/promises"
 import { createWriteStream } from "fs"
-import { Instance } from "../project/instance"
 import z from "zod"
 import { Glob } from "./glob"
 
@@ -58,6 +57,7 @@ export namespace Log {
   }
 
   export async function init(options: Options) {
+    const { Instance } = await import("../project/instance")
     if (options.level) level = options.level
     cleanup(Instance.paths.log)
     if (options.print) return

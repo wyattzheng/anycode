@@ -11,7 +11,10 @@
         "isolatedModules": true,
         "lib": [
             "ESNext"
-        ]
+        ],
+        "paths": {
+            "@/*": ["../opencode/src/*"]
+        }
     },
     "include": [
         "src"

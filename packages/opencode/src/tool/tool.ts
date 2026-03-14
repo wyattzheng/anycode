@@ -15,7 +15,7 @@ export namespace Tool {
     directory: string
   }
 
-  export type Context<M extends Metadata = Metadata> = {
+  export type Context<M extends Metadata = Metadata> = import("../agent/context").AgentContext & {
     sessionID: SessionID
     messageID: MessageID
     agent: string
@@ -25,20 +25,6 @@ export namespace Tool {
     messages: MessageV2.WithParts[]
     metadata(input: { title?: string; metadata?: M }): void
     ask(input: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">): Promise<void>
-    /** Virtual file system — abstracts read/write/stat operations */
-    fs: import("../util/vfs").VFS
-    /** The project database/state */
-    project: import("../project/project").Project.Info
-    /** The search provider */
-    search: import("../util/search").SearchProvider
-    /** The current working directory */
-    directory: string
-    /** The worktree root directory */
-    worktree: string
-    /** Paths */
-    paths: import("../project/instance").InstancePaths
-    /** Checks whether a path is in project */
-    containsPath(filepath: string): boolean
   }
   export interface Info<Parameters extends z.ZodType = z.ZodType, M extends Metadata = Metadata> {
     id: string

@@ -420,7 +420,7 @@ export namespace Provider {
         options: {
           project,
           location,
-          fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          fetch: async (input: string | URL | globalThis.Request, init?: RequestInit) => {
             const auth = new GoogleAuth()
             const client = await auth.getApplicationDefault()
             const token = await client.credential.getAccessToken()
@@ -1106,7 +1106,7 @@ export namespace Provider {
       const chunkTimeout = options["chunkTimeout"] || DEFAULT_CHUNK_TIMEOUT
       delete options["chunkTimeout"]
 
-      options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
+      options["fetch"] = async (input: any, init?: RequestInit) => {
         // Preserve custom fetch if it exists, wrap it with timeout logic
         const fetchFn = customFetch ?? fetch
         const opts = init ?? {}

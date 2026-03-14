@@ -11,8 +11,12 @@ import { ToolID } from "./schema"
 export namespace Truncate {
   export const MAX_LINES = 2000
   export const MAX_BYTES = 50 * 1024
-  export const DIR = path.join(Instance.paths.data, "tool-output")
-  export const GLOB = path.join(DIR, "*")
+  export function dir() {
+    return path.join(Instance.paths.data, "tool-output")
+  }
+  export function glob() {
+    return path.join(dir(), "*")
+  }
   const RETENTION_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
   const HOUR_MS = 60 * 60 * 1000
 
@@ -35,10 +39,10 @@ export namespace Truncate {
 
   export async function cleanup() {
     const cutoff = Identifier.timestamp(Identifier.create("tool", false, Date.now() - RETENTION_MS))
-    const entries = await Glob.scan("tool_*", { cwd: DIR, include: "file" }).catch(() => [] as string[])
+    const entries = await Glob.scan("tool_*", { cwd: dir(), include: "file" }).catch(() => [] as string[])
     for (const entry of entries) {
       if (Identifier.timestamp(entry) >= cutoff) continue
-      await Filesystem.remove(path.join(DIR, entry)).catch(() => {})
+      await Filesystem.remove(path.join(dir(), entry)).catch(() => {})
     }
   }
 
@@ -91,7 +95,7 @@ export namespace Truncate {
     const preview = out.join("\n")
 
     const id = ToolID.ascending()
-    const filepath = path.join(DIR, id)
+    const filepath = path.join(dir(), id)
     await Filesystem.write(filepath, text)
 
     const hint = hasTaskTool(agent)

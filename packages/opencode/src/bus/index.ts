@@ -67,7 +67,8 @@ export namespace Bus {
     def: Definition,
     callback: (event: { type: Definition["type"]; properties: z.infer<Definition["properties"]> }) => void,
   ) {
-    return raw(def.type, callback)
+    const res = raw(def.type, callback)
+    return res
   }
 
   export function once<Definition extends BusEvent.Definition>(
@@ -87,11 +88,14 @@ export namespace Bus {
   }
 
   function raw(type: string, callback: (event: any) => void) {
+    console.log("[TRACE] raw entered for", type)
     log.info("subscribing", { type })
     const subscriptions = state().subscriptions
+    console.log("[TRACE] state() retrieved")
     let match = subscriptions.get(type) ?? []
     match.push(callback)
     subscriptions.set(type, match)
+    console.log("[TRACE] subscriptions added")
 
     return () => {
       log.info("unsubscribing", { type })

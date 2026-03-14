@@ -2,7 +2,7 @@ import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { Session } from "."
 import { SessionID, MessageID, PartID } from "./schema"
-import { Instance } from "../project/instance"
+import { AgentContext } from "@/agent/context"
 import { Provider } from "../provider/provider"
 import { MessageV2 } from "./message-v2"
 import z from "zod"
@@ -106,6 +106,7 @@ export namespace SessionCompaction {
     abort: AbortSignal
     auto: boolean
     overflow?: boolean
+    context: AgentContext
   }) {
     const userMessage = input.messages.findLast((m) => m.info.id === input.parentID)!.info as MessageV2.User
 
@@ -143,8 +144,8 @@ export namespace SessionCompaction {
       variant: userMessage.variant,
       summary: true,
       path: {
-        cwd: Instance.directory,
-        root: Instance.worktree,
+        cwd: input.context.directory,
+        root: input.context.worktree,
       },
       cost: 0,
       tokens: {
@@ -164,6 +165,7 @@ export namespace SessionCompaction {
       sessionID: input.sessionID,
       model,
       abort: input.abort,
+      context: input.context,
     })
     // Allow plugins to inject context or replace compaction prompt
     const compacting = await Plugin.trigger(
@@ -207,6 +209,7 @@ When constructing the summary, try to stick to this template:
       sessionID: input.sessionID,
       tools: {},
       system: [],
+      context: input.context,
       messages: [
         ...MessageV2.toModelMessages(messages, model, { stripMedia: true }),
         {

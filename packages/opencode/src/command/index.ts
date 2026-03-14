@@ -2,7 +2,7 @@ import { BusEvent } from "@/bus/bus-event"
 import { SessionID, MessageID } from "@/session/schema"
 import z from "zod"
 import { Config } from "../config/config"
-import { Instance } from "../project/instance"
+import { createScopedState, AgentContext } from "@/agent/context"
 import { Identifier } from "../util/id"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
@@ -56,7 +56,7 @@ export namespace Command {
     REVIEW: "review",
   } as const
 
-  const state = Instance.state(async () => {
+  const state = createScopedState(async (context: AgentContext) => {
     const cfg = await Config.get()
 
     const result: Record<string, Info> = {
@@ -65,7 +65,7 @@ export namespace Command {
         description: "create/update AGENTS.md",
         source: "command",
         get template() {
-          return PROMPT_INITIALIZE.replace("${path}", Instance.worktree)
+          return PROMPT_INITIALIZE.replace("${path}", context.worktree)
         },
         hints: hints(PROMPT_INITIALIZE),
       },
@@ -74,7 +74,7 @@ export namespace Command {
         description: "review changes [commit|branch|pr], defaults to uncommitted",
         source: "command",
         get template() {
-          return PROMPT_REVIEW.replace("${path}", Instance.worktree)
+          return PROMPT_REVIEW.replace("${path}", context.worktree)
         },
         subtask: true,
         hints: hints(PROMPT_REVIEW),
@@ -115,11 +115,11 @@ export namespace Command {
     return result
   })
 
-  export async function get(name: string) {
-    return state().then((x) => x[name])
+  export async function get(context: AgentContext, name: string) {
+    return state(context).then((x) => x[name])
   }
 
-  export async function list() {
-    return state().then((x) => Object.values(x))
+  export async function list(context: AgentContext) {
+    return state(context).then((x) => Object.values(x))
   }
 }

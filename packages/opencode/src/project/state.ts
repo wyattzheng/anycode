@@ -9,18 +9,22 @@ export namespace State {
   const log = Log.create({ service: "state" })
   const recordsByKey = new Map<string, Map<any, Entry>>()
 
-  export function create<S>(root: () => string, init: () => S, dispose?: (state: Awaited<S>) => Promise<void>) {
-    return () => {
-      const key = root()
+  export function create<S, Args extends any[]>(
+    root: (...args: Args) => string,
+    init: (...args: Args) => S,
+    dispose?: (state: Awaited<S>) => Promise<void>,
+  ) {
+    return (...args: Args): S => {
+      const key = root(...args)
       let entries = recordsByKey.get(key)
       if (!entries) {
         entries = new Map<string, Entry>()
         recordsByKey.set(key, entries)
       }
-      const exists = entries.get(init)
+      const exists = entries.get(init as any)
       if (exists) return exists.state as S
-      const state = init()
-      entries.set(init, {
+      const state = init(...args)
+      entries.set(init as any, {
         state,
         dispose,
       })

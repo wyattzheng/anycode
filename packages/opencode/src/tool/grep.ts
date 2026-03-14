@@ -35,6 +35,7 @@ export const GrepTool = Tool.define("grep", {
     searchPath = path.isAbsolute(searchPath) ? searchPath : path.resolve(ctx.directory, searchPath)
     await assertExternalDirectory(ctx, searchPath, { kind: "directory" })
 
+    if (!ctx.search) throw new Error("Search provider is required for the grep tool")
     const matches = await ctx.search.grep({
       pattern: params.pattern,
       path: searchPath,

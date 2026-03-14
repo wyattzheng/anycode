@@ -97,7 +97,7 @@ export namespace Config {
     for (const [key, value] of Object.entries(auth)) {
       if (value.type === "wellknown") {
         const url = key.replace(/\/+$/, "")
-        process.env[value.key] = value.token
+        if (value.key) process.env[value.key] = value.token as string
         log.debug("fetching remote config", { url: `${url}/.well-known/opencode` })
         const response = await fetch(`${url}/.well-known/opencode`)
         if (!response.ok) {

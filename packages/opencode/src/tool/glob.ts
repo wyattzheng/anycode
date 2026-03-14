@@ -33,6 +33,8 @@ export const GlobTool = Tool.define("glob", {
     await assertExternalDirectory(ctx, search, { kind: "directory" })
 
     const limit = 100
+    if (!ctx.search) throw new Error("Search is not available.")
+
     const filePaths = await ctx.search.listFiles({
       cwd: search,
       glob: [params.pattern],

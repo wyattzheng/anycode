@@ -1,6 +1,6 @@
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
-import { Instance } from "@/project/instance"
+import { createScopedState, AgentContext } from "@/agent/context"
 import { SessionID } from "./schema"
 import z from "zod"
 
@@ -42,24 +42,24 @@ export namespace SessionStatus {
     ),
   }
 
-  const state = Instance.state(() => {
+  const state = createScopedState(() => {
     const data: Record<string, Info> = {}
     return data
   })
 
-  export function get(sessionID: SessionID) {
+  export function get(context: AgentContext, sessionID: SessionID) {
     return (
-      state()[sessionID] ?? {
+      state(context)[sessionID] ?? {
         type: "idle",
       }
     )
   }
 
-  export function list() {
-    return state()
+  export function list(context: AgentContext) {
+    return state(context)
   }
 
-  export function set(sessionID: SessionID, status: Info) {
+  export function set(context: AgentContext, sessionID: SessionID, status: Info) {
     Bus.publish(Event.Status, {
       sessionID,
       status,
@@ -69,9 +69,9 @@ export namespace SessionStatus {
       Bus.publish(Event.Idle, {
         sessionID,
       })
-      delete state()[sessionID]
+      delete state(context)[sessionID]
       return
     }
-    state()[sessionID] = status
+    state(context)[sessionID] = status
   }
 }

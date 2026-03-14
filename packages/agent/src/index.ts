@@ -211,6 +211,32 @@ export class CodeAgent {
     }
 
     /**
+     * Get the opencode AgentContext representation.
+     */
+    get agentContext(): import("@any-code/opencode/agent/context").AgentContext {
+        const worktree = this.options.worktree ?? this.options.directory
+        const project = this.options.project ?? { id: "global", worktree }
+        const pathMod = require("path")
+        
+        return {
+            scopeId: this.scopeId,
+            directory: this.options.directory,
+            worktree,
+            project: project as any,
+            fs: this._fs as any,
+            search: this._search as any,
+            paths: this.options.paths as any,
+            config: this.options.config as any,
+            instructions: this.options.instructions,
+            containsPath: (filepath: string) => {
+                const normalized = pathMod.resolve(filepath)
+                return normalized.startsWith(pathMod.resolve(worktree)) ||
+                       normalized.startsWith(pathMod.resolve(this.options.paths.data))
+            }
+        }
+    }
+
+    /**
      * Initialize the agent - must be called before createSession or chat.
      * Boots up opencode subsystems: database, config, plugins, tool registry.
      */
@@ -231,58 +257,61 @@ export class CodeAgent {
             }
         }
 
-        // Import opencode modules (they have top-level awaits)
-        const { Instance } = await import("@any-code/opencode/project/instance")
+        const dbMod = await import("@any-code/opencode/storage/db")
+        dbMod.Database.init(this.options.paths.data)
+        // Eagerly connect and run migrations during initialization
+        dbMod.Database.Client()
 
-        // Boot the instance for the given directory
-        await Instance.provide({
-            directory: this.options.directory,
-            scopeId: this.scopeId,
-            vfs: this.options.fs as any,
-            paths: this.options.paths,
-            config: this.options.config,
-            instructions: this.options.instructions,
-            init: async () => {
-                // Register custom tools
-                if (this.options.tools) {
-                    const { ToolRegistry } = await import("@any-code/opencode/tool/registry")
-                    const { Tool } = await import("@any-code/opencode/tool/tool")
-                    const z = (await import("zod")).default
+        if (this.options.tools) {
+            const { ToolRegistry } = await import("@any-code/opencode/tool/registry")
+            const { Tool } = await import("@any-code/opencode/tool/tool")
+            const z = (await import("zod")).default
 
-                    for (const [name, def] of Object.entries(this.options.tools)) {
-                        ToolRegistry.register({
-                            id: name,
-                            init: async () => ({
-                                parameters: z.object(def.args),
-                                description: def.description,
-                                execute: async (args, ctx) => {
-                                    const result = await def.execute(args as any, ctx as any)
-                                    return {
-                                        title: "",
-                                        output: typeof result === "string" ? result : JSON.stringify(result),
-                                        metadata: {},
-                                    }
-                                },
-                            }),
-                        })
-                    }
-                }
+            for (const [name, def] of Object.entries(this.options.tools)) {
+                ToolRegistry.register({
+                    id: name,
+                    init: async () => ({
+                        parameters: z.object(def.args),
+                        description: def.description,
+                        execute: async (args, ctx) => {
+                            const result = await def.execute(args as any, ctx as any)
+                            return {
+                                title: "",
+                                output: typeof result === "string" ? result : JSON.stringify(result),
+                                metadata: {},
+                            }
+                        },
+                    }),
+                })
+            }
+        }
 
-                // Register custom system prompt via plugin hooks
-                if (this.options.systemPrompt) {
-                    const { Plugin } = await import("@any-code/opencode/util/plugin")
-                    // We'll inject the system prompt via the hook system
-                    // The prompt will be appended in the chat method
-                }
+        // Register custom system prompt via plugin hooks
+        if (this.options.systemPrompt) {
+            const { Plugin } = await import("@any-code/opencode/util/plugin")
+            // We'll inject the system prompt via the hook system
+            // The prompt will be appended in the chat method
+        }
 
-                // Initialize plugins (skip if in test/lightweight mode)
-                if (!this.options.skipPlugins) {
-                    const { Plugin } = await import("@any-code/opencode/util/plugin")
-                    await Plugin.init()
-                }
-            },
-            fn: () => { },
+        // Ensure the global project exists in DB to satisfy foreign keys when creating sessions
+        const { Database } = await import("@any-code/opencode/storage/db")
+        const { ProjectTable } = await import("@any-code/opencode/project/project.sql")
+        Database.use((db) => {
+            db.insert(ProjectTable).values({
+                id: "global" as any,
+                worktree: "/",
+                vcs: null,
+                sandboxes: [],
+                time_created: Date.now(),
+                time_updated: Date.now()
+            }).onConflictDoNothing().run()
         })
+
+        // Initialize plugins (skip if in test/lightweight mode)
+        if (!this.options.skipPlugins) {
+            const { Plugin } = await import("@any-code/opencode/util/plugin")
+            await Plugin.init()
+        }
 
         this.initialized = true
     }
@@ -293,25 +322,17 @@ export class CodeAgent {
     async createSession(title?: string): Promise<CodeAgentSession> {
         this.assertInitialized()
 
-        const { Instance } = await import("@any-code/opencode/project/instance")
-
-        return Instance.provide({
-            directory: this.options.directory,
-            scopeId: this.scopeId,
-            vfs: this.options.fs as any,
-            config: this.options.config,
-            instructions: this.options.instructions,
-            fn: async () => {
-                const sessionMod = await import("@any-code/opencode/session/index")
-                const session = await sessionMod.Session.create({
-                    title,
-                })
-                return {
-                    id: session.id,
-                    title: session.title,
-                    createdAt: session.time.created,
-                }
-            },
+        const instanceMod = await import("@any-code/opencode/project/instance")
+        return instanceMod.Instance.provide(this.agentContext, async () => {
+            const sessionMod = await import("@any-code/opencode/session/index")
+            const session = await sessionMod.Session.create(this.agentContext, {
+                title,
+            })
+            return {
+                id: session.id,
+                title: session.title,
+                createdAt: session.time.created,
+            }
         })
     }
 
@@ -325,10 +346,7 @@ export class CodeAgent {
     ): AsyncGenerator<CodeAgentEvent> {
         this.assertInitialized()
 
-        const instanceMod = await import("@any-code/opencode/project/instance")
-        const Instance = instanceMod.Instance
-
-        // Set up event stream (shared across context boundary)
+        // Set up event stream
         const events: CodeAgentEvent[] = []
         let resolve: (() => void) | null = null
         let done = false
@@ -341,149 +359,127 @@ export class CodeAgent {
             }
         }
 
-        // Start the agent loop in the background, including subscriptions inside Instance context
-        const promptPromise = Instance.provide({
-            directory: this.options.directory,
-            scopeId: this.scopeId,
-            vfs: this._fs as any,
-            search: this._search as any,
-            config: this.options.config,
-            instructions: this.options.instructions,
-            fn: async () => {
-                const busMod = await import("@any-code/opencode/bus/index")
-                const Bus = busMod.Bus
-                const msgMod = await import("@any-code/opencode/session/message-v2")
-                const MessageV2 = msgMod.MessageV2
-                const sessionMod = await import("@any-code/opencode/session/index")
-                const Session = sessionMod.Session
-
+        // Start the agent loop in the background, providing the Instance context
+        const promptPromise = (async () => {
+            const instanceMod = await import("@any-code/opencode/project/instance")
+            return instanceMod.Instance.provide(this.agentContext, async () => {
                 // Subscribe to message part events (inside Instance context)
                 const unsubs: (() => void)[] = []
 
-                unsubs.push(
-                    Bus.subscribe(MessageV2.Event.PartDelta, (payload: any) => {
-                        const props = payload.properties
-                        if (props.sessionID !== sessionId) return
-                        push({
-                            type: "text_delta",
-                            content: props.delta,
-                        })
-                    }),
-                )
-
-                unsubs.push(
-                    Bus.subscribe(MessageV2.Event.PartUpdated, (payload: any) => {
-                        const part = payload.properties?.part
-                        if (!part || part.sessionID !== sessionId) return
-
-                        if (part.type === "tool" && part.state.status === "running") {
+                try {
+                    const busMod = await import("@any-code/opencode/bus/index")
+                    const Bus = busMod.Bus
+                    const msgMod = await import("@any-code/opencode/session/message-v2")
+                    const MessageV2 = msgMod.MessageV2
+                    const sessionMod = await import("@any-code/opencode/session/index")
+                    const Session = sessionMod.Session
+                    
+                    unsubs.push(
+                        Bus.subscribe(MessageV2.Event.PartDelta, (payload: any) => {
+                            const props = payload.properties
+                            if (props.sessionID !== sessionId) return
                             push({
-                                type: "tool_call_start",
-                                toolName: part.tool,
-                                toolArgs: part.state.input as Record<string, unknown>,
+                                type: "text_delta",
+                                content: props.delta,
                             })
-                        }
-                        if (part.type === "tool" && part.state.status === "completed") {
-                            push({
-                                type: "tool_call_done",
-                                toolName: part.tool,
-                                toolOutput: part.state.output,
-                            })
-                        }
-                        if (part.type === "tool" && part.state.status === "error") {
+                        }),
+                    )
+
+                    unsubs.push(
+                        Bus.subscribe(MessageV2.Event.PartUpdated, (payload: any) => {
+                            const part = payload.properties?.part
+                            if (!part || part.sessionID !== sessionId) return
+
+                            if (part.type === "tool" && part.state.status === "running") {
+                                push({
+                                    type: "tool_call_start",
+                                    toolName: part.tool,
+                                    toolArgs: part.state.input as Record<string, unknown>,
+                                })
+                            }
+                            if (part.type === "tool" && part.state.status === "completed") {
+                                push({
+                                    type: "tool_call_done",
+                                    toolName: part.tool,
+                                    toolOutput: part.state.output,
+                                })
+                            }
+                            if (part.type === "tool" && part.state.status === "error") {
+                                push({
+                                    type: "error",
+                                    error: part.state.error,
+                                })
+                            }
+                        }),
+                    )
+
+                    unsubs.push(
+                        Bus.subscribe(Session.Event.Error, (payload: any) => {
+                            const props = payload.properties
+                            if (props.sessionID !== sessionId) return
                             push({
                                 type: "error",
-                                error: part.state.error,
+                                error: props.error?.message ?? "Unknown error",
                             })
-                        }
-                    }),
-                )
+                        }),
+                    )
 
-                unsubs.push(
-                    Bus.subscribe(Session.Event.Error, (payload: any) => {
-                        const props = payload.properties
-                        if (props.sessionID !== sessionId) return
-                        push({
-                            type: "error",
-                            error: props.error?.message ?? "Unknown error",
-                        })
-                    }),
-                )
+                    // ── Permission handling ────────────────────────────
+                    const permMod = await import("@any-code/opencode/permission/next")
+                    const PermissionNext = permMod.PermissionNext
 
-                // ── Permission handling ────────────────────────────
-                // Subscribe to permission.asked events and auto-reply
-                // using the onPermissionRequest callback (or auto-allow).
-                const permMod = await import("@any-code/opencode/permission/next")
-                const PermissionNext = permMod.PermissionNext
+                    unsubs.push(
+                        Bus.subscribe(PermissionNext.Event.Asked, async (payload: any) => {
+                            const request = payload.properties
+                            if (request.sessionID !== sessionId) return
 
-                unsubs.push(
-                    Bus.subscribe(PermissionNext.Event.Asked, async (payload: any) => {
-                        const request = payload.properties
-                        if (request.sessionID !== sessionId) return
-
-                        const permRequest: PermissionRequest = {
-                            id: request.id,
-                            permission: request.permission,
-                            patterns: request.patterns ?? [],
-                            metadata: request.metadata ?? {},
-                        }
-
-                        push({
-                            type: "permission_request" as CodeAgentEventType,
-                            toolName: request.permission,
-                            toolArgs: request.metadata,
-                        })
-
-                        let reply: PermissionReply = "allow"
-                        if (this.options.onPermissionRequest) {
-                            try {
-                                reply = await this.options.onPermissionRequest(permRequest)
-                            } catch {
-                                reply = "deny"
+                            const permRequest: PermissionRequest = {
+                                id: request.id,
+                                permission: request.permission,
+                                patterns: request.patterns ?? [],
+                                metadata: request.metadata ?? {},
                             }
-                        }
 
-                        // Map our reply to opencode's reply format
-                        const replyMap: Record<PermissionReply, "once" | "always" | "reject"> = {
-                            allow: "once",
-                            always: "always",
-                            deny: "reject",
-                        }
+                            push({
+                                type: "permission_request" as CodeAgentEventType,
+                                toolName: request.permission,
+                                toolArgs: request.metadata,
+                            })
 
-                        await PermissionNext.reply({
-                            requestID: request.id,
-                            reply: replyMap[reply],
-                        })
+                            let reply: PermissionReply = "allow"
+                            if (this.options.onPermissionRequest) {
+                                try {
+                                    reply = await this.options.onPermissionRequest(permRequest)
+                                } catch {
+                                    reply = "deny"
+                                }
+                            }
 
-                        push({
-                            type: "permission_resolved" as CodeAgentEventType,
-                            toolName: request.permission,
-                            content: reply,
-                        })
-                    }),
-                )
+                            const replyMap: Record<PermissionReply, "once" | "always" | "reject"> = {
+                                allow: "once",
+                                always: "always",
+                                deny: "reject",
+                            }
 
-                try {
+                            await PermissionNext.reply({
+                                requestID: request.id,
+                                reply: replyMap[reply],
+                            })
+
+                            push({
+                                type: "permission_resolved" as CodeAgentEventType,
+                                toolName: request.permission,
+                                content: reply,
+                            })
+                        }),
+                    )
+
+
                     const { SessionPrompt } = await import("@any-code/opencode/session/prompt")
 
                     const providerID = this.options.provider.id
                     const modelID = this.options.provider.model
-
-                    const worktree = this.options.worktree ?? this.options.directory
-                    const project = this.options.project ?? { id: "global" as any, worktree }
-                    const agentContext = {
-                        directory: this.options.directory,
-                        worktree,
-                        project,
-                        fs: this._fs as any,
-                        search: this._search as any,
-                        paths: this.options.paths as any,
-                        containsPath: (filepath: string) => {
-                            const normalized = require("path").resolve(filepath)
-                            return normalized.startsWith(require("path").resolve(worktree)) ||
-                                   normalized.startsWith(require("path").resolve(this.options.paths.data))
-                        }
-                    }
+                    
 
                     await SessionPrompt.prompt({
                         sessionID: sessionId as any,
@@ -498,14 +494,17 @@ export class CodeAgent {
                             },
                         ],
                         ...(this.options.systemPrompt ? { system: this.options.systemPrompt } : {}),
-                        context: agentContext,
+                        context: this.agentContext,
                     })
+
                 } catch (err: any) {
+                    console.error("Error from SessionPrompt.prompt:", err)
                     push({
                         type: "error",
                         error: err?.message ?? String(err),
                     })
                 } finally {
+
                     done = true
                     push({ type: "done" })
                     // Cleanup subscriptions
@@ -513,8 +512,8 @@ export class CodeAgent {
                         unsub()
                     }
                 }
-            },
-        })
+            })
+        })()
 
         // Yield events as they come in
         try {
@@ -541,18 +540,10 @@ export class CodeAgent {
     async abort(sessionId: string): Promise<void> {
         this.assertInitialized()
 
-        const { Instance } = await import("@any-code/opencode/project/instance")
-
-        await Instance.provide({
-            directory: this.options.directory,
-            scopeId: this.scopeId,
-            vfs: this.options.fs as any,
-            config: this.options.config,
-            instructions: this.options.instructions,
-            fn: async () => {
-                const { SessionPrompt } = await import("@any-code/opencode/session/prompt")
-                SessionPrompt.cancel(sessionId as any)
-            },
+        const instanceMod = await import("@any-code/opencode/project/instance")
+        return instanceMod.Instance.provide(this.agentContext, async () => {
+            const { SessionPrompt } = await import("@any-code/opencode/session/prompt")
+            await SessionPrompt.cancel(this.agentContext, sessionId as any)
         })
     }
 
@@ -567,33 +558,23 @@ export class CodeAgent {
 
         // If already initialized, register dynamically
         if (this.initialized) {
-            const { Instance } = await import("@any-code/opencode/project/instance")
             const { ToolRegistry } = await import("@any-code/opencode/tool/registry")
             const z = (await import("zod")).default
 
-            await Instance.provide({
-                directory: this.options.directory,
-                scopeId: this.scopeId,
-                vfs: this.options.fs as any,
-            config: this.options.config,
-            instructions: this.options.instructions,
-                fn: async () => {
-                    ToolRegistry.register({
-                        id: name,
-                        init: async () => ({
-                            parameters: z.object(tool.args),
-                            description: tool.description,
-                            execute: async (args, ctx) => {
-                                const result = await tool.execute(args as any, ctx as any)
-                                return {
-                                    title: "",
-                                    output: typeof result === "string" ? result : JSON.stringify(result),
-                                    metadata: {},
-                                }
-                            },
-                        }),
-                    })
-                },
+            ToolRegistry.register({
+                id: name,
+                init: async () => ({
+                    parameters: z.object(tool.args),
+                    description: tool.description,
+                    execute: async (args, ctx) => {
+                        const result = await tool.execute(args as any, ctx as any)
+                        return {
+                            title: "",
+                            output: typeof result === "string" ? result : JSON.stringify(result),
+                            metadata: {},
+                        }
+                    },
+                }),
             })
         }
     }

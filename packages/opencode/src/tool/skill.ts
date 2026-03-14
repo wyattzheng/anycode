@@ -60,6 +60,7 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
 
       const limit = 10
       const files = await iife(async () => {
+        if (!ctx.search) throw new Error("Search provider is required for the skill tool")
         const filePaths = await ctx.search.listFiles({
           cwd: dir,
           follow: false,

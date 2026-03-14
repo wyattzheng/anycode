@@ -56,7 +56,7 @@ export const WriteTool = Tool.define("write", {
     const normalizedFilepath = filepath
     let projectDiagnosticsCount = 0
     for (const [file, issues] of Object.entries(diagnostics)) {
-      const errors = issues.filter((item) => item.severity === 1)
+      const errors = issues.filter((item: any) => item.severity === 1)
       if (errors.length === 0) continue
       const limited = errors.slice(0, MAX_DIAGNOSTICS_PER_FILE)
       const suffix =

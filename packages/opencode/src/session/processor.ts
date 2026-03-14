@@ -9,9 +9,10 @@ import { SessionRetry } from "./retry"
 import { SessionStatus } from "./status"
 import { Plugin } from "@/util/plugin"
 import type { Provider } from "@/provider/provider"
-import { LLM } from "./llm"
 import { Config } from "@/config/config"
 import { SessionCompaction } from "./compaction"
+import { LLM } from "./llm"
+import { AgentContext } from "@/agent/context"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/session/question"
 import { PartID } from "./schema"
@@ -29,6 +30,7 @@ export namespace SessionProcessor {
     sessionID: SessionID
     model: Provider.Model
     abort: AbortSignal
+    context: AgentContext
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
     let snapshot: string | undefined
@@ -57,7 +59,7 @@ export namespace SessionProcessor {
               input.abort.throwIfAborted()
               switch (value.type) {
                 case "start":
-                  SessionStatus.set(input.sessionID, { type: "busy" })
+                  SessionStatus.set(input.context, input.sessionID, { type: "busy" })
                   break
 
                 case "reasoning-start":
@@ -368,7 +370,7 @@ export namespace SessionProcessor {
               if (retry !== undefined) {
                 attempt++
                 const delay = SessionRetry.delay(attempt, error.name === "APIError" ? error : undefined)
-                SessionStatus.set(input.sessionID, {
+                SessionStatus.set(input.context, input.sessionID, {
                   type: "retry",
                   attempt,
                   message: retry,
@@ -382,7 +384,7 @@ export namespace SessionProcessor {
                 sessionID: input.assistantMessage.sessionID,
                 error: input.assistantMessage.error,
               })
-              SessionStatus.set(input.sessionID, { type: "idle" })
+              SessionStatus.set(input.context, input.sessionID, { type: "idle" })
             }
           }
           if (snapshot) {
