@@ -21,7 +21,6 @@ import {
   printParseErrorCode,
 } from "jsonc-parser"
 import { Instance } from "../project/instance"
-import { LSPServer } from "../lsp/server"
 import { BunProc } from "@/bun"
 import { Installation } from "@/installation"
 import { ConfigMarkdown } from "./markdown"
@@ -32,7 +31,6 @@ import { Glob } from "../util/glob"
 import { PackageRegistry } from "@/bun/registry"
 import { proxied } from "@/util/proxied"
 import { iife } from "@/util/iife"
-import { Account } from "@/account"
 import { ConfigPaths } from "./paths"
 import { Filesystem } from "@/util/filesystem"
 import { Process } from "@/util/process"
@@ -187,31 +185,8 @@ export namespace Config {
       log.debug("loaded custom config from OPENCODE_CONFIG_CONTENT")
     }
 
-    const active = Account.active()
-    if (active?.active_org_id) {
-      try {
-        const [config, token] = await Promise.all([
-          Account.config(active.id, active.active_org_id),
-          Account.token(active.id),
-        ])
-        if (token) {
-          process.env["OPENCODE_CONSOLE_TOKEN"] = token
-          Env.set("OPENCODE_CONSOLE_TOKEN", token)
-        }
+    // Account management removed (agent mode)
 
-        if (config) {
-          result = mergeConfigConcatArrays(
-            result,
-            await load(JSON.stringify(config), {
-              dir: path.dirname(`${active.url}/api/config`),
-              source: `${active.url}/api/config`,
-            }),
-          )
-        }
-      } catch (err: any) {
-        log.debug("failed to fetch remote account config", { error: err?.message ?? err })
-      }
-    }
 
     // Load managed config files last (highest priority) - enterprise admin-controlled
     // Kept separate from directories array to avoid write operations when installing plugins
@@ -1178,13 +1153,8 @@ export namespace Config {
           (data) => {
             if (!data) return true
             if (typeof data === "boolean") return true
-            const serverIds = new Set(Object.values(LSPServer).map((s) => s.id))
-
-            return Object.entries(data).every(([id, config]) => {
-              if (config.disabled) return true
-              if (serverIds.has(id)) return true
-              return Boolean(config.extensions)
-            })
+            // LSP server validation removed (lsp module deleted)
+            return true
           },
           {
             error: "For custom LSP servers, 'extensions' array is required.",

@@ -1,57 +1,41 @@
-import { Effect } from "effect"
-import z from "zod"
-import { runtime } from "@/effect/runtime"
-import * as S from "./service"
+/**
+ * Auth stub module — original auth/ was removed during agent-mode cleanup.
+ * Provides no-op implementations for Auth functions used by provider, config, etc.
+ */
 
-export { OAUTH_DUMMY_KEY } from "./service"
-
-function runPromise<A>(f: (service: S.AuthService.Service) => Effect.Effect<A, S.AuthServiceError>) {
-  return runtime.runPromise(S.AuthService.use(f))
-}
+export const OAUTH_DUMMY_KEY = "__oauth_dummy__"
 
 export namespace Auth {
-  export const Oauth = z
-    .object({
-      type: z.literal("oauth"),
-      refresh: z.string(),
-      access: z.string(),
-      expires: z.number(),
-      accountId: z.string().optional(),
-      enterpriseUrl: z.string().optional(),
-    })
-    .meta({ ref: "OAuth" })
-
-  export const Api = z
-    .object({
-      type: z.literal("api"),
-      key: z.string(),
-    })
-    .meta({ ref: "ApiAuth" })
-
-  export const WellKnown = z
-    .object({
-      type: z.literal("wellknown"),
-      key: z.string(),
-      token: z.string(),
-    })
-    .meta({ ref: "WellKnownAuth" })
-
-  export const Info = z.discriminatedUnion("type", [Oauth, Api, WellKnown]).meta({ ref: "Auth" })
-  export type Info = z.infer<typeof Info>
-
-  export async function get(providerID: string) {
-    return runPromise((service) => service.get(providerID))
+  export type AuthInfo = {
+    type: string
+    key?: string
+    access?: string
+    refresh?: string
+    expires?: number
+    [key: string]: unknown
   }
 
-  export async function all(): Promise<Record<string, Info>> {
-    return runPromise((service) => service.all())
+  /**
+   * Stub: always returns undefined (no stored auth)
+   */
+  export async function get(_providerID: string): Promise<AuthInfo | undefined> {
+    return undefined
   }
 
-  export async function set(key: string, info: Info) {
-    return runPromise((service) => service.set(key, info))
+  /**
+   * Stub: returns empty auth record
+   */
+  export async function all(): Promise<Record<string, AuthInfo>> {
+    return {}
   }
 
-  export async function remove(key: string) {
-    return runPromise((service) => service.remove(key))
-  }
+  /**
+   * Stub: no-op set
+   */
+  export async function set(_providerID: string, _data: AuthInfo): Promise<void> {}
+
+  /**
+   * Stub: no-op remove
+   */
+  export async function remove(_providerID: string): Promise<void> {}
 }
