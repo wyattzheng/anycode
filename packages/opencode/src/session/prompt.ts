@@ -62,6 +62,16 @@ IMPORTANT:
 
 const STRUCTURED_OUTPUT_SYSTEM_PROMPT = `IMPORTANT: The user has requested structured output. You MUST use the StructuredOutput tool to provide your final response. Do NOT respond with plain text - you MUST call the StructuredOutput tool with your answer formatted according to the schema.`
 
+export interface AgentContext {
+  directory: string
+  worktree: string
+  project: import("../project/project").Project.Info
+  fs: import("../util/vfs").VFS
+  search?: import("../util/search").SearchProvider
+  paths: import("../project/instance").InstancePaths
+  containsPath: (filepath: string) => boolean
+}
+
 export namespace SessionPrompt {
   const log = Log.create({ service: "session.prompt" })
 
@@ -155,6 +165,7 @@ export namespace SessionPrompt {
           }),
       ]),
     ),
+    context: z.custom<AgentContext>().optional(),
   })
   export type PromptInput = z.infer<typeof PromptInput>
 
@@ -184,7 +195,7 @@ export namespace SessionPrompt {
       return message
     }
 
-    return loop({ sessionID: input.sessionID })
+    return loop({ sessionID: input.sessionID, context: input.context })
   })
 
   export async function resolvePromptParts(template: string): Promise<PromptInput["parts"]> {
@@ -273,9 +284,10 @@ export namespace SessionPrompt {
   export const LoopInput = z.object({
     sessionID: SessionID.zod,
     resume_existing: z.boolean().optional(),
+    context: z.custom<AgentContext>().optional(),
   })
   export const loop = fn(LoopInput, async (input) => {
-    const { sessionID, resume_existing } = input
+    const { sessionID, resume_existing, context } = input
 
     const abort = resume_existing ? resume(sessionID) : start(sessionID)
     if (!abort) {
@@ -364,8 +376,8 @@ export namespace SessionPrompt {
           agent: task.agent,
           variant: lastUser.variant,
           path: {
-            cwd: Instance.directory,
-            root: Instance.worktree,
+            cwd: context?.directory ?? Instance.directory,
+            root: context?.worktree ?? Instance.worktree,
           },
           cost: 0,
           tokens: {
@@ -425,7 +437,13 @@ export namespace SessionPrompt {
           callID: part.callID,
           extra: { bypassAgentCheck: true },
           messages: msgs,
-          fs: Instance.vfs,
+          fs: context?.fs ?? Instance.vfs,
+          project: context?.project ?? Instance.project,
+          search: context?.search ?? Instance.search,
+          directory: context?.directory ?? Instance.directory,
+          worktree: context?.worktree ?? Instance.worktree,
+          paths: context?.paths ?? Instance.paths,
+          containsPath: context ? context.containsPath : (filepath) => Instance.containsPath(filepath),
           async metadata(input) {
             part = (await Session.updatePart({
               ...part,
@@ -577,8 +595,8 @@ export namespace SessionPrompt {
           agent: agent.name,
           variant: lastUser.variant,
           path: {
-            cwd: Instance.directory,
-            root: Instance.worktree,
+            cwd: context?.directory ?? Instance.directory,
+            root: context?.worktree ?? Instance.worktree,
           },
           cost: 0,
           tokens: {
@@ -612,6 +630,7 @@ export namespace SessionPrompt {
         processor,
         bypassAgentCheck,
         messages: msgs,
+        agentContext: context,
       })
 
       // Inject StructuredOutput tool if JSON schema mode enabled
@@ -750,11 +769,12 @@ export namespace SessionPrompt {
     processor: SessionProcessor.Info
     bypassAgentCheck: boolean
     messages: MessageV2.WithParts[]
+    agentContext?: AgentContext
   }) {
     using _ = log.time("resolveTools")
     const tools: Record<string, AITool> = {}
 
-    const vfs = Instance.vfs
+    const vfs = input.agentContext?.fs ?? Instance.vfs
 
     const context = (args: any, options: ToolCallOptions): Tool.Context => ({
       sessionID: input.session.id,
@@ -765,12 +785,12 @@ export namespace SessionPrompt {
       agent: input.agent.name,
       messages: input.messages,
       fs: vfs,
-      project: Instance.project,
-      search: Instance.search,
-      directory: Instance.directory,
-      worktree: Instance.worktree,
-      paths: Instance.paths,
-      containsPath: (filepath) => Instance.containsPath(filepath),
+      project: input.agentContext?.project ?? Instance.project,
+      search: input.agentContext?.search ?? Instance.search,
+      directory: input.agentContext?.directory ?? Instance.directory,
+      worktree: input.agentContext?.worktree ?? Instance.worktree,
+      paths: input.agentContext?.paths ?? Instance.paths,
+      containsPath: input.agentContext ? input.agentContext.containsPath : (filepath) => Instance.containsPath(filepath),
       metadata: async (val: { title?: string; metadata?: any }) => {
         const match = input.processor.partFromToolCall(options.toolCallId)
         if (match && match.state.status === "running") {

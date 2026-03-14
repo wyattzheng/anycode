@@ -140,6 +140,12 @@ export interface CodeAgentOptions {
         state: string
         home: string
     }
+
+    /** Override project metadata (discovered from directory if not provided) */
+    project?: import("@any-code/opencode/project/project").Project.Info
+
+    /** Pre-resolved root worktree directory. Defaults to directory. */
+    worktree?: string
 }
 
 export interface CodeAgentSession {
@@ -463,6 +469,22 @@ export class CodeAgent {
                     const providerID = this.options.provider.id
                     const modelID = this.options.provider.model
 
+                    const worktree = this.options.worktree ?? this.options.directory
+                    const project = this.options.project ?? { id: "global" as any, worktree }
+                    const agentContext = {
+                        directory: this.options.directory,
+                        worktree,
+                        project,
+                        fs: this._fs as any,
+                        search: this._search as any,
+                        paths: this.options.paths as any,
+                        containsPath: (filepath: string) => {
+                            const normalized = require("path").resolve(filepath)
+                            return normalized.startsWith(require("path").resolve(worktree)) ||
+                                   normalized.startsWith(require("path").resolve(this.options.paths.data))
+                        }
+                    }
+
                     await SessionPrompt.prompt({
                         sessionID: sessionId as any,
                         model: {
@@ -476,6 +498,7 @@ export class CodeAgent {
                             },
                         ],
                         ...(this.options.systemPrompt ? { system: this.options.systemPrompt } : {}),
+                        context: agentContext,
                     })
                 } catch (err: any) {
                     push({
