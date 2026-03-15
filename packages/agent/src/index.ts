@@ -26,7 +26,7 @@ export { NodeSearchProvider } from "./search-node"
 // Git provider now comes from opencode
 export { NodeGitProvider } from "@any-code/opencode/util/git"
 
-// Storage implementations re-exported from opencode
-export { BetterSqliteStorage } from "@any-code/opencode/agent/better-sqlite3-storage"
-export { SqlJsStorage } from "@any-code/opencode/agent/sqljs-storage"
+// Storage implementations (owned by this package)
+export { BetterSqliteStorage } from "./storage-better-sqlite3"
+export { SqlJsStorage } from "./storage-sqljs"
 

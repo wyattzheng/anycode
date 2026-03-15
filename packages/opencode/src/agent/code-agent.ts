@@ -306,14 +306,11 @@ export class CodeAgent {
 
         const migrations = Database.getMigrations()
 
-        if (this.options.storage) {
-            this._storageProvider = this.options.storage
-            this._dbClient = await this._storageProvider.connect(migrations)
-        } else {
-            const { BetterSqliteStorage } = await import("./better-sqlite3-storage")
-            this._storageProvider = new BetterSqliteStorage(this.options.paths.data)
-            this._dbClient = await this._storageProvider!.connect(migrations)
+        if (!this.options.storage) {
+            throw new Error("CodeAgent requires a storage provider. Pass a StorageProvider via options.storage.")
         }
+        this._storageProvider = this.options.storage
+        this._dbClient = await this._storageProvider.connect(migrations)
 
         // ── Build context with all services ──────────────────────────
         const worktree = this.options.worktree ?? this.options.directory

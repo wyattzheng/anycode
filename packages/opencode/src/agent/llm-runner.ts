@@ -189,10 +189,10 @@ export namespace LLM {
     const base = input.small
       ? ProviderTransform.smallOptions(input.model)
       : ProviderTransform.options({
-          model: input.model,
-          sessionID: input.sessionID,
-          providerOptions: provider.options,
-        })
+        model: input.model,
+        sessionID: input.sessionID,
+        providerOptions: provider.options,
+      })
     const options: Record<string, any> = pipe(
       base,
       mergeDeep(input.model.options),
@@ -203,18 +203,18 @@ export namespace LLM {
       options.instructions = SystemPrompt.instructions()
     }
 
-    const params ={
-        temperature: input.model.capabilities.temperature
-          ? (input.agent.temperature ?? ProviderTransform.temperature(input.model))
-          : undefined,
-        topP: input.agent.topP ?? ProviderTransform.topP(input.model),
-        topK: ProviderTransform.topK(input.model),
-        options,
-      }
+    const params = {
+      temperature: input.model.capabilities.temperature
+        ? (input.agent.temperature ?? ProviderTransform.temperature(input.model))
+        : undefined,
+      topP: input.agent.topP ?? ProviderTransform.topP(input.model),
+      topK: ProviderTransform.topK(input.model),
+      options,
+    }
 
-    const { headers } ={
-        headers: {},
-      }
+    const { headers } = {
+      headers: {},
+    }
 
     const maxOutputTokens =
       isCodex || provider.id.includes("github-copilot") ? undefined : ProviderTransform.maxOutputTokens(input.model)
@@ -280,15 +280,15 @@ export namespace LLM {
       headers: {
         ...(input.model.providerID.startsWith("opencode")
           ? {
-              "x-opencode-project": input.context.project.id,
-              "x-opencode-session": input.sessionID,
-              "x-opencode-request": input.user.id,
-              "x-opencode-client": Flag.OPENCODE_CLIENT,
-            }
+            "x-opencode-project": input.context.project.id,
+            "x-opencode-session": input.sessionID,
+            "x-opencode-request": input.user.id,
+            "x-opencode-client": Flag.OPENCODE_CLIENT,
+          }
           : input.model.providerID !== "anthropic"
             ? {
-                "User-Agent": `opencode/${Installation.VERSION}`,
-              }
+              "User-Agent": `opencode/${Installation.VERSION}`,
+            }
             : undefined),
         ...input.model.headers,
         ...headers,
@@ -703,7 +703,7 @@ export namespace LLMRunner {
                   message: retry,
                   next: Date.now() + delay,
                 })
-                await SessionRetry.sleep(delay, input.abort).catch(() => {})
+                await SessionRetry.sleep(delay, input.abort).catch(() => { })
                 continue
               }
               input.assistantMessage.error = error
