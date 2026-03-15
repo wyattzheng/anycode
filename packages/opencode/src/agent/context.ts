@@ -14,8 +14,6 @@ export interface InstancePaths {
 }
 
 export interface AgentContext {
-    /** Unique scope identifier for state isolation */
-    scopeId: string
     /** Current working directory for the agent execution */
     directory: string
     /** The resolved root of the project/worktree */

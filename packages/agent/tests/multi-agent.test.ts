@@ -5,7 +5,7 @@ import { testPaths } from "./_test-paths"
  * Verifies that two CodeAgent instances with the SAME directory
  * have completely isolated state (VFS, config, InMemoryFS, etc.).
  *
- * This ensures Instance scopeId isolation works correctly.
+ * This ensures state isolation works correctly via context.state Map.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest"
 import { http, HttpResponse } from "msw"
@@ -25,7 +25,7 @@ describe("CodeAgent: multi-agent isolation", () => {
 
     afterAll(() => cleanupTempDir(tmpDir))
 
-    it("should give each agent a unique scopeId", () => {
+    it("should create independent agents", () => {
         const agent1 = new CodeAgent({
             storage: new SqlJsStorage(),
             directory: tmpDir,
@@ -43,9 +43,9 @@ describe("CodeAgent: multi-agent isolation", () => {
             provider: { id: "openai", apiKey: "key2", model: "gpt-4o" },
         })
 
-        expect(agent1.scopeId).toBeDefined()
-        expect(agent2.scopeId).toBeDefined()
-        expect(agent1.scopeId).not.toBe(agent2.scopeId)
+        expect(agent1).toBeDefined()
+        expect(agent2).toBeDefined()
+        expect(agent1).not.toBe(agent2)
     })
 
     it("should isolate VFS between agents with same directory", async () => {
@@ -120,8 +120,5 @@ describe("CodeAgent: multi-agent isolation", () => {
 
         expect(agent1Paths.length).toBeGreaterThan(0)
         expect(agent2Paths.length).toBe(0)
-
-        // Verify the two agents have different scopeIds
-        expect(agent1.scopeId).not.toBe(agent2.scopeId)
     }, 60_000)
 })

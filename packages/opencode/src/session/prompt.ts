@@ -1344,7 +1344,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
     using _ = defer(() => {
       // If no queued callbacks, cancel (the default)
-      const callbacks = getState(input.context)[input.sessionID]?.callbacks ?? []
+      const callbacks = getState_(input.context)[input.sessionID]?.callbacks ?? []
       if (callbacks.length === 0) {
         cancel(input.context, input.sessionID)
       } else {

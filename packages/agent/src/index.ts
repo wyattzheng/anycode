@@ -199,7 +199,6 @@ export interface CodeAgentEvent {
 
 // ── CodeAgent Class ────────────────────────────────────────────────────────
 
-let nextScopeId = 1
 
 export class CodeAgent {
     private options: CodeAgentOptions
@@ -210,12 +209,9 @@ export class CodeAgent {
     private _storageProvider: import("./storage").StorageProvider | undefined
     private _dbClient: any
     private _state = new Map<any, any>()
-    /** Unique scope identifier for context isolation */
-    readonly scopeId: string
 
     constructor(options: CodeAgentOptions) {
         this.options = options
-        this.scopeId = `agent-${nextScopeId++}`
         // Eagerly set custom fs if provided
         if (options.fs) {
             this._fs = options.fs
@@ -240,7 +236,6 @@ export class CodeAgent {
         const pathMod = require("path")
         
         return {
-            scopeId: this.scopeId,
             directory: this.options.directory,
             worktree,
             project: project as any,
