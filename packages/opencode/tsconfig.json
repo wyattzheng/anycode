@@ -6,6 +6,7 @@
     "moduleResolution": "bundler",
     "esModuleInterop": true,
     "strict": true,
+    "strictNullChecks": false,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
@@ -15,7 +16,7 @@
       "DOM",
       "DOM.Iterable"
     ],
-    "types": [],
+    "types": ["node"],
     "noUncheckedIndexedAccess": false
   },
   "include": [

@@ -4,7 +4,7 @@ import { Filesystem } from "../util/filesystem"
 import { Tool } from "./tool"
 import { LSP } from "../util/lsp"
 
-import DESCRIPTION from "./read.txt.ts"
+import DESCRIPTION from "./read.txt"
 import { assertExternalDirectory } from "./external-directory"
 
 
@@ -60,7 +60,7 @@ export const ReadTool = Tool.define("read", {
             .map((entry) => path.join(dir, entry))
             .slice(0, 3),
         )
-        .catch(() => [])
+        .catch(() => [] as string[])
 
       if (suggestions.length > 0) {
         throw new Error(`File not found: ${filepath}\n\nDid you mean one of these?\n${suggestions.join("\n")}`)

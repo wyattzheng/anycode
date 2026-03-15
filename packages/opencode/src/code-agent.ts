@@ -65,7 +65,7 @@ import { SystemPrompt } from "./prompt"
 
 import { ContextCompaction } from "./memory/compaction"
 import { LLMRunner } from "./llm-runner"
-import MAX_STEPS from "./prompt/prompt/max-steps.txt.ts"
+import MAX_STEPS from "./prompt/prompt/max-steps.txt"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -107,7 +107,7 @@ export interface CodeAgentOptions {
     systemPrompt?: string
 
     /** Custom tools the agent can use */
-    tools?: Record<string, ToolDefinition>
+    tools?: Record<string, any>
 
     /**
      * Pre-built configuration object.
@@ -535,7 +535,7 @@ export class CodeAgent {
     /**
      * Register a custom tool at runtime
      */
-    async registerTool(name: string, tool: ToolDefinition): Promise<void> {
+    async registerTool(name: string, tool: any): Promise<void> {
         if (!this.options.tools) {
             this.options.tools = {}
         }
@@ -780,7 +780,7 @@ export class CodeAgent {
                 ...MessageV2.toModelMessages(msgs, model),
                 ...(isLastStep ? [{ role: "assistant" as const, content: MAX_STEPS }] : []),
             ],
-            tools, model,
+            tools: tools as any, model,
             toolChoice: format.type === "json_schema" ? "required" : undefined,
         })
 

@@ -5,6 +5,7 @@
         "moduleResolution": "bundler",
         "esModuleInterop": true,
         "strict": true,
+        "strictNullChecks": false,
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
         "resolveJsonModule": true,
@@ -12,11 +13,18 @@
         "lib": [
             "ESNext"
         ],
+        "types": [
+            "node"
+        ],
         "paths": {
-            "@/*": ["../opencode/src/*"]
+            "@/*": [
+                "../opencode/src/*"
+            ]
         }
     },
     "include": [
-        "src"
+        "src",
+        "tests",
+        "dev.ts"
     ]
 }

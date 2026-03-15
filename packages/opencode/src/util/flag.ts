@@ -126,6 +126,7 @@ export namespace Flag {
   export let OPENCODE_DISABLE_CHANNEL_DB = false
   export let OPENCODE_SKIP_MIGRATIONS = false
   export let OPENCODE_STRICT_CONFIG_DEPS = false
+  export declare const OPENCODE_CLIENT: string
 }
 
 // Dynamic getters for flags that must be evaluated at access time

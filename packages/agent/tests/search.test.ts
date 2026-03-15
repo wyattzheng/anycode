@@ -119,12 +119,12 @@ describe("Search Providers", () => {
             // Should find in the three main files, .git is excluded
             expect(matches.length).toBe(3)
             
-            const matchedFiles = matches.map(m => m.file)
+            const matchedFiles = matches.map((m: any) => m.file)
             // For NodeSearchProvider grep -H might output absolute paths, but we passed path: workspace (which is absolute)
             // So output files will start with workspace. Let's make sure they contain the relative ends
-            const hasIndexFile = matchedFiles.some(f => f.endsWith("index.ts"))
-            const hasHelperFile = matchedFiles.some(f => f.endsWith("helper.ts"))
-            const hasTestFile = matchedFiles.some(f => f.endsWith("test.md"))
+            const hasIndexFile = matchedFiles.some((f: any) => f.endsWith("index.ts"))
+            const hasHelperFile = matchedFiles.some((f: any) => f.endsWith("helper.ts"))
+            const hasTestFile = matchedFiles.some((f: any) => f.endsWith("test.md"))
 
             expect(hasIndexFile).toBe(true)
             expect(hasHelperFile).toBe(true)
@@ -144,10 +144,10 @@ describe("Search Providers", () => {
             // test.md should be filtered out
             expect(matches.length).toBe(2)
             
-            const matchedFiles = matches.map(m => m.file)
-            expect(matchedFiles.some(f => f.endsWith("index.ts"))).toBe(true)
-            expect(matchedFiles.some(f => f.endsWith("helper.ts"))).toBe(true)
-            expect(matchedFiles.some(f => f.endsWith("test.md"))).toBe(false)
+            const matchedFiles = matches.map((m: any) => m.file)
+            expect(matchedFiles.some((f: any) => f.endsWith("index.ts"))).toBe(true)
+            expect(matchedFiles.some((f: any) => f.endsWith("helper.ts"))).toBe(true)
+            expect(matchedFiles.some((f: any) => f.endsWith("test.md"))).toBe(false)
         })
 
         it("should generate a proper tree text representation", async () => {

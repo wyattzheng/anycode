@@ -208,7 +208,7 @@ export namespace ProviderTransform {
     return undefined
   }
 
-  export function topP(_model: Provider.Model) {
+  export function topP(_model: Provider.Model): number | undefined {
     return undefined
   }
 

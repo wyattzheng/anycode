@@ -40,7 +40,6 @@ describe("CodeAgent tool calling", () => {
             ...testNodeDeps(),
             storage: new SqlJsStorage(),
             directory: tmpDir,
-            skipPlugins: true,
             provider: {
                 id: "openai",
                 apiKey: "test-key-not-real",
@@ -48,6 +47,7 @@ describe("CodeAgent tool calling", () => {
                 baseUrl: "http://localhost:19283/v1",
             },
             fs: new (await import("../src/vfs-node")).NodeFS(),
+            search: new NodeSearchProvider(),
             dataPath: testPaths(),
         })
 

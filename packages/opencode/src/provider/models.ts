@@ -104,13 +104,13 @@ export namespace ModelsDev {
   async function initModels(context: AgentContext) {
       let data: Record<string, unknown> | undefined
       try {
-        data = await Filesystem.readJson(context, Flag.OPENCODE_MODELS_PATH ?? filepath(context)).catch(() => undefined)
+        data = await Filesystem.readJson(context, Flag.OPENCODE_MODELS_PATH ?? filepath(context)).catch((): any => undefined)
       } catch {}
       if (data) return { data }
       // @ts-ignore
       const snapshot = await import("./models-snapshot")
         .then((m) => m.snapshot as Record<string, unknown>)
-        .catch(() => undefined)
+        .catch((): any => undefined)
       if (snapshot) return { data: snapshot }
       if (Flag.OPENCODE_DISABLE_MODELS_FETCH) return { data: {} as Record<string, unknown> }
       const json = await fetch(`${url()}/api.json`).then((x) => x.text())

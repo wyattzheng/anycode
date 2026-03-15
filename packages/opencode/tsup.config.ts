@@ -6,5 +6,5 @@ export default defineConfig({
     platform: "node",
     splitting: true,
     clean: true,
-    dts: false,
+    dts: true,
 })

@@ -84,7 +84,6 @@ describe("Cross-agent DB recovery: close agent → reopen → verify data", () =
             ...testNodeDeps(),
             storage,
             directory: tmpDir,
-            skipPlugins: true,
             fs: new InMemoryFS(),
             search: new InMemorySearchProvider(new InMemoryFS()),
             dataPath: testPaths(),
@@ -148,12 +147,12 @@ describe("Cross-agent DB recovery: close agent → reopen → verify data", () =
         const originalMsgs = await Session.messages(agent1.agentContext, { sessionID: sessionId })
         expect(originalMsgs.length).toBeGreaterThanOrEqual(2)
 
-        const snapshot = originalMsgs.map(m => ({
+        const snapshot = originalMsgs.map((m: any) => ({
             id: m.info.id,
             role: m.info.role,
             partCount: m.parts.length,
-            partIds: m.parts.map(p => p.id),
-            partTypes: m.parts.map(p => p.type),
+            partIds: m.parts.map((p: any) => p.id),
+            partTypes: m.parts.map((p: any) => p.type),
         }))
 
         // ───── Agent 2: fresh boot, same DB ─────
@@ -170,14 +169,14 @@ describe("Cross-agent DB recovery: close agent → reopen → verify data", () =
 
         // Message-by-message comparison
         for (const orig of snapshot) {
-            const recovered = recoveredMsgs.find(m => m.info.id === orig.id)
+            const recovered = recoveredMsgs.find((m: any) => m.info.id === orig.id)
             expect(recovered, `message ${orig.id} should exist`).toBeDefined()
             expect(recovered!.info.role).toBe(orig.role)
             expect(recovered!.parts.length).toBe(orig.partCount)
 
             // Every part should be intact with same ID and type
             for (let i = 0; i < orig.partIds.length; i++) {
-                const part = recovered!.parts.find(p => p.id === orig.partIds[i])
+                const part = recovered!.parts.find((p: any) => p.id === orig.partIds[i])
                 expect(part, `part ${orig.partIds[i]} should exist`).toBeDefined()
                 expect(part!.type).toBe(orig.partTypes[i])
             }
@@ -227,12 +226,12 @@ describe("Cross-agent DB recovery: close agent → reopen → verify data", () =
 
         // Both user prompts should be present
         const userParts = msgs2
-            .filter(m => m.info.role === "user")
-            .flatMap(m => m.parts)
-            .filter(p => p.type === "text")
+            .filter((m: any) => m.info.role === "user")
+            .flatMap((m: any) => m.parts)
+            .filter((p: any) => p.type === "text")
         const texts = userParts.map((p: any) => p.text)
-        expect(texts.some(t => t.includes("continue-1"))).toBe(true)
-        expect(texts.some(t => t.includes("continue-2"))).toBe(true)
+        expect(texts.some((t: any) => t.includes("continue-1"))).toBe(true)
+        expect(texts.some((t: any) => t.includes("continue-2"))).toBe(true)
     })
 
     it("session list accumulates across agent restarts", async () => {

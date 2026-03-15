@@ -266,7 +266,6 @@ async function initAgent() {
     shell: new NodeShellProvider(),
     git: new NodeGitProvider(),
     dataPath: agentPaths,
-    skipPlugins: true,
     provider: {
       id: PROVIDER_ID,
       apiKey: API_KEY!,

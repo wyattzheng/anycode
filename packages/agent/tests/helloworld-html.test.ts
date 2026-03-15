@@ -35,7 +35,6 @@ describe("CodeAgent: create hello world HTML page", () => {
             ...testNodeDeps(),
             storage: new SqlJsStorage(),
             directory: tmpDir,
-            skipPlugins: true,
             fs: memFS,
             search: new InMemorySearchProvider(new InMemoryFS()),
             dataPath: testPaths(),

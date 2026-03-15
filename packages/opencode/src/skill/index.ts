@@ -69,12 +69,12 @@ export namespace Discovery {
         return response
           .json()
           .then((json) => json as Index)
-          .catch((err) => {
+          .catch((err: Error): any => {
             log.error("failed to parse index", { url: index, err })
             return undefined
           })
       })
-      .catch((err) => {
+      .catch((err: Error): any => {
         log.error("failed to fetch index", { url: index, err })
         return undefined
       })
@@ -84,7 +84,7 @@ export namespace Discovery {
       return result
     }
 
-    const list = data.skills.filter((skill) => {
+    const list = data.skills.filter((skill: any) => {
       if (!skill?.name || !Array.isArray(skill.files)) {
         log.warn("invalid skill entry", { url: index, skill })
         return false
@@ -93,10 +93,10 @@ export namespace Discovery {
     })
 
     await Promise.all(
-      list.map(async (skill) => {
+      list.map(async (skill: any) => {
         const root = path.join(cache, skill.name)
         await Promise.all(
-          skill.files.map(async (file) => {
+          skill.files.map(async (file: string) => {
             const link = new URL(file, `${host}/${skill.name}/`).href
             const dest = path.join(root, file)
             await Filesystem.mkdir(context, path.dirname(dest))
@@ -182,7 +182,7 @@ export namespace Skill {
     const dirs = new Set<string>()
 
     const addSkill = async (match: string) => {
-      const md = await ConfigMarkdown.parse(context, match).catch((err) => {
+      const md = await ConfigMarkdown.parse(context, match).catch((err: Error | null): any => {
         const message = ConfigMarkdown.FrontmatterError.isInstance(err)
           ? err.data.message
           : `Failed to parse skill ${match}`

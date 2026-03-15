@@ -8,7 +8,7 @@ import * as path from "../util/path"
 import { Tool } from "./tool"
 import { LSP } from "../util/lsp"
 import { createTwoFilesPatch, diffLines } from "diff"
-import DESCRIPTION from "./edit.txt.ts"
+import DESCRIPTION from "./edit.txt"
 import { File } from "../project"
 
 import { Bus } from "../bus"

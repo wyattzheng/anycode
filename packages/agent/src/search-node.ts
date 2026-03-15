@@ -18,7 +18,7 @@ export class NodeSearchProvider implements SearchProvider {
     }): Promise<GrepMatch[]> {
         options.signal?.throwIfAborted()
 
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
             // Use system grep: -r (recursive), -n (line numbers), -H (filenames)
             const args = ["-rnH", "--color=never"]
 
@@ -66,8 +66,8 @@ export class NodeSearchProvider implements SearchProvider {
                 resolve(results)
             })
 
-            proc.on("error", (error) => {
-                resolve([])
+            proc.on("error", (error: Error) => {
+                reject(error)
             })
         })
     }

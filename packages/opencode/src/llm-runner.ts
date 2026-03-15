@@ -238,7 +238,7 @@ export namespace LLM {
           "Placeholder for LiteLLM/Anthropic proxy compatibility - required when message history contains tool calls but no active tools are needed",
         inputSchema: jsonSchema({ type: "object", properties: {} }),
         execute: async () => ({ output: "", title: "", metadata: {} }),
-      })
+      }) as any
     }
 
     return streamText({
@@ -507,14 +507,14 @@ export namespace LLMRunner {
                       state: {
                         status: "completed",
                         input: value.input ?? match.state.input,
-                        output: value.output.output,
-                        metadata: value.output.metadata,
-                        title: value.output.title,
+                        output: (value.output as any).output,
+                        metadata: (value.output as any).metadata,
+                        title: (value.output as any).title,
                         time: {
                           start: match.state.time.start,
                           end: Date.now(),
                         },
-                        attachments: value.output.attachments,
+                        attachments: (value.output as any).attachments,
                       },
                     })
 

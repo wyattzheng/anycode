@@ -8,11 +8,11 @@ import { Truncate } from "./tool/truncation"
 import { Auth } from "./util/auth"
 import { ProviderTransform } from "./provider/transform"
 
-import PROMPT_GENERATE from "./generate.txt.ts"
-import PROMPT_COMPACTION from "./prompt/compaction.txt.ts"
-import PROMPT_EXPLORE from "./prompt/explore.txt.ts"
-import PROMPT_SUMMARY from "./prompt/summary.txt.ts"
-import PROMPT_TITLE from "./prompt/title.txt.ts"
+import PROMPT_GENERATE from "./generate.txt"
+import PROMPT_COMPACTION from "./prompt/compaction.txt"
+import PROMPT_EXPLORE from "./prompt/explore.txt"
+import PROMPT_SUMMARY from "./prompt/summary.txt"
+import PROMPT_TITLE from "./prompt/title.txt"
 
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import * as path from "./util/path"
@@ -214,7 +214,8 @@ export namespace Agent {
         },
       }
 
-      for (const [key, value] of Object.entries(cfg.agent ?? {})) {
+      for (const [key, _value] of Object.entries(cfg.agent ?? {})) {
+        const value = _value as any
         if (value.disable) {
           delete result[key]
           continue

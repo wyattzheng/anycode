@@ -133,6 +133,7 @@ describe("CodeAgent: VFS integration", () => {
             directory: "/tmp/test",
             provider: { id: "openai", apiKey: "test", model: "gpt-4o" },
             fs: nodeFs,
+            search: new NodeSearchProvider(),
             dataPath: testPaths(),
         })
         expect(agent.fs).toBeDefined()
@@ -142,18 +143,16 @@ describe("CodeAgent: VFS integration", () => {
     it("should accept custom VFS", async () => {
         const customOps: string[] = []
 
-        const customFS: import("../src/vfs").VirtualFileSystem = {
+        const customFS: any = {
             exists: async () => { customOps.push("exists"); return false },
-            stat: async () => { customOps.push("stat"); return undefined },
+            stat: async () => { customOps.push("stat"); return undefined as any },
             readText: async () => { customOps.push("readText"); return "" },
             readBytes: async () => { customOps.push("readBytes"); return new Uint8Array() },
-            readDir: async () => { customOps.push("readDir"); return [] },
+            readDir: async () => { customOps.push("readDir"); return [] as any },
             write: async () => { customOps.push("write") },
             mkdir: async () => { customOps.push("mkdir") },
             remove: async () => { customOps.push("remove") },
-            grep: async () => { customOps.push("grep"); return [] },
-            glob: async () => { customOps.push("glob"); return [] },
-        }
+        } as any
 
         const agent = new CodeAgent({
             ...testNodeDeps(),
@@ -161,6 +160,7 @@ describe("CodeAgent: VFS integration", () => {
             directory: "/tmp/test",
             provider: { id: "openai", apiKey: "test", model: "gpt-4o" },
             fs: customFS,
+            search: new NodeSearchProvider(),
             dataPath: testPaths(),
         })
 

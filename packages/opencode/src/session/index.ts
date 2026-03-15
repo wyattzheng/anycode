@@ -98,7 +98,7 @@ export namespace Session {
       directory: info.directory,
       title: info.title,
       version: info.version,
-      share_url: undefined,
+      share_url: undefined as any,
       summary_additions: info.summary?.additions,
       summary_deletions: info.summary?.deletions,
       summary_files: info.summary?.files,
@@ -219,7 +219,7 @@ export namespace Session {
   }
 
   export const create = async (
-    context: import("@any-code/opencode/agent/context").AgentContext,
+    context: import("../context").AgentContext,
     input?: CreateInput,
   ) => {
       return createNext(context, {
@@ -236,7 +236,7 @@ export namespace Session {
   }
 
   export const fork = async (
-    context: import("@any-code/opencode/agent/context").AgentContext,
+    context: import("../context").AgentContext,
     input: ForkInput,
   ) => {
       const original = await get(context, input.sessionID)
@@ -275,7 +275,7 @@ export namespace Session {
       return session
     }
 
-  export async function touch(context: import("@any-code/opencode/agent/context").AgentContext, sessionID: any) {
+  export async function touch(context: import("../context").AgentContext, sessionID: any) {
     const now = Date.now()
     {
       const row = context.db.update("session",
@@ -289,7 +289,7 @@ export namespace Session {
   }
 
   export async function createNext(
-    context: import("@any-code/opencode/agent/context").AgentContext,
+    context: import("../context").AgentContext,
     input: {
       id?: SessionID
       title?: string
@@ -325,14 +325,14 @@ export namespace Session {
     return result
   }
 
-  export function plan(context: import("@any-code/opencode/agent/context").AgentContext, input: { slug: string; time: { created: number } }) {
+  export function plan(context: import("../context").AgentContext, input: { slug: string; time: { created: number } }) {
     const base = context.project.vcs
       ? path.join(context.worktree, ".opencode", "plans")
       : path.join(context.dataPath, "plans")
     return path.join(base, [input.time.created, input.slug].join("-") + ".md")
   }
 
-  export async function get(context: import("@any-code/opencode/agent/context").AgentContext, id: any) {
+  export async function get(context: import("../context").AgentContext, id: any) {
     const row = context.db.findOne("session", { op: "eq", field: "id", value: id })
     if (!row) throw new NotFoundError({ message: `Session not found: ${id}` })
     return fromRow(row)
@@ -340,7 +340,7 @@ export namespace Session {
 
 
 
-  export async function setTitle(context: import("@any-code/opencode/agent/context").AgentContext, input: any) {
+  export async function setTitle(context: import("../context").AgentContext, input: any) {
     const row = context.db.update("session",
       { op: "eq", field: "id", value: input.sessionID },
       { title: input.title },
@@ -351,7 +351,7 @@ export namespace Session {
     return info
   }
 
-  export async function setArchived(context: import("@any-code/opencode/agent/context").AgentContext, input: any) {
+  export async function setArchived(context: import("../context").AgentContext, input: any) {
     const row = context.db.update("session",
       { op: "eq", field: "id", value: input.sessionID },
       { time_archived: input.time },
@@ -362,7 +362,7 @@ export namespace Session {
     return info
   }
 
-  export async function setRevert(context: import("@any-code/opencode/agent/context").AgentContext, input: any) {
+  export async function setRevert(context: import("../context").AgentContext, input: any) {
     const row = context.db.update("session",
       { op: "eq", field: "id", value: input.sessionID },
       {
@@ -379,7 +379,7 @@ export namespace Session {
     return info
   }
 
-  export async function clearRevert(context: import("@any-code/opencode/agent/context").AgentContext, sessionID: any) {
+  export async function clearRevert(context: import("../context").AgentContext, sessionID: any) {
     const row = context.db.update("session",
       { op: "eq", field: "id", value: sessionID },
       {
@@ -393,7 +393,7 @@ export namespace Session {
     return info
   }
 
-  export async function setSummary(context: import("@any-code/opencode/agent/context").AgentContext, input: any) {
+  export async function setSummary(context: import("../context").AgentContext, input: any) {
     const row = context.db.update("session",
       { op: "eq", field: "id", value: input.sessionID },
       {
@@ -420,7 +420,7 @@ export namespace Session {
   export const messages = Memory.messages
 
   export function* list(
-    context: import("@any-code/opencode/agent/context").AgentContext,
+    context: import("../context").AgentContext,
     input?: {
       directory?: string
       workspaceID?: WorkspaceID
@@ -463,7 +463,7 @@ export namespace Session {
   }
 
   export function* listGlobal(
-    context: import("@any-code/opencode/agent/context").AgentContext,
+    context: import("../context").AgentContext,
     input?: {
     directory?: string
     roots?: boolean
@@ -527,7 +527,7 @@ export namespace Session {
   }
 
   export const children = async (
-    context: import("@any-code/opencode/agent/context").AgentContext,
+    context: import("../context").AgentContext,
     parentID: SessionID,
   ) => {
     const project = context.project
@@ -542,7 +542,7 @@ export namespace Session {
   }
 
   export const remove = async (
-    context: import("@any-code/opencode/agent/context").AgentContext,
+    context: import("../context").AgentContext,
     sessionID: SessionID,
   ) => {
     const project = context.project

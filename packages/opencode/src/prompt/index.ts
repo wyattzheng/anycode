@@ -3,12 +3,12 @@ import type { Provider } from "../provider/provider"
 import type { Agent } from "../agent"
 import { Skill } from "../skill"
 
-import PROMPT_ANTHROPIC from "./prompt/anthropic.txt.ts"
-import PROMPT_ANTHROPIC_WITHOUT_TODO from "./prompt/qwen.txt.ts"
-import PROMPT_BEAST from "./prompt/beast.txt.ts"
-import PROMPT_GEMINI from "./prompt/gemini.txt.ts"
-import PROMPT_CODEX from "./prompt/codex_header.txt.ts"
-import PROMPT_TRINITY from "./prompt/trinity.txt.ts"
+import PROMPT_ANTHROPIC from "./prompt/anthropic.txt"
+import PROMPT_ANTHROPIC_WITHOUT_TODO from "./prompt/qwen.txt"
+import PROMPT_BEAST from "./prompt/beast.txt"
+import PROMPT_GEMINI from "./prompt/gemini.txt"
+import PROMPT_CODEX from "./prompt/codex_header.txt"
+import PROMPT_TRINITY from "./prompt/trinity.txt"
 
 export namespace SystemPrompt {
   export function instructions() {

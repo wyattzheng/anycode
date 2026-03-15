@@ -2,7 +2,7 @@ import z from "zod"
 import * as path from "../util/path"
 import { Tool } from "./tool"
 
-import DESCRIPTION from "./glob.txt.ts"
+import DESCRIPTION from "./glob.txt"
 import { assertExternalDirectory } from "./external-directory"
 
 export const GlobTool = Tool.define("glob", {

@@ -1,7 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import * as path from "../util/path"
-import DESCRIPTION from "./ls.txt.ts"
+import DESCRIPTION from "./ls.txt"
 import { assertExternalDirectory } from "./external-directory"
 
 export const IGNORE_PATTERNS = [

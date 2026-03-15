@@ -1,6 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
-import DESCRIPTION from "./websearch.txt.ts"
+import DESCRIPTION from "./websearch.txt"
 import { abortAfterAny } from "../util/abort"
 
 const API_CONFIG = {

@@ -16,6 +16,7 @@
         "zod": "4.1.8"
     },
     "devDependencies": {
+        "@types/node": "^25.5.0",
         "msw": "^2.7.5",
         "sql.js": "^1.12.0",
         "tsup": "^8.4.0",

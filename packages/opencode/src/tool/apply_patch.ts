@@ -9,7 +9,7 @@ import { createTwoFilesPatch, diffLines } from "diff"
 import { assertExternalDirectory } from "./external-directory"
 import { trimDiff } from "./edit"
 import { LSP } from "../util/lsp"
-import DESCRIPTION from "./apply_patch.txt.ts"
+import DESCRIPTION from "./apply_patch.txt"
 import { File } from "../project"
 import type { AgentContext } from "../context"
 

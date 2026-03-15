@@ -538,7 +538,7 @@ export namespace MessageV2 {
     ],
   })
 
-  async function hydrate(context: import("@any-code/opencode/agent/context").AgentContext, rows: Record<string, any>[]) {
+  async function hydrate(context: import("../context").AgentContext, rows: Record<string, any>[]) {
     const ids = rows.map((row) => row.id)
     const partByMessage = new Map<string, MessageV2.Part[]>()
     if (ids.length > 0) {
@@ -795,7 +795,7 @@ export namespace MessageV2 {
     )
   }
 
-  export async function page(context: import("@any-code/opencode/agent/context").AgentContext, input: { sessionID: any; limit: number; before?: string }) {
+  export async function page(context: import("../context").AgentContext, input: { sessionID: any; limit: number; before?: string }) {
     const before = input.before ? cursor.decode(input.before) : undefined
     const conditions: Filter[] = [{ op: "eq", field: "session_id", value: input.sessionID }]
     if (before) conditions.push(olderFilter(before))
@@ -825,7 +825,7 @@ export namespace MessageV2 {
     }
   }
 
-  export async function* stream(context: import("@any-code/opencode/agent/context").AgentContext, sessionID: any) {
+  export async function* stream(context: import("../context").AgentContext, sessionID: any) {
     const size = 50
     let before: string | undefined
     while (true) {
@@ -839,7 +839,7 @@ export namespace MessageV2 {
     }
   }
 
-  export async function parts(context: import("@any-code/opencode/agent/context").AgentContext, message_id: any) {
+  export async function parts(context: import("../context").AgentContext, message_id: any) {
     const rows = context.db.findMany("part", {
       filter: { op: "eq", field: "message_id", value: message_id },
       orderBy: [{ field: "id", direction: "asc" }],
@@ -849,7 +849,7 @@ export namespace MessageV2 {
     )
   }
 
-  export async function get(context: import("@any-code/opencode/agent/context").AgentContext, input: { sessionID: any; messageID: any }): Promise<WithParts> {
+  export async function get(context: import("../context").AgentContext, input: { sessionID: any; messageID: any }): Promise<WithParts> {
     const row = context.db.findOne("message",
       { op: "and", conditions: [{ op: "eq", field: "id", value: input.messageID }, { op: "eq", field: "session_id", value: input.sessionID }] },
     )

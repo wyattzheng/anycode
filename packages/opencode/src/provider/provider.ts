@@ -407,12 +407,12 @@ export namespace Provider {
       const providers = await this.list()
       const provider = Object.values(providers).find((p) => !cfg.provider || Object.keys(cfg.provider).includes(p.id))
       if (!provider) throw new Error("no providers found")
-      const [model] = sort(Object.values(provider.models))
+      const [model] = sort(Object.values(provider.models) as any)
       if (!model) throw new Error("no models found")
       return {
-        providerID: provider.id,
-        modelID: model.id,
-      }
+        providerID: provider.id as any,
+        modelID: model.id as any,
+      } as any
     }
 
     private async getSDK(model: Model) {
@@ -563,18 +563,17 @@ export namespace Provider {
     function mergeProvider(providerID: ProviderID, provider: Partial<Info>) {
       const existing = providers[providerID]
       if (existing) {
-        // @ts-expect-error
         providers[providerID] = mergeDeep(existing, provider)
         return
       }
       const match = database[providerID]
       if (!match) return
-      // @ts-expect-error
       providers[providerID] = mergeDeep(match, provider)
     }
 
     // extend database from config
-    for (const [providerID, provider] of configProviders) {
+    for (const [providerID, _provider] of configProviders) {
+      const provider = _provider as any
       const existing = database[providerID]
       const parsed: Info = {
         id: ProviderID.make(providerID),
@@ -585,7 +584,8 @@ export namespace Provider {
         models: existing?.models ?? {},
       }
 
-      for (const [modelID, model] of Object.entries(provider.models ?? {})) {
+      for (const [modelID, _model] of Object.entries(provider.models ?? {})) {
+        const model = _model as any
         const existingModel = parsed.models[model.id ?? modelID]
         const name = iife(() => {
           if (model.name) return model.name
@@ -648,7 +648,7 @@ export namespace Provider {
         }
         const merged = mergeDeep(ProviderTransform.variants(parsedModel), model.variants ?? {})
         parsedModel.variants = mapValues(
-          pickBy(merged, (v) => !v.disabled),
+          pickBy(merged, (v: any) => !v.disabled),
           (v) => omit(v, ["disabled"]),
         )
         parsed.models[modelID] = parsedModel
@@ -702,7 +702,8 @@ export namespace Provider {
     }
 
     // load config
-    for (const [id, provider] of configProviders) {
+    for (const [id, _provider] of configProviders) {
+      const provider = _provider as any
       const providerID = ProviderID.make(id)
       const partial: Partial<Info> = { source: "config" }
       if (provider.env) partial.env = provider.env
@@ -739,7 +740,7 @@ export namespace Provider {
         if (configVariants && model.variants) {
           const merged = mergeDeep(model.variants, configVariants)
           model.variants = mapValues(
-            pickBy(merged, (v) => !v.disabled),
+            pickBy(merged, (v: any) => !v.disabled),
             (v) => omit(v, ["disabled"]),
           )
         }

@@ -31,7 +31,6 @@ describe("ConfigMarkdown", () => {
             ...testNodeDeps(),
             storage: new SqlJsStorage(),
             directory: workDir,
-            skipPlugins: true,
             fs: memfs,
             search: new InMemorySearchProvider(memfs),
             dataPath,

@@ -39,7 +39,7 @@ export class NodeFS implements VirtualFileSystem {
 
     async readDir(p: string): Promise<VFSDirEntry[]> {
         const entries = readdirSync(p, { withFileTypes: true })
-        return entries.map((e) => ({
+        return entries.map((e: import("fs").Dirent) => ({
             name: e.name,
             isDirectory: e.isDirectory(),
             isFile: e.isFile(),
@@ -121,7 +121,7 @@ export class NodeFS implements VirtualFileSystem {
     } = {}): Promise<string[]> {
         const searchPath = options.cwd ?? process.cwd()
         // Use Node.js fs.glob (available in Node 22+) or fall back to manual walk
-        const { glob: fsGlob } = await import("fs/promises").catch(() => ({ glob: undefined }))
+        const { glob: fsGlob } = await import("fs/promises").catch(() => ({ glob: undefined as any }))
         if (fsGlob) {
             try {
                 const results: string[] = []

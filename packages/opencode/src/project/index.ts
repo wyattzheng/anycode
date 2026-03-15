@@ -275,7 +275,7 @@ export namespace Project {
     return Filesystem.readText(context, path.join(dir, "opencode"))
       .then((x) => x.trim())
       .then(ProjectID.make)
-      .catch(() => undefined)
+      .catch((): any => undefined)
   }
 
   export async function fromDirectory(context: AgentContext, directory: string) {
@@ -302,7 +302,7 @@ export namespace Project {
 
             return common === sandbox ? sandbox : path.dirname(common)
           })
-          .catch(() => undefined)
+          .catch((): any => undefined)
 
         if (!worktree) {
           return { id: id ?? ProjectID.global, worktree: sandbox, sandbox, vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS) }
@@ -317,7 +317,7 @@ export namespace Project {
             .then(async (result: any) =>
               result.text().split("\n").filter(Boolean).map((x: string) => x.trim()).toSorted(),
             )
-            .catch(() => undefined)
+            .catch((): any => undefined)
 
           if (!roots) {
             return { id: ProjectID.global, worktree: sandbox, sandbox, vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS) }
@@ -325,7 +325,7 @@ export namespace Project {
 
           id = roots[0] ? ProjectID.make(roots[0]) : undefined
           if (id) {
-            await Filesystem.write(context, path.join(worktree, ".git", "opencode"), id).catch(() => undefined)
+            await Filesystem.write(context, path.join(worktree, ".git", "opencode"), id).catch((): any => undefined)
           }
         }
 
@@ -335,7 +335,7 @@ export namespace Project {
 
         const top = await context.git.run(["rev-parse", "--show-toplevel"], { cwd: sandbox })
           .then(async (result: any) => gitpath(sandbox, result.text()))
-          .catch(() => undefined)
+          .catch((): any => undefined)
 
         if (!top) {
           return { id, worktree: sandbox, sandbox, vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS) }

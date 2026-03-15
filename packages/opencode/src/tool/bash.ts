@@ -1,7 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import * as path from "../util/path"
-import DESCRIPTION from "./bash.txt.ts"
+import DESCRIPTION from "./bash.txt"
 import { Log } from "../util/log"
 
 import { Filesystem } from "../util/filesystem"

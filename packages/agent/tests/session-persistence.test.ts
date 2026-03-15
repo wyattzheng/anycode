@@ -24,7 +24,6 @@ describe("CodeAgent: session persistence", () => {
             ...testNodeDeps(),
             storage: new SqlJsStorage(),
             directory: tmpDir,
-            skipPlugins: true,
             fs: new NodeFS(),
             search: new NodeSearchProvider(),
             dataPath,

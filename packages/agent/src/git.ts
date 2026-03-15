@@ -13,7 +13,7 @@ export class NodeGitProvider implements GitProvider {
                 env: opts.env ? { ...process.env, ...opts.env } : undefined,
                 maxBuffer: 50 * 1024 * 1024,
                 encoding: "buffer",
-            }, (error, stdout, stderr) => {
+            }, (error: Error | null, stdout: Buffer | string, stderr: Buffer | string) => {
                 const stdoutBuf = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout ?? "")
                 const stderrBuf = Buffer.isBuffer(stderr) ? stderr : Buffer.from(stderr ?? "")
                 resolve({

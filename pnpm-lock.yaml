@@ -17,6 +17,9 @@ importers:
         specifier: 4.1.8
         version: 4.1.8
     devDependencies:
+      '@types/node':
+        specifier: ^25.5.0
+        version: 25.5.0
       msw:
         specifier: ^2.7.5
         version: 2.12.10(@types/node@25.5.0)(typescript@5.8.2)
@@ -217,6 +220,9 @@ importers:
       '@types/mime-types':
         specifier: 3.0.1
         version: 3.0.1
+      '@types/node':
+        specifier: ^25.5.0
+        version: 25.5.0
       '@types/semver':
         specifier: ^7.5.8
         version: 7.7.1

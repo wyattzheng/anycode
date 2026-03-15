@@ -36,7 +36,6 @@ describe("CodeAgent: context compaction", () => {
             ...testNodeDeps(),
             storage: new SqlJsStorage(),
             directory: tmpDir,
-            skipPlugins: true,
             fs: new NodeFS(),
             search: new NodeSearchProvider(),
             dataPath: testPaths(),

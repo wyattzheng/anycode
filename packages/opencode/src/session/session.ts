@@ -18,9 +18,9 @@ import { ProviderTransform } from "../provider/transform"
 import { SystemPrompt } from "../prompt"
 
 import { type AgentContext } from "../context"
-import PROMPT_PLAN from "../prompt/prompt/plan.txt.ts"
-import BUILD_SWITCH from "../prompt/prompt/build-switch.txt.ts"
-import MAX_STEPS from "../prompt/prompt/max-steps.txt.ts"
+import PROMPT_PLAN from "../prompt/prompt/plan.txt"
+import BUILD_SWITCH from "../prompt/prompt/build-switch.txt"
+import MAX_STEPS from "../prompt/prompt/max-steps.txt"
 import { defer } from "../util/fn"
 import { ToolRegistry } from "../tool/registry"
 // MCP module removed (agent mode)
@@ -82,7 +82,7 @@ export namespace SessionPrompt {
     > = {}
   }
 
-    
+
   export function assertNotBusy(context: AgentContext, sessionID: SessionID) {
     const match = context.sessionPrompt.sessions[sessionID]
     if (match) throw new Session.BusyError(sessionID)
@@ -172,7 +172,7 @@ export namespace SessionPrompt {
         seen.add(name)
         const filepath = path.resolve(context.worktree, name)
 
-        const stats = await Filesystem.stat(context, filepath).catch(() => undefined)
+        const stats = await Filesystem.stat(context, filepath).catch((): any => undefined as any)
         if (!stats) {
           const agent = await context.agents.get(name)
           if (agent) {
@@ -359,7 +359,7 @@ export namespace SessionPrompt {
     const model = input.model ?? agent.model ?? (await lastModel(context, input.sessionID))
     const full =
       !input.variant && agent.variant
-        ? await context.provider.getModel(model.providerID, model.modelID).catch(() => undefined)
+        ? await context.provider.getModel(model.providerID, model.modelID as ModelID).catch((): any => undefined as any)
         : undefined
     const variant = input.variant ?? (agent.variant && full?.variants?.[agent.variant] ? agent.variant : undefined)
 
@@ -372,7 +372,7 @@ export namespace SessionPrompt {
       },
       tools: input.tools,
       agent: agent.name,
-      model,
+      model: model as any,
       system: input.system,
       format: input.format,
       variant,
@@ -443,7 +443,7 @@ export namespace SessionPrompt {
                   // workspace/symbol searches, so we'll try to find the
                   // symbol in the document to get the full range
                   if (start === end) {
-                    const symbols = await LSP.documentSymbol(filePathURI).catch(() => [])
+                    const symbols = await LSP.documentSymbol(filePathURI).catch(() => [] as any[])
                     for (const symbol of symbols as any[]) {
                       let range: LSP.Range | undefined
                       if ("range" in symbol) {
@@ -477,7 +477,7 @@ export namespace SessionPrompt {
 
                 await ReadTool.init()
                   .then(async (t) => {
-                    const model = await context.provider.getModel(info.model.providerID, info.model.modelID)
+                    const model = await context.provider.getModel((info as any).model.providerID, (info as any).model.modelID)
                     const readCtx: Tool.Context = {
                       ...input.context,
                       sessionID: input.sessionID,

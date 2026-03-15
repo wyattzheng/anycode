@@ -85,7 +85,6 @@ describe("Skill: auto-loading from designated directories", () => {
             storage: new SqlJsStorage(),
             directory: workDir,
             worktree: workDir,
-            skipPlugins: true,
             fs: memfs,
             search: new InMemorySearchProvider(memfs),
             dataPath,
