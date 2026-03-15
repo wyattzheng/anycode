@@ -830,284 +830,284 @@ export namespace Provider {
     }
 
     async getProvider(providerID: ProviderID) {
-    return this._promise.then((s) => s.providers[providerID])
-  }
+      return this._promise.then((s) => s.providers[providerID])
+    }
 
     async getModel(providerID: ProviderID, modelID: ModelID) {
-    const s = await this._promise
-    const provider = s.providers[providerID]
-    if (!provider) {
-      const availableProviders = Object.keys(s.providers)
-      const matches = fuzzysort.go(providerID, availableProviders, { limit: 3, threshold: -10000 })
-      const suggestions = matches.map((m) => m.target)
-      throw new ModelNotFoundError({ providerID, modelID, suggestions })
-    }
+      const s = await this._promise
+      const provider = s.providers[providerID]
+      if (!provider) {
+        const availableProviders = Object.keys(s.providers)
+        const matches = fuzzysort.go(providerID, availableProviders, { limit: 3, threshold: -10000 })
+        const suggestions = matches.map((m) => m.target)
+        throw new ModelNotFoundError({ providerID, modelID, suggestions })
+      }
 
-    const info = provider.models[modelID]
-    if (!info) {
-      const availableModels = Object.keys(provider.models)
-      const matches = fuzzysort.go(modelID, availableModels, { limit: 3, threshold: -10000 })
-      const suggestions = matches.map((m) => m.target)
-      throw new ModelNotFoundError({ providerID, modelID, suggestions })
+      const info = provider.models[modelID]
+      if (!info) {
+        const availableModels = Object.keys(provider.models)
+        const matches = fuzzysort.go(modelID, availableModels, { limit: 3, threshold: -10000 })
+        const suggestions = matches.map((m) => m.target)
+        throw new ModelNotFoundError({ providerID, modelID, suggestions })
+      }
+      return info
     }
-    return info
-  }
 
     async getLanguage(model: Model): Promise<LanguageModelV2> {
-    const s = await this._promise
-    const key = `${model.providerID}/${model.id}`
-    if (s.models.has(key)) return s.models.get(key)!
+      const s = await this._promise
+      const key = `${model.providerID}/${model.id}`
+      if (s.models.has(key)) return s.models.get(key)!
 
-    const provider = s.providers[model.providerID]
-    const sdk = await this.getSDK(model)
+      const provider = s.providers[model.providerID]
+      const sdk = await this.getSDK(model)
 
-    try {
-      const language = s.modelLoaders[model.providerID]
-        ? await s.modelLoaders[model.providerID](sdk, model.api.id, provider.options)
-        : sdk.languageModel(model.api.id)
-      s.models.set(key, language)
-      return language
-    } catch (e) {
-      if (e instanceof NoSuchModelError)
-        throw new ModelNotFoundError(
-          {
-            modelID: model.id,
-            providerID: model.providerID,
-          },
-          { cause: e },
-        )
-      throw e
+      try {
+        const language = s.modelLoaders[model.providerID]
+          ? await s.modelLoaders[model.providerID](sdk, model.api.id, provider.options)
+          : sdk.languageModel(model.api.id)
+        s.models.set(key, language)
+        return language
+      } catch (e) {
+        if (e instanceof NoSuchModelError)
+          throw new ModelNotFoundError(
+            {
+              modelID: model.id,
+              providerID: model.providerID,
+            },
+            { cause: e },
+          )
+        throw e
+      }
     }
-  }
 
     async closest(providerID: ProviderID, query: string[]) {
-    const s = await this._promise
-    const provider = s.providers[providerID]
-    if (!provider) return undefined
-    for (const item of query) {
-      for (const modelID of Object.keys(provider.models)) {
-        if (modelID.includes(item))
-          return {
-            providerID,
-            modelID,
-          }
+      const s = await this._promise
+      const provider = s.providers[providerID]
+      if (!provider) return undefined
+      for (const item of query) {
+        for (const modelID of Object.keys(provider.models)) {
+          if (modelID.includes(item))
+            return {
+              providerID,
+              modelID,
+            }
+        }
       }
     }
-  }
 
     async getSmallModel(providerID: ProviderID) {
-    const cfg = await this.context.config.get()
+      const cfg = await this.context.config.get()
 
-    if (cfg.small_model) {
-      const parsed = parseModel(cfg.small_model)
-      return this.getModel(parsed.providerID, parsed.modelID)
-    }
-
-    const provider = await this._promise.then((state) => state.providers[providerID])
-    if (provider) {
-      let priority = [
-        "claude-haiku-4-5",
-        "claude-haiku-4.5",
-        "3-5-haiku",
-        "3.5-haiku",
-        "gemini-3-flash",
-        "gemini-2.5-flash",
-        "gpt-5-nano",
-      ]
-      if (providerID.startsWith("opencode")) {
-        priority = ["gpt-5-nano"]
+      if (cfg.small_model) {
+        const parsed = parseModel(cfg.small_model)
+        return this.getModel(parsed.providerID, parsed.modelID)
       }
-      for (const item of priority) {
-        if (providerID === ProviderID.amazonBedrock) {
-          const crossRegionPrefixes = ["global.", "us.", "eu."]
-          const candidates = Object.keys(provider.models).filter((m) => m.includes(item))
 
-          // Model selection priority:
-          // 1. global. prefix (works everywhere)
-          // 2. User's region prefix (us., eu.)
-          // 3. Unprefixed model
-          const globalMatch = candidates.find((m) => m.startsWith("global."))
-          if (globalMatch) return this.getModel(providerID, ModelID.make(globalMatch))
-
-          const region = provider.options?.region
-          if (region) {
-            const regionPrefix = region.split("-")[0]
-            if (regionPrefix === "us" || regionPrefix === "eu") {
-              const regionalMatch = candidates.find((m) => m.startsWith(`${regionPrefix}.`))
-              if (regionalMatch) return this.getModel(providerID, ModelID.make(regionalMatch))
-            }
-          }
-
-          const unprefixed = candidates.find((m) => !crossRegionPrefixes.some((p) => m.startsWith(p)))
-          if (unprefixed) return this.getModel(providerID, ModelID.make(unprefixed))
-        } else {
-          for (const model of Object.keys(provider.models)) {
-            if (model.includes(item)) return this.getModel(providerID, ModelID.make(model))
-          }
+      const provider = await this._promise.then((state) => state.providers[providerID])
+      if (provider) {
+        let priority = [
+          "claude-haiku-4-5",
+          "claude-haiku-4.5",
+          "3-5-haiku",
+          "3.5-haiku",
+          "gemini-3-flash",
+          "gemini-2.5-flash",
+          "gpt-5-nano",
+        ]
+        if (providerID.startsWith("opencode")) {
+          priority = ["gpt-5-nano"]
         }
-      }
-    }
+        for (const item of priority) {
+          if (providerID === ProviderID.amazonBedrock) {
+            const crossRegionPrefixes = ["global.", "us.", "eu."]
+            const candidates = Object.keys(provider.models).filter((m) => m.includes(item))
 
-    return undefined
-  }
+            // Model selection priority:
+            // 1. global. prefix (works everywhere)
+            // 2. User's region prefix (us., eu.)
+            // 3. Unprefixed model
+            const globalMatch = candidates.find((m) => m.startsWith("global."))
+            if (globalMatch) return this.getModel(providerID, ModelID.make(globalMatch))
 
-    async defaultModel() {
-    const cfg = await this.context.config.get()
-    if (cfg.model) return parseModel(cfg.model)
-
-    const providers = await this.list()
-    const recent = (await Filesystem.readJson(this.context, 
-      path.join(this.context.paths.state, "model.json"),
-    )
-      .then((x) => (Array.isArray(x.recent) ? x.recent : []))
-      .catch(() => [])) as { providerID: ProviderID; modelID: ModelID }[]
-    for (const entry of recent) {
-      const provider = providers[entry.providerID]
-      if (!provider) continue
-      if (!provider.models[entry.modelID]) continue
-      return { providerID: entry.providerID, modelID: entry.modelID }
-    }
-
-    const provider = Object.values(providers).find((p) => !cfg.provider || Object.keys(cfg.provider).includes(p.id))
-    if (!provider) throw new Error("no providers found")
-    const [model] = sort(Object.values(provider.models))
-    if (!model) throw new Error("no models found")
-    return {
-      providerID: provider.id,
-      modelID: model.id,
-    }
-  }
-
-    private async getSDK(model: Model) {
-    try {
-      using _ = log.time("getSDK", {
-        providerID: model.providerID,
-      })
-      const s = await this._promise
-      const provider = s.providers[model.providerID]
-      const options = { ...provider.options }
-
-      if (model.providerID === "google-vertex" && !model.api.npm.includes("@ai-sdk/openai-compatible")) {
-        delete options.fetch
-      }
-
-      if (model.api.npm.includes("@ai-sdk/openai-compatible") && options["includeUsage"] !== false) {
-        options["includeUsage"] = true
-      }
-
-      const baseURL = iife(() => {
-        let url =
-          typeof options["baseURL"] === "string" && options["baseURL"] !== "" ? options["baseURL"] : model.api.url
-        if (!url) return
-
-        // some models/providers have variable urls, ex: "https://${AZURE_RESOURCE_NAME}.services.ai.azure.com/anthropic/v1"
-        // We track this in models.dev, and then when we are resolving the baseURL
-        // we need to string replace that literal: "${AZURE_RESOURCE_NAME}"
-        const loader = s.varsLoaders[model.providerID]
-        if (loader) {
-          const vars = loader(options)
-          for (const [key, value] of Object.entries(vars)) {
-            const field = "${" + key + "}"
-            url = url.replaceAll(field, value)
-          }
-        }
-
-        url = url.replace(/\$\{([^}]+)\}/g, (item, key) => {
-          const val = this.context.env.get(String(key))
-          return val ?? item
-        })
-        return url
-      })
-
-      if (baseURL !== undefined) options["baseURL"] = baseURL
-      if (options["apiKey"] === undefined && provider.key) options["apiKey"] = provider.key
-      if (model.headers)
-        options["headers"] = {
-          ...options["headers"],
-          ...model.headers,
-        }
-
-      const key = Hash.fast(JSON.stringify({ providerID: model.providerID, npm: model.api.npm, options }))
-      const existing = s.sdk.get(key)
-      if (existing) return existing
-
-      const customFetch = options["fetch"]
-      const chunkTimeout = options["chunkTimeout"] || DEFAULT_CHUNK_TIMEOUT
-      delete options["chunkTimeout"]
-
-      options["fetch"] = async (input: any, init?: RequestInit) => {
-        // Preserve custom fetch if it exists, wrap it with timeout logic
-        const fetchFn = customFetch ?? fetch
-        const opts = init ?? {}
-        const chunkAbortCtl = typeof chunkTimeout === "number" && chunkTimeout > 0 ? new AbortController() : undefined
-        const signals: AbortSignal[] = []
-
-        if (opts.signal) signals.push(opts.signal)
-        if (chunkAbortCtl) signals.push(chunkAbortCtl.signal)
-        if (options["timeout"] !== undefined && options["timeout"] !== null && options["timeout"] !== false)
-          signals.push(AbortSignal.timeout(options["timeout"]))
-
-        const combined = signals.length === 0 ? null : signals.length === 1 ? signals[0] : AbortSignal.any(signals)
-        if (combined) opts.signal = combined
-
-        // Strip openai itemId metadata following what codex does
-        // Codex uses #[serde(skip_serializing)] on id fields for all item types:
-        // Message, Reasoning, FunctionCall, LocalShellCall, CustomToolCall, WebSearchCall
-        // IDs are only re-attached for Azure with store=true
-        if (model.api.npm === "@ai-sdk/openai" && opts.body && opts.method === "POST") {
-          const body = JSON.parse(opts.body as string)
-          const isAzure = model.providerID.includes("azure")
-          const keepIds = isAzure && body.store === true
-          if (!keepIds && Array.isArray(body.input)) {
-            for (const item of body.input) {
-              if ("id" in item) {
-                delete item.id
+            const region = provider.options?.region
+            if (region) {
+              const regionPrefix = region.split("-")[0]
+              if (regionPrefix === "us" || regionPrefix === "eu") {
+                const regionalMatch = candidates.find((m) => m.startsWith(`${regionPrefix}.`))
+                if (regionalMatch) return this.getModel(providerID, ModelID.make(regionalMatch))
               }
             }
-            opts.body = JSON.stringify(body)
+
+            const unprefixed = candidates.find((m) => !crossRegionPrefixes.some((p) => m.startsWith(p)))
+            if (unprefixed) return this.getModel(providerID, ModelID.make(unprefixed))
+          } else {
+            for (const model of Object.keys(provider.models)) {
+              if (model.includes(item)) return this.getModel(providerID, ModelID.make(model))
+            }
           }
         }
-
-        const res = await fetchFn(input, {
-          ...opts,
-          // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
-          timeout: false,
-        })
-
-        if (!chunkAbortCtl) return res
-        return wrapSSE(res, chunkTimeout, chunkAbortCtl)
       }
 
-      const bundledFn = BUNDLED_PROVIDERS[model.api.npm]
-      if (bundledFn) {
-        log.info("using bundled provider", { providerID: model.providerID, pkg: model.api.npm })
-        const loaded = bundledFn({
+      return undefined
+    }
+
+    async defaultModel() {
+      const cfg = await this.context.config.get()
+      if (cfg.model) return parseModel(cfg.model)
+
+      const providers = await this.list()
+      const recent = (await Filesystem.readJson<{ recent?: { providerID: ProviderID; modelID: ModelID }[] }>(this.context, 
+        path.join(this.context.paths.state, "model.json"),
+      )
+        .then((x) => (Array.isArray(x.recent) ? x.recent : []))
+        .catch(() => [])) as { providerID: ProviderID; modelID: ModelID }[]
+      for (const entry of recent) {
+        const provider = providers[entry.providerID]
+        if (!provider) continue
+        if (!provider.models[entry.modelID]) continue
+        return { providerID: entry.providerID, modelID: entry.modelID }
+      }
+
+      const provider = Object.values(providers).find((p) => !cfg.provider || Object.keys(cfg.provider).includes(p.id))
+      if (!provider) throw new Error("no providers found")
+      const [model] = sort(Object.values(provider.models))
+      if (!model) throw new Error("no models found")
+      return {
+        providerID: provider.id,
+        modelID: model.id,
+      }
+    }
+
+    private async getSDK(model: Model) {
+      try {
+        using _ = log.time("getSDK", {
+          providerID: model.providerID,
+        })
+        const s = await this._promise
+        const provider = s.providers[model.providerID]
+        const options = { ...provider.options }
+
+        if (model.providerID === "google-vertex" && !model.api.npm.includes("@ai-sdk/openai-compatible")) {
+          delete options.fetch
+        }
+
+        if (model.api.npm.includes("@ai-sdk/openai-compatible") && options["includeUsage"] !== false) {
+          options["includeUsage"] = true
+        }
+
+        const baseURL = iife(() => {
+          let url =
+            typeof options["baseURL"] === "string" && options["baseURL"] !== "" ? options["baseURL"] : model.api.url
+          if (!url) return
+
+          // some models/providers have variable urls, ex: "https://${AZURE_RESOURCE_NAME}.services.ai.azure.com/anthropic/v1"
+          // We track this in models.dev, and then when we are resolving the baseURL
+          // we need to string replace that literal: "${AZURE_RESOURCE_NAME}"
+          const loader = s.varsLoaders[model.providerID]
+          if (loader) {
+            const vars = loader(options)
+            for (const [key, value] of Object.entries(vars)) {
+              const field = "${" + key + "}"
+              url = url.replaceAll(field, value)
+            }
+          }
+
+          url = url.replace(/\$\{([^}]+)\}/g, (item, key) => {
+            const val = this.context.env.get(String(key))
+            return val ?? item
+          })
+          return url
+        })
+
+        if (baseURL !== undefined) options["baseURL"] = baseURL
+        if (options["apiKey"] === undefined && provider.key) options["apiKey"] = provider.key
+        if (model.headers)
+          options["headers"] = {
+            ...options["headers"],
+            ...model.headers,
+          }
+
+        const key = Hash.fast(JSON.stringify({ providerID: model.providerID, npm: model.api.npm, options }))
+        const existing = s.sdk.get(key)
+        if (existing) return existing
+
+        const customFetch = options["fetch"]
+        const chunkTimeout = options["chunkTimeout"] || DEFAULT_CHUNK_TIMEOUT
+        delete options["chunkTimeout"]
+
+        options["fetch"] = async (input: any, init?: RequestInit) => {
+          // Preserve custom fetch if it exists, wrap it with timeout logic
+          const fetchFn = customFetch ?? fetch
+          const opts = init ?? {}
+          const chunkAbortCtl = typeof chunkTimeout === "number" && chunkTimeout > 0 ? new AbortController() : undefined
+          const signals: AbortSignal[] = []
+
+          if (opts.signal) signals.push(opts.signal)
+          if (chunkAbortCtl) signals.push(chunkAbortCtl.signal)
+          if (options["timeout"] !== undefined && options["timeout"] !== null && options["timeout"] !== false)
+            signals.push(AbortSignal.timeout(options["timeout"]))
+
+          const combined = signals.length === 0 ? null : signals.length === 1 ? signals[0] : AbortSignal.any(signals)
+          if (combined) opts.signal = combined
+
+          // Strip openai itemId metadata following what codex does
+          // Codex uses #[serde(skip_serializing)] on id fields for all item types:
+          // Message, Reasoning, FunctionCall, LocalShellCall, CustomToolCall, WebSearchCall
+          // IDs are only re-attached for Azure with store=true
+          if (model.api.npm === "@ai-sdk/openai" && opts.body && opts.method === "POST") {
+            const body = JSON.parse(opts.body as string)
+            const isAzure = model.providerID.includes("azure")
+            const keepIds = isAzure && body.store === true
+            if (!keepIds && Array.isArray(body.input)) {
+              for (const item of body.input) {
+                if ("id" in item) {
+                  delete item.id
+                }
+              }
+              opts.body = JSON.stringify(body)
+            }
+          }
+
+          const res = await fetchFn(input, {
+            ...opts,
+            // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
+            timeout: false,
+          })
+
+          if (!chunkAbortCtl) return res
+          return wrapSSE(res, chunkTimeout, chunkAbortCtl)
+        }
+
+        const bundledFn = BUNDLED_PROVIDERS[model.api.npm]
+        if (bundledFn) {
+          log.info("using bundled provider", { providerID: model.providerID, pkg: model.api.npm })
+          const loaded = bundledFn({
+            name: model.providerID,
+            ...options,
+          })
+          s.sdk.set(key, loaded)
+          return loaded as SDK
+        }
+
+        let installedPath: string
+        if (!model.api.npm.startsWith("file://")) {
+          installedPath = await BunProc.install(model.api.npm, "latest")
+        } else {
+          log.info("loading local provider", { pkg: model.api.npm })
+          installedPath = model.api.npm
+        }
+
+        const mod = await import(installedPath)
+
+        const fn = mod[Object.keys(mod).find((key) => key.startsWith("create"))!]
+        const loaded = fn({
           name: model.providerID,
           ...options,
         })
         s.sdk.set(key, loaded)
         return loaded as SDK
-      }
-
-      let installedPath: string
-      if (!model.api.npm.startsWith("file://")) {
-        installedPath = await BunProc.install(model.api.npm, "latest")
-      } else {
-        log.info("loading local provider", { pkg: model.api.npm })
-        installedPath = model.api.npm
-      }
-
-      const mod = await import(installedPath)
-
-      const fn = mod[Object.keys(mod).find((key) => key.startsWith("create"))!]
-      const loaded = fn({
-        name: model.providerID,
-        ...options,
-      })
-      s.sdk.set(key, loaded)
-      return loaded as SDK
-    } catch (e) {
-      throw new InitError({ providerID: model.providerID }, { cause: e })
+      } catch (e) {
+        throw new InitError({ providerID: model.providerID }, { cause: e })
     }
     }
 
