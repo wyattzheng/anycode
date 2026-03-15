@@ -32,6 +32,8 @@ describe("Project: discovery from directories", () => {
         // Create a git-initialized directory
         gitDir = path.join(tmpDir, "git-project")
         fs.mkdirSync(gitDir, { recursive: true })
+        // Resolve symlinks (macOS /var → /private/var) so assertions match realpath
+        gitDir = fs.realpathSync(gitDir)
         execSync("git init --quiet", { cwd: gitDir })
         execSync("git config user.email 'test@test.com'", { cwd: gitDir })
         execSync("git config user.name 'Test'", { cwd: gitDir })

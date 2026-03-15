@@ -211,7 +211,9 @@ export namespace Project {
     if (!name) return cwd
     name = name.replace(/[\r\n]+$/, "")
     if (!name) return cwd
-    name = Filesystem.windowsPath(name)
+    // Note: on Windows, git returns /c/path style paths that would need conversion.
+    // Our abstraction targets macOS/Linux, so no conversion needed.
+    name = name.replace(/\//g, path.sep)
     if (path.isAbsolute(name)) return path.normalize(name)
     return path.resolve(cwd, name)
   }
@@ -279,16 +281,20 @@ export namespace Project {
   }
 
   export async function fromDirectory(context: AgentContext, directory: string) {
+    // Resolve symlinks so paths from git commands (which return real paths) match
+    directory = await context.fs.realpath?.(directory) ?? directory
     log.info("fromDirectory", { directory })
 
     const data = await iife(async () => {
       const matches = Filesystem.up(context, { targets: [".git"], start: directory })
       const dotgit = await matches.next().then((x) => x.value)
       await matches.return()
+
       if (dotgit) {
         let sandbox = path.dirname(dotgit)
-        const gitBinary = which("git")
+        const gitBinary = await context.git.run(["version"], {}).then(() => true).catch(() => false)
         let id = await readCachedId(context, dotgit)
+
 
         if (!gitBinary) {
           return { id: id ?? ProjectID.global, worktree: sandbox, sandbox, vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS) }
@@ -297,6 +303,7 @@ export namespace Project {
         const worktree = await context.git.run(["rev-parse", "--git-common-dir"], { cwd: sandbox })
           .then(async (result: any) => {
             const common = gitpath(sandbox, result.text())
+
             return common === sandbox ? sandbox : path.dirname(common)
           })
           .catch(() => undefined)

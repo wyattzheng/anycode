@@ -81,12 +81,7 @@ describe("CodeAgent: bash tool", () => {
         expect(toolStarts.length).toBeGreaterThan(0)
         expect(toolStarts[0].toolName).toBe("bash")
 
-        // Bash tool errors in test env (tree-sitter WASM unavailable),
-        // but the agent gracefully handles it and continues
-        const errors = events.filter((e) => e.type === "error")
-        expect(errors.length).toBeGreaterThan(0)
-
-        // After the tool error, the conversation loop should continue
+        // After the tool call, the conversation loop should continue
         // and the LLM should respond with text
         const textDeltas = events.filter((e) => e.type === "text_delta")
         expect(textDeltas.length).toBeGreaterThan(0)

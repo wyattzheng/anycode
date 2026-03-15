@@ -33,7 +33,8 @@ export interface VFS {
     write(path: string, content: string | Uint8Array): Promise<void>
     mkdir(path: string): Promise<void>
     remove(path: string): Promise<void>
-    glob?(pattern: string, options: {
+    realpath(path: string): Promise<string>
+    glob(pattern: string, options: {
         cwd?: string
         absolute?: boolean
         dot?: boolean
