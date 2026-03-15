@@ -65,7 +65,8 @@ import { ulid } from "ulid"
 import { PartID, MessageID as MsgID, SessionID } from "../session/schema"
 import { SystemPrompt } from "../session"
 import { SessionSummary } from "../session/summary"
-import { SessionCompaction, LLMRunner } from "../session/session"
+import { SessionCompaction } from "../session/session"
+import { LLMRunner } from "./llm-runner"
 import MAX_STEPS from "../session/prompt/max-steps.txt"
 
 // ── Types ──────────────────────────────────────────────────────────────────

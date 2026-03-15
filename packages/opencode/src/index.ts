@@ -4,7 +4,7 @@
 
 export { Agent } from "./agent/agent"
 export { Session } from "./session"
-export { LLMRunner } from "./session/session"
+export { LLMRunner } from "./agent/llm-runner"
 export { SessionPrompt } from "./session/session"
 export { SystemPrompt } from "./session"
 export { LLM } from "./session/session"
