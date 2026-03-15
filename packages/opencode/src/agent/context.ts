@@ -19,7 +19,7 @@ import type { ModelsDev } from "../provider/models"
 import type { ToolRegistry } from "../tool/registry"
 import type { Skill } from "../skill"
 import type { FileWatcher } from "./project"
-import type { File } from "./project"
+
 import type { Vcs } from "./project"
 
 export interface InstancePaths {
@@ -77,6 +77,6 @@ export interface AgentContext {
     toolRegistry: ToolRegistry.ToolRegistryService
     skill: Skill.SkillService
     fileWatcher: FileWatcher.FileWatcherService
-    file: File.FileService
+
     vcs: Vcs.VcsService
 }

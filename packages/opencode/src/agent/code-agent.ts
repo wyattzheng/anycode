@@ -45,7 +45,6 @@ import { MessageV2 } from "@/agent/memory/message-v2"
 import { Truncate } from "../tool/truncation"
 
 import { FileWatcher } from "./project"
-import { File } from "./project"
 
 import { Question } from "../session/question"
 import { SessionStatus } from "../session"
@@ -322,7 +321,7 @@ export class CodeAgent {
         ctx.toolRegistry = new ToolRegistry.ToolRegistryService(ctx)
         ctx.skill = new Skill.SkillService(ctx)
         ctx.fileWatcher = new FileWatcher.FileWatcherService(ctx)
-        ctx.file = new File.FileService(ctx)
+
         ctx.vcs = new Vcs.VcsService(ctx)
 
         // Bind context to services that need it for instance methods
