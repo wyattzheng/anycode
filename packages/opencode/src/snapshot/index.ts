@@ -7,7 +7,6 @@ import { Flag } from "../util/flag"
 import z from "zod"
 import { Config } from "../config/config"
 import { Scheduler } from "../util/scheduler"
-import { Process } from "@/util/process"
 
 export namespace Snapshot {
   const log = Log.create({ service: "snapshot" })
@@ -35,13 +34,12 @@ export namespace Snapshot {
     const git = gitdir(context)
     const exists = await Filesystem.exists(context, git)
     if (!exists) return
-    const result = await Process.run(["git", ...gitArgs(context, git, ["gc", `--prune=${prune}`])], {
+    const result = await context.git.run([...gitArgs(context, git, ["gc", `--prune=${prune}`])], {
       cwd: context.directory,
-      nothrow: true,
     })
-    if (result.code !== 0) {
+    if (result.exitCode !== 0) {
       log.warn("cleanup failed", {
-        exitCode: result.code,
+        exitCode: result.exitCode,
         stderr: result.stderr.toString(),
         stdout: result.stdout.toString(),
       })
@@ -57,27 +55,26 @@ export namespace Snapshot {
     const git = gitdir(context)
     if (!(await Filesystem.exists(context, git))) {
       await Filesystem.mkdir(context, git)
-      await Process.run(["git", "init"], {
+      await context.git.run(["init"], {
         env: {
           ...process.env,
           GIT_DIR: git,
           GIT_WORK_TREE: context.worktree,
         },
-        nothrow: true,
       })
 
       // Configure git to not convert line endings on Windows
-      await Process.run(["git", "--git-dir", git, "config", "core.autocrlf", "false"], { nothrow: true })
-      await Process.run(["git", "--git-dir", git, "config", "core.longpaths", "true"], { nothrow: true })
-      await Process.run(["git", "--git-dir", git, "config", "core.symlinks", "true"], { nothrow: true })
-      await Process.run(["git", "--git-dir", git, "config", "core.fsmonitor", "false"], { nothrow: true })
+      await context.git.run(["--git-dir", git, "config", "core.autocrlf", "false"])
+      await context.git.run(["--git-dir", git, "config", "core.longpaths", "true"])
+      await context.git.run(["--git-dir", git, "config", "core.symlinks", "true"])
+      await context.git.run(["--git-dir", git, "config", "core.fsmonitor", "false"])
       log.info("initialized")
     }
     await add(context, git)
-    const hash = await Process.text(["git", ...gitArgs(context, git, ["write-tree"])], {
+    const result = await context.git.run([...gitArgs(context, git, ["write-tree"])], {
       cwd: context.directory,
-      nothrow: true,
-    }).then((x) => x.text)
+    })
+    const hash = result.text()
     log.info("tracking", { hash, cwd: context.directory, git })
     return hash.trim()
   }
@@ -91,9 +88,8 @@ export namespace Snapshot {
   export async function patch(context: AgentContext, hash: string): Promise<Patch> {
     const git = gitdir(context)
     await add(context, git)
-    const result = await Process.text(
+    const result = await context.git.run(
       [
-        "git",
         "-c",
         "core.autocrlf=false",
         "-c",
@@ -106,21 +102,19 @@ export namespace Snapshot {
       ],
       {
         cwd: context.directory,
-        nothrow: true,
       },
     )
 
     // If git diff fails, return empty patch
-    if (result.code !== 0) {
-      log.warn("failed to get diff", { hash, exitCode: result.code })
+    if (result.exitCode !== 0) {
+      log.warn("failed to get diff", { hash, exitCode: result.exitCode })
       return { hash, files: [] }
     }
 
-    const files = result.text
+    const files = result.text()
     return {
       hash,
       files: files
-        .trim()
         .split("\n")
         .map((x) => x.trim())
         .filter(Boolean)
@@ -131,25 +125,23 @@ export namespace Snapshot {
   export async function restore(context: AgentContext, snapshot: string) {
     log.info("restore", { commit: snapshot })
     const git = gitdir(context)
-    const result = await Process.run(
-      ["git", "-c", "core.longpaths=true", "-c", "core.symlinks=true", ...gitArgs(context, git, ["read-tree", snapshot])],
+    const result = await context.git.run(
+      ["-c", "core.longpaths=true", "-c", "core.symlinks=true", ...gitArgs(context, git, ["read-tree", snapshot])],
       {
         cwd: context.worktree,
-        nothrow: true,
       },
     )
-    if (result.code === 0) {
-      const checkout = await Process.run(
-        ["git", "-c", "core.longpaths=true", "-c", "core.symlinks=true", ...gitArgs(context, git, ["checkout-index", "-a", "-f"])],
+    if (result.exitCode === 0) {
+      const checkout = await context.git.run(
+        ["-c", "core.longpaths=true", "-c", "core.symlinks=true", ...gitArgs(context, git, ["checkout-index", "-a", "-f"])],
         {
           cwd: context.worktree,
-          nothrow: true,
         },
       )
-      if (checkout.code === 0) return
+      if (checkout.exitCode === 0) return
       log.error("failed to restore snapshot", {
         snapshot,
-        exitCode: checkout.code,
+        exitCode: checkout.exitCode,
         stderr: checkout.stderr.toString(),
         stdout: checkout.stdout.toString(),
       })
@@ -158,7 +150,7 @@ export namespace Snapshot {
 
     log.error("failed to restore snapshot", {
       snapshot,
-      exitCode: result.code,
+      exitCode: result.exitCode,
       stderr: result.stderr.toString(),
       stdout: result.stdout.toString(),
     })
@@ -171,9 +163,8 @@ export namespace Snapshot {
       for (const file of item.files) {
         if (files.has(file)) continue
         log.info("reverting", { file, hash: item.hash })
-        const result = await Process.run(
+        const result = await context.git.run(
           [
-            "git",
             "-c",
             "core.longpaths=true",
             "-c",
@@ -182,14 +173,12 @@ export namespace Snapshot {
           ],
           {
             cwd: context.worktree,
-            nothrow: true,
           },
         )
-        if (result.code !== 0) {
+        if (result.exitCode !== 0) {
           const relativePath = path.relative(context.worktree, file)
-          const checkTree = await Process.text(
+          const checkTree = await context.git.run(
             [
-              "git",
               "-c",
               "core.longpaths=true",
               "-c",
@@ -198,10 +187,9 @@ export namespace Snapshot {
             ],
             {
               cwd: context.worktree,
-              nothrow: true,
             },
           )
-          if (checkTree.code === 0 && checkTree.text.trim()) {
+          if (checkTree.exitCode === 0 && checkTree.text().trim()) {
             log.info("file existed in snapshot but checkout failed, keeping", {
               file,
             })
@@ -218,9 +206,8 @@ export namespace Snapshot {
   export async function diff(context: AgentContext, hash: string) {
     const git = gitdir(context)
     await add(context, git)
-    const result = await Process.text(
+    const result = await context.git.run(
       [
-        "git",
         "-c",
         "core.autocrlf=false",
         "-c",
@@ -233,21 +220,20 @@ export namespace Snapshot {
       ],
       {
         cwd: context.worktree,
-        nothrow: true,
       },
     )
 
-    if (result.code !== 0) {
+    if (result.exitCode !== 0) {
       log.warn("failed to get diff", {
         hash,
-        exitCode: result.code,
+        exitCode: result.exitCode,
         stderr: result.stderr.toString(),
         stdout: result.stdout.toString(),
       })
       return ""
     }
 
-    return result.text.trim()
+    return result.text().trim()
   }
 
   export const FileDiff = z
@@ -268,9 +254,8 @@ export namespace Snapshot {
     const result: FileDiff[] = []
     const status = new Map<string, "added" | "deleted" | "modified">()
 
-    const statuses = await Process.text(
+    const statusesResult = await context.git.run(
       [
-        "git",
         "-c",
         "core.autocrlf=false",
         "-c",
@@ -283,9 +268,9 @@ export namespace Snapshot {
       ],
       {
         cwd: context.directory,
-        nothrow: true,
       },
-    ).then((x) => x.text)
+    )
+    const statuses = statusesResult.text()
 
     for (const line of statuses.trim().split("\n")) {
       if (!line) continue
@@ -295,9 +280,8 @@ export namespace Snapshot {
       status.set(file, kind)
     }
 
-    for (const line of await Process.lines(
+    const numstatResult = await context.git.run(
       [
-        "git",
         "-c",
         "core.autocrlf=false",
         "-c",
@@ -310,17 +294,18 @@ export namespace Snapshot {
       ],
       {
         cwd: context.directory,
-        nothrow: true,
       },
-    )) {
+    )
+    const numstatLines = numstatResult.text().split(/\r?\n/).filter(Boolean)
+
+    for (const line of numstatLines) {
       if (!line) continue
       const [additions, deletions, file] = line.split("\t")
       const isBinaryFile = additions === "-" && deletions === "-"
       const before = isBinaryFile
         ? ""
-        : await Process.text(
+        : (await context.git.run(
             [
-              "git",
               "-c",
               "core.autocrlf=false",
               "-c",
@@ -329,13 +314,11 @@ export namespace Snapshot {
               "core.symlinks=true",
               ...gitArgs(context, git, ["show", `${from}:${file}`]),
             ],
-            { nothrow: true },
-          ).then((x) => x.text)
+          )).text()
       const after = isBinaryFile
         ? ""
-        : await Process.text(
+        : (await context.git.run(
             [
-              "git",
               "-c",
               "core.autocrlf=false",
               "-c",
@@ -344,8 +327,7 @@ export namespace Snapshot {
               "core.symlinks=true",
               ...gitArgs(context, git, ["show", `${to}:${file}`]),
             ],
-            { nothrow: true },
-          ).then((x) => x.text)
+          )).text()
       const added = isBinaryFile ? 0 : parseInt(additions)
       const deleted = isBinaryFile ? 0 : parseInt(deletions)
       result.push({
@@ -367,9 +349,8 @@ export namespace Snapshot {
 
   async function add(context: AgentContext, git: string) {
     await syncExclude(context, git)
-    await Process.run(
+    await context.git.run(
       [
-        "git",
         "-c",
         "core.autocrlf=false",
         "-c",
@@ -380,7 +361,6 @@ export namespace Snapshot {
       ],
       {
         cwd: context.directory,
-        nothrow: true,
       },
     )
   }
@@ -399,10 +379,10 @@ export namespace Snapshot {
   }
 
   async function excludes(context: AgentContext) {
-    const file = await Process.text(["git", "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"], {
+    const result = await context.git.run(["rev-parse", "--path-format=absolute", "--git-path", "info/exclude"], {
       cwd: context.worktree,
-      nothrow: true,
-    }).then((x) => x.text)
+    })
+    const file = result.text()
     if (!file.trim()) return
     const exists = await Filesystem.exists(context, file.trim())
     if (!exists) return

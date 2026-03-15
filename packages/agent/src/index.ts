@@ -34,7 +34,9 @@ import type { ToolDefinition } from "@any-code/opencode/util/plugin"
 export type { VirtualFileSystem, VFSStat, VFSDirEntry } from "./vfs"
 export { NodeFS } from "./vfs-node"
 export { NodeSearchProvider } from "./search-node"
+export { NodeGitProvider } from "./git"
 import { NodeSearchProvider } from "./search-node"
+import { NodeGitProvider } from "./git"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -153,6 +155,13 @@ export interface CodeAgentOptions {
 
     /** Pre-resolved root worktree directory. Defaults to directory. */
     worktree?: string
+
+    /**
+     * Git command executor.
+     * Defaults to NodeGitProvider (shells out to local git binary).
+     * Provide a custom implementation for non-Node environments.
+     */
+    git?: import("@any-code/opencode/util/git").GitProvider
 }
 
 export interface CodeAgentSession {
@@ -197,6 +206,7 @@ export class CodeAgent {
     private initialized = false
     private _fs: import("./vfs").VirtualFileSystem | undefined
     private _search: import("@any-code/opencode/util/search").SearchProvider
+    private _git: import("@any-code/opencode/util/git").GitProvider
     private _storageProvider: import("./storage").StorageProvider | undefined
     private _dbClient: any
     /** Unique scope identifier for context isolation */
@@ -210,6 +220,7 @@ export class CodeAgent {
             this._fs = options.fs
         }
         this._search = options.search ?? new NodeSearchProvider()
+        this._git = options.git ?? new NodeGitProvider()
     }
 
     /**
@@ -233,6 +244,7 @@ export class CodeAgent {
             worktree,
             project: project as any,
             fs: this._fs as any,
+            git: this._git as any,
             search: this._search as any,
             paths: this.options.paths as any,
             config: this.options.config as any,

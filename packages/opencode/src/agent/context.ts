@@ -2,6 +2,7 @@ import { Project } from "../project/project"
 import { VFS } from "../util/vfs"
 import { SearchProvider } from "../util/search"
 import { State } from "../project/state"
+import type { GitProvider } from "../util/git"
 
 export interface InstancePaths {
     data: string
@@ -24,6 +25,8 @@ export interface AgentContext {
     project: Project.Info
     /** Virtual File System implementation */
     fs: VFS
+    /** Git command executor */
+    git: GitProvider
     /** Search Provider implementation */
     search?: SearchProvider
     /** Common local paths specific to this context */
@@ -34,7 +37,7 @@ export interface AgentContext {
     config?: Record<string, unknown>
     /** Instructions overrides (optional) */
     instructions?: string[]
-    /** Database client (drizzle) — set during init, used for all DB operations */
+    /** Database client — set during init, used for all DB operations */
     db: any
 }
 

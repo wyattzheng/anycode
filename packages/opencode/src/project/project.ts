@@ -10,7 +10,7 @@ import { BusEvent } from "@/bus/bus-event"
 import { iife } from "@/util/iife"
 import { GlobalBus } from "@/bus/global"
 
-import { git } from "../util/git"
+
 import { Glob } from "../util/glob"
 import { which } from "../util/which"
 import { ProjectID } from "./schema"
@@ -118,11 +118,11 @@ export namespace Project {
           }
         }
 
-        const worktree = await git(["rev-parse", "--git-common-dir"], {
+        const worktree = await context.git.run(["rev-parse", "--git-common-dir"], {
           cwd: sandbox,
         })
-          .then(async (result) => {
-            const common = gitpath(sandbox, await result.text())
+          .then(async (result: any) => {
+            const common = gitpath(sandbox, result.text())
             // Avoid going to parent of sandbox when git-common-dir is empty.
             return common === sandbox ? sandbox : path.dirname(common)
           })
@@ -146,14 +146,14 @@ export namespace Project {
 
         // generate id from root commit
         if (!id) {
-          const roots = await git(["rev-list", "--max-parents=0", "HEAD"], {
+          const roots = await context.git.run(["rev-list", "--max-parents=0", "HEAD"], {
             cwd: sandbox,
           })
-            .then(async (result) =>
-              (await result.text())
+            .then(async (result: any) =>
+              result.text()
                 .split("\n")
                 .filter(Boolean)
-                .map((x) => x.trim())
+                .map((x: string) => x.trim())
                 .toSorted(),
             )
             .catch(() => undefined)
@@ -183,10 +183,10 @@ export namespace Project {
           }
         }
 
-        const top = await git(["rev-parse", "--show-toplevel"], {
+        const top = await context.git.run(["rev-parse", "--show-toplevel"], {
           cwd: sandbox,
         })
-          .then(async (result) => gitpath(sandbox, await result.text()))
+          .then(async (result: any) => gitpath(sandbox, result.text()))
           .catch(() => undefined)
 
         if (!top) {
@@ -330,7 +330,7 @@ export namespace Project {
     if (input.project.vcs === "git") return input.project
     if (!which("git")) throw new Error("Git is not installed")
 
-    const result = await git(["init", "--quiet"], {
+    const result = await context.git.run(["init", "--quiet"], {
       cwd: input.directory,
     })
     if (result.exitCode !== 0) {

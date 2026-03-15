@@ -8,7 +8,7 @@ import { Lock } from "../util/lock"
 import { NamedError } from "@/util/error"
 import z from "zod"
 import { Glob } from "../util/glob"
-import { git } from "@/util/git"
+
 
 export namespace Storage {
   const log = Log.create({ service: "storage" })
@@ -49,7 +49,7 @@ export namespace Storage {
           }
           if (!worktree) continue
           if (!(await Filesystem.isDir(context, worktree))) continue
-          const result = await git(["rev-list", "--max-parents=0", "--all"], {
+          const result = await context.git.run(["rev-list", "--max-parents=0", "--all"], {
             cwd: worktree,
           })
           const [id] = result

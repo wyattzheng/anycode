@@ -10,7 +10,7 @@ import { Log } from "../util/log"
 import { Filesystem } from "../util/filesystem"
 import { Bus } from "../bus"
 import fuzzysort from "fuzzysort"
-import { git } from "@/util/git"
+
 import { Protected } from "./protected"
 
 export namespace File {
@@ -418,7 +418,7 @@ export namespace File {
     if (project.vcs !== "git") return []
 
     const diffOutput = (
-      await git(["-c", "core.fsmonitor=false", "-c", "core.quotepath=false", "diff", "--numstat", "HEAD"], {
+      await context.git.run(["-c", "core.fsmonitor=false", "-c", "core.quotepath=false", "diff", "--numstat", "HEAD"], {
         cwd: context.directory,
       })
     ).text()
@@ -439,7 +439,7 @@ export namespace File {
     }
 
     const untrackedOutput = (
-      await git(
+      await context.git.run(
         ["-c", "core.fsmonitor=false", "-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard"],
         {
           cwd: context.directory,
@@ -467,7 +467,7 @@ export namespace File {
 
     // Get deleted files
     const deletedOutput = (
-      await git(
+      await context.git.run(
         ["-c", "core.fsmonitor=false", "-c", "core.quotepath=false", "diff", "--name-only", "--diff-filter=D", "HEAD"],
         {
           cwd: context.directory,
@@ -544,14 +544,14 @@ export namespace File {
     const content = (await Filesystem.readText(context, full).catch(() => "")).trim()
 
     if (project.vcs === "git") {
-      let diff = (await git(["-c", "core.fsmonitor=false", "diff", "--", file], { cwd: context.directory })).text()
+      let diff = (await context.git.run(["-c", "core.fsmonitor=false", "diff", "--", file], { cwd: context.directory })).text()
       if (!diff.trim()) {
         diff = (
-          await git(["-c", "core.fsmonitor=false", "diff", "--staged", "--", file], { cwd: context.directory })
+          await context.git.run(["-c", "core.fsmonitor=false", "diff", "--staged", "--", file], { cwd: context.directory })
         ).text()
       }
       if (diff.trim()) {
-        const original = (await git(["show", `HEAD:${file}`], { cwd: context.directory })).text()
+        const original = (await context.git.run(["show", `HEAD:${file}`], { cwd: context.directory })).text()
         const patch = structuredPatch(file, file, original, content, "old", "new", {
           context: Infinity,
           ignoreWhitespace: true,

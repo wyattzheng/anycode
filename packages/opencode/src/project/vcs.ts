@@ -6,7 +6,7 @@ import path from "path"
 import z from "zod"
 import { Log } from "@/util/log"
 import { FileWatcher } from "@/file/watcher"
-import { git } from "@/util/git"
+
 
 const log = Log.create({ service: "vcs" })
 
@@ -30,7 +30,7 @@ export namespace Vcs {
   export type Info = z.infer<typeof Info>
 
   async function currentBranch(context: AgentContext) {
-    const result = await git(["rev-parse", "--abbrev-ref", "HEAD"], {
+    const result = await context.git.run(["rev-parse", "--abbrev-ref", "HEAD"], {
       cwd: context.worktree,
     })
     if (result.exitCode !== 0) return

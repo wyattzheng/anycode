@@ -14,7 +14,7 @@ import { withTimeout } from "@/util/timeout"
 import type ParcelWatcher from "@parcel/watcher"
 import { Flag } from "@/util/flag"
 import { readdir } from "fs/promises"
-import { git } from "@/util/git"
+
 import { Protected } from "./protected"
 
 const SUBSCRIBE_TIMEOUT_MS = 10_000
@@ -90,7 +90,7 @@ export namespace FileWatcher {
       }
 
       if (context.project.vcs === "git") {
-        const result = await git(["rev-parse", "--git-dir"], {
+        const result = await context.git.run(["rev-parse", "--git-dir"], {
           cwd: context.worktree,
         })
         const vcsDir = result.exitCode === 0 ? path.resolve(context.worktree, result.text().trim()) : undefined
