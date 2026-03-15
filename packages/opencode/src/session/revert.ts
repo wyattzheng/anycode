@@ -5,7 +5,7 @@ import { MessageV2 } from "./message-v2"
 import { Session } from "."
 import { Log } from "../util/log"
 
-import { Storage } from "@/storage/storage"
+import { Storage } from "@/storage"
 import { Bus } from "../bus"
 import { SessionPrompt } from "./session"
 import { SessionSummary } from "./summary"

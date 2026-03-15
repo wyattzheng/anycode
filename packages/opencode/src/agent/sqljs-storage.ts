@@ -5,8 +5,8 @@
  * Returns a NoSqlDb interface backed by sql.js.
  */
 import type { StorageProvider, Migration } from "./code-agent"
-import type { NoSqlDb } from "../storage/nosql"
-import type { RawSqliteDb } from "../storage/sqlite-nosql"
+import type { NoSqlDb } from "../storage"
+import type { RawSqliteDb } from "../storage"
 
 export class SqlJsStorage implements StorageProvider {
     private db: any = null

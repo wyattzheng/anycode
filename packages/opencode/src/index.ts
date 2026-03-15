@@ -15,7 +15,7 @@ export { Provider } from "./provider/provider"
 export { Config } from "./config/config"
 export { Bus } from "./bus"
 export { Log } from "./util/log"
-export { Database } from "./storage/db"
+export { Database } from "./storage"
 
 // Schema types
 export { SessionID, MessageID, PartID } from "./session/schema"

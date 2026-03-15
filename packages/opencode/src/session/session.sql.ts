@@ -6,7 +6,7 @@ import type { PermissionNext } from "../permission/next"
 import type { ProjectID } from "../project/schema"
 import type { SessionID, MessageID, PartID } from "./schema"
 type WorkspaceID = string
-import { Timestamps } from "../storage/schema.sql"
+import { Timestamps } from "../storage"
 
 type PartData = Omit<MessageV2.Part, "id" | "sessionID" | "messageID">
 type InfoData = Omit<MessageV2.Info, "id" | "sessionID">

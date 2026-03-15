@@ -5,8 +5,8 @@
  * Returns a NoSqlDb interface backed by better-sqlite3.
  */
 import type { StorageProvider, Migration } from "./code-agent"
-import type { NoSqlDb } from "../storage/nosql"
-import type { RawSqliteDb } from "../storage/sqlite-nosql"
+import type { NoSqlDb } from "../storage"
+import type { RawSqliteDb } from "../storage"
 
 export class BetterSqliteStorage implements StorageProvider {
     private sqlite: any = null

@@ -10,10 +10,10 @@ import { Config } from "../config/config"
 import { Flag } from "../util/flag"
 import { Installation } from "../util/installation"
 
-import { NotFoundError } from "../storage/db"
-import type { Filter } from "../storage/nosql"
+import { NotFoundError } from "../storage"
+import type { Filter } from "../storage"
 
-import { Storage } from "@/storage/storage"
+import { Storage } from "@/storage"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
 
