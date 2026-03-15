@@ -583,49 +583,6 @@ export namespace Project {
   }
 }
 
-// ── Vcs ─────────────────────────────────────────────────────────────────────
-
-export namespace Vcs {
-  const log = Log.create({ service: "vcs" })
-
-  export const Event = {
-    BranchUpdated: BusEvent.define("vcs.branch.updated", z.object({ branch: z.string().optional() })),
-  }
-
-  export const Info = z.object({ branch: z.string() }).meta({ ref: "VcsInfo" })
-  export type Info = z.infer<typeof Info>
-
-  async function currentBranch(context: AgentContext) {
-    const result = await context.git.run(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: context.worktree })
-    if (result.exitCode !== 0) return
-    const text = result.text().trim()
-    if (!text) return
-    return text
-  }
-
-  export class VcsService {
-    branch: string | undefined = undefined
-    unsub: (() => void) | undefined = undefined
-
-    constructor(context: AgentContext) {
-      ;(async () => {
-        if (context.project.vcs !== "git") return
-        this.branch = await currentBranch(context)
-        log.info("initialized", { branch: this.branch })
-
-        this.unsub = Bus.subscribe(context, FileWatcher.Event.Updated, async (evt) => {
-          if (evt.properties.file.endsWith("HEAD")) return
-          const next = await currentBranch(context)
-          if (next !== this.branch) {
-            log.info("branch changed", { from: this.branch, to: next })
-            this.branch = next
-            Bus.publish(context, Event.BranchUpdated, { branch: next })
-          }
-        })
-      })()
-    }
-  }
-}
 
 // ── File ────────────────────────────────────────────────────────────────────
 

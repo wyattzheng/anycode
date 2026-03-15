@@ -54,7 +54,7 @@ import { Agent } from "../agent/agent"
 import { Provider } from "../provider/provider"
 import { ModelsDev } from "../provider/models"
 import { Skill } from "../skill"
-import { Vcs } from "./project"
+
 import z from "zod"
 import { SessionRevert } from "../session/revert"
 import { NamedError } from "../util/error"
@@ -322,7 +322,7 @@ export class CodeAgent {
         ctx.skill = new Skill.SkillService(ctx)
         ctx.fileWatcher = new FileWatcher.FileWatcherService(ctx)
 
-        ctx.vcs = new Vcs.VcsService(ctx)
+
 
         // Bind context to services that need it for instance methods
         ctx.instruction.bind(ctx)

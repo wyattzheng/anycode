@@ -20,7 +20,7 @@ import type { ToolRegistry } from "../tool/registry"
 import type { Skill } from "../skill"
 import type { FileWatcher } from "./project"
 
-import type { Vcs } from "./project"
+
 
 export interface InstancePaths {
     data: string
@@ -78,5 +78,5 @@ export interface AgentContext {
     skill: Skill.SkillService
     fileWatcher: FileWatcher.FileWatcherService
 
-    vcs: Vcs.VcsService
+
 }
