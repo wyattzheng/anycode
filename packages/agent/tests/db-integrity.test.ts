@@ -22,7 +22,7 @@ import { buildHelloworldFixtures } from "./fixtures/helloworld-html-stream"
 import { RESPONSES_API_BODY } from "./fixtures/text-stream"
 
 import type { StorageProvider, Migration } from "../src/storage"
-import type { NoSqlDb } from "@any-code/opencode/storage/nosql"
+import type { NoSqlDb } from "@any-code/opencode/storage/index"
 import { SqlJsStorage } from "../src/storage-sqljs"
 import { InMemorySearchProvider } from "./fixtures/search-memory"
 

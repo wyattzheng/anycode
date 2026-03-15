@@ -15,7 +15,7 @@ import { createTempDir, cleanupTempDir } from "./setup"
 import path from "path"
 import fs from "fs"
 import { execSync } from "child_process"
-import { Project } from "@any-code/opencode/project"
+import { Project } from "@any-code/opencode/project/index"
 import { SqlJsStorage } from "../src/storage-sqljs"
 
 describe("Project: discovery from directories", () => {

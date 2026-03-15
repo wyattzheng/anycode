@@ -5,8 +5,8 @@
  * Returns a NoSqlDb interface backed by better-sqlite3.
  */
 import type { StorageProvider, Migration } from "./storage"
-import type { NoSqlDb } from "@any-code/opencode/storage/nosql"
-import type { RawSqliteDb } from "@any-code/opencode/storage/sqlite-nosql"
+import type { NoSqlDb } from "@any-code/opencode/storage/index"
+import type { RawSqliteDb } from "@any-code/opencode/storage/index"
 
 export class BetterSqliteStorage implements StorageProvider {
     private sqlite: any = null
@@ -46,7 +46,7 @@ export class BetterSqliteStorage implements StorageProvider {
 
         // Wrap better-sqlite3 as RawSqliteDb
         const raw = this.createRawDb()
-        const { SqliteNoSqlDb } = await import("@any-code/opencode/storage/sqlite-nosql")
+        const { SqliteNoSqlDb } = await import("@any-code/opencode/storage/index")
         return new SqliteNoSqlDb(raw)
     }
 
