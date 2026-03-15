@@ -37,6 +37,21 @@ export namespace ProviderTransform {
     model: Provider.Model,
     _options: Record<string, unknown>,
   ): ModelMessage[] {
+    // Strip reasoning parts from historical messages for openai-compatible providers.
+    // When proxied to Anthropic, reasoning_content becomes a thinking block that
+    // requires a signature field — which we don't have. Reasoning from previous
+    // turns is not needed for context, so stripping it is safe and prevents errors.
+    if (model.api.npm === "@ai-sdk/openai-compatible") {
+      msgs = msgs.map((msg) => {
+        if (msg.role === "assistant" && Array.isArray(msg.content)) {
+          const filtered = msg.content.filter((part: any) => part.type !== "reasoning")
+          if (filtered.length === 0) return msg
+          return { ...msg, content: filtered }
+        }
+        return msg
+      })
+    }
+
     // Anthropic rejects messages with empty content
     if (model.api.npm === "@ai-sdk/anthropic") {
       msgs = msgs
