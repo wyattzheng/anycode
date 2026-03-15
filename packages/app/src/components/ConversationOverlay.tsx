@@ -52,8 +52,10 @@ export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
     const [showTextInput, setShowTextInput] = useState(false);
     const [busy, setBusy] = useState(false);
     const [position, setPosition] = useState({ x: 0, y: 0 });
+    const [size, setSize] = useState({ w: 220, h: 280 });
 
     const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+    const resizeRef = useRef<{ startX: number; startY: number; origW: number; origH: number } | null>(null);
     const recordStartTime = useRef<number>(0);
     const [elapsed, setElapsed] = useState(0);
     const msgsRef = useRef<HTMLDivElement>(null);
@@ -262,6 +264,36 @@ export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
         window.addEventListener("touchmove", onMove, { passive: false }); window.addEventListener("touchend", onUp);
     };
 
+    // ── Resize (bottom-left handle) ──
+    const onResizeStart = useCallback((cx: number, cy: number) => {
+        resizeRef.current = { startX: cx, startY: cy, origW: size.w, origH: size.h };
+    }, [size]);
+    const onResizeMove = useCallback((cx: number, cy: number) => {
+        if (!resizeRef.current) return;
+        const dw = resizeRef.current.startX - cx; // drag left → wider
+        const dh = cy - resizeRef.current.startY; // drag down → taller
+        setSize({
+            w: Math.max(180, Math.min(600, resizeRef.current.origW + dw)),
+            h: Math.max(200, Math.min(800, resizeRef.current.origH + dh)),
+        });
+    }, []);
+    const onResizeEnd = useCallback(() => { resizeRef.current = null; }, []);
+
+    const handleResizeMouseDown = (e: React.MouseEvent) => {
+        e.preventDefault(); e.stopPropagation();
+        onResizeStart(e.clientX, e.clientY);
+        const onMove = (ev: MouseEvent) => onResizeMove(ev.clientX, ev.clientY);
+        const onUp = () => { onResizeEnd(); window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+        window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
+    };
+    const handleResizeTouchStart = (e: React.TouchEvent) => {
+        e.stopPropagation();
+        const t = e.touches[0]; onResizeStart(t.clientX, t.clientY);
+        const onMove = (ev: TouchEvent) => { ev.preventDefault(); onResizeMove(ev.touches[0].clientX, ev.touches[0].clientY); };
+        const onUp = () => { onResizeEnd(); window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onUp); };
+        window.addEventListener("touchmove", onMove, { passive: false }); window.addEventListener("touchend", onUp);
+    };
+
     // ── Render parts ──
     const renderPart = (part: ResponsePart, i: number) => {
         switch (part.kind) {
@@ -290,7 +322,7 @@ export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
     };
 
     return (
-        <div className="conversation-panel" style={{ transform: `translate(${position.x}px, ${position.y}px)` }}>
+        <div className="conversation-panel" style={{ transform: `translate(${position.x}px, ${position.y}px)`, width: size.w, height: size.h }}>
             <div className="conversation-header" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart}>
                 <div className="drag-grip" />
                 <div className="conversation-header-content"><ChatIcon /> 对话</div>
@@ -344,6 +376,7 @@ export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
                     </>
                 )}
             </div>
+            <div className="resize-grip" onMouseDown={handleResizeMouseDown} onTouchStart={handleResizeTouchStart} />
         </div>
     );
 }
