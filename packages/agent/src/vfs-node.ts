@@ -8,9 +8,15 @@ import fs from "fs/promises"
 import { existsSync, statSync, readdirSync } from "fs"
 import path from "path"
 import { spawn } from "child_process"
-import type { VirtualFileSystem, VFSStat, VFSDirEntry, GrepOptions, GrepMatch } from "./vfs"
+import type { VFS, VFSStat, VFSDirEntry } from "./util/vfs"
+import type { GrepMatch } from "./util/search"
 
-export class NodeFS implements VirtualFileSystem {
+export interface GrepOptions {
+    maxResults?: number
+    include?: string[]
+}
+
+export class NodeFS implements VFS {
     async exists(p: string): Promise<boolean> {
         return existsSync(p)
     }

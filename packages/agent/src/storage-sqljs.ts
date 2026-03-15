@@ -4,8 +4,17 @@
  * Used for tests — no filesystem needed.
  * Returns a NoSqlDb interface backed by sql.js.
  */
-import type { StorageProvider, Migration } from "./storage"
 import type { NoSqlDb, RawSqliteDb } from "./storage"
+
+export interface Migration {
+    name: string
+    sql: string
+    timestamp: number
+}
+
+export interface StorageProvider {
+    connect(migrations: Migration[]): Promise<NoSqlDb>
+}
 
 export class SqlJsStorage implements StorageProvider {
     private db: any = null
