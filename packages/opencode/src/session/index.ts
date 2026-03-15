@@ -37,6 +37,15 @@ const WorkspaceID = { zod: z.string() }
 // WorkspaceContext stub (control-plane removed)
 const WorkspaceContext = { workspaceID: undefined as string | undefined }
 
+import PROMPT_ANTHROPIC from "./prompt/anthropic.txt"
+import PROMPT_ANTHROPIC_WITHOUT_TODO from "./prompt/qwen.txt"
+import PROMPT_BEAST from "./prompt/beast.txt"
+import PROMPT_GEMINI from "./prompt/gemini.txt"
+import PROMPT_CODEX from "./prompt/codex_header.txt"
+import PROMPT_TRINITY from "./prompt/trinity.txt"
+import type { Agent } from "@/agent/agent"
+import { Skill } from "@/skill"
+
 export namespace Session {
   const log = Log.create({ service: "session" })
 
@@ -778,4 +787,182 @@ export namespace Session {
       })
     },
   )
+}
+
+// Merged from session/status.ts
+export namespace SessionStatus {
+  export const Info = z
+    .union([
+      z.object({
+        type: z.literal("idle"),
+      }),
+      z.object({
+        type: z.literal("retry"),
+        attempt: z.number(),
+        message: z.string(),
+        next: z.number(),
+      }),
+      z.object({
+        type: z.literal("busy"),
+      }),
+    ])
+    .meta({
+      ref: "SessionStatus",
+    })
+  export type Info = z.infer<typeof Info>
+
+  export const Event = {
+    Status: BusEvent.define(
+      "session.status",
+      z.object({
+        sessionID: SessionID.zod,
+        status: Info,
+      }),
+    ),
+    // deprecated
+    Idle: BusEvent.define(
+      "session.idle",
+      z.object({
+        sessionID: SessionID.zod,
+      }),
+    ),
+  }
+
+  /**
+   * SessionStatusService — tracks per-session busy/idle/retry status.
+   */
+  export class SessionStatusService {
+    private statuses: Record<string, Info> = {}
+
+    constructor(private context?: AgentContext) {}
+
+    get(sessionID: SessionID): Info {
+      return this.statuses[sessionID] ?? { type: "idle" }
+    }
+
+    list(): Record<string, Info> {
+      return this.statuses
+    }
+
+    set(sessionID: SessionID, status: Info): void {
+      if (this.context) {
+        Bus.publish(this.context, Event.Status, { sessionID, status })
+      }
+      if (status.type === "idle") {
+        if (this.context) {
+          Bus.publish(this.context, Event.Idle, { sessionID })
+        }
+        delete this.statuses[sessionID]
+        return
+      }
+      this.statuses[sessionID] = status
+    }
+  }
+
+}
+
+// Merged from session/todo.ts
+export namespace Todo {
+  export const Info = z
+    .object({
+      content: z.string().describe("Brief description of the task"),
+      status: z.string().describe("Current status of the task: pending, in_progress, completed, cancelled"),
+      priority: z.string().describe("Priority level of the task: high, medium, low"),
+    })
+    .meta({ ref: "Todo" })
+  export type Info = z.infer<typeof Info>
+
+  export const Event = {
+    Updated: BusEvent.define(
+      "todo.updated",
+      z.object({
+        sessionID: SessionID.zod,
+        todos: z.array(Info),
+      }),
+    ),
+  }
+
+  export function update(context: AgentContext, input: { sessionID: SessionID; todos: Info[] }) {
+    context.db.transaction((tx: any) => {
+      tx.remove("todo", { op: "eq", field: "session_id", value: input.sessionID })
+      if (input.todos.length === 0) return
+      for (const [position, todo] of input.todos.entries()) {
+        tx.insert("todo", {
+          session_id: input.sessionID,
+          content: todo.content,
+          status: todo.status,
+          priority: todo.priority,
+          position,
+        })
+      }
+    })
+    Bus.publish(context, Event.Updated, input)
+  }
+
+  export function get(context: AgentContext, sessionID: SessionID) {
+    const rows = context.db.findMany("todo", {
+      filter: { op: "eq", field: "session_id", value: sessionID },
+      orderBy: [{ field: "position", direction: "asc" }],
+    })
+    return rows.map((row: any) => ({
+      content: row.content,
+      status: row.status,
+      priority: row.priority,
+    }))
+  }
+}
+
+// Merged from session/system.ts
+export namespace SystemPrompt {
+  export function instructions() {
+    return PROMPT_CODEX.trim()
+  }
+
+  export function provider(model: Provider.Model) {
+    if (model.api.id.includes("gpt-5")) return [PROMPT_CODEX]
+    if (model.api.id.includes("gpt-") || model.api.id.includes("o1") || model.api.id.includes("o3"))
+      return [PROMPT_BEAST]
+    if (model.api.id.includes("gemini-")) return [PROMPT_GEMINI]
+    if (model.api.id.includes("claude")) return [PROMPT_ANTHROPIC]
+    if (model.api.id.toLowerCase().includes("trinity")) return [PROMPT_TRINITY]
+    return [PROMPT_ANTHROPIC_WITHOUT_TODO]
+  }
+
+  export async function environment(model: Provider.Model, context: AgentContext) {
+    const project = context.project
+    return [
+      [
+        `You are powered by the model named ${model.api.id}. The exact model ID is ${model.providerID}/${model.api.id}`,
+        `Here is some useful information about the environment you are running in:`,
+        `<env>`,
+        `  Working directory: ${context.directory}`,
+        `  Workspace root folder: ${context.worktree}`,
+        `  Is directory a git repo: ${project.vcs === "git" ? "yes" : "no"}`,
+        `  Platform: ${process.platform}`,
+        `  Today's date: ${new Date().toDateString()}`,
+        `</env>`,
+        `<directories>`,
+        `  ${
+          project.vcs === "git" && false
+            ? await context.search?.tree({ cwd: context.directory, limit: 50 })
+            : ""
+        }`,
+        `</directories>`,
+      ].join("\n"),
+    ]
+  }
+
+  export async function skills(context: AgentContext, agent: Agent.Info) {
+    if (PermissionNext.disabled(["skill"], agent.permission).has("skill")) return
+
+    const list = await context.skill.available(agent)
+
+    return [
+      "Skills provide specialized instructions and workflows for specific tasks.",
+      "Use the skill tool to load a skill when a task matches its description.",
+      // the agents seem to ingest the information about skills a bit better if we present a more verbose
+      // version of them here and a less verbose version in tool description, rather than vice versa.
+      Skill.fmt(list, { verbose: true }),
+    ].join("\n")
+  }
 }
