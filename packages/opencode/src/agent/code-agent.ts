@@ -43,11 +43,22 @@ import { Bus } from "../bus"
 import { GlobalBus } from "../bus/global"
 import { MessageV2 } from "../session/message-v2"
 import { PermissionNext } from "../permission/next"
+import { Permission } from "../permission"
 import { Plugin } from "../util/plugin"
 import { Truncate } from "../tool/truncation"
 import { Snapshot } from "../snapshot"
 import { FileWatcher } from "../file/watcher"
 import { File } from "../file"
+import { Config } from "../config/config"
+import { Question } from "../session/question"
+import { SessionStatus } from "../session/status"
+import { InstructionPrompt } from "../session/instruction"
+import { Command } from "../command"
+import { Agent } from "../agent/agent"
+import { Provider } from "../provider/provider"
+import { ModelsDev } from "../provider/models"
+import { Skill } from "../skill/skill"
+import { Vcs } from "../project/vcs"
 import z from "zod"
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -379,6 +390,32 @@ export class CodeAgent {
         if (!this.options.skipPlugins) {
             await Plugin.init()
         }
+
+        // ── Construct context-dependent services ──────────────────────
+        // These services are now owned by CodeAgent. Namespace wrappers
+        // with `if (context.xxx) return context.xxx` will find them here
+        // instead of creating new instances via getState().
+        const ctx = this._context
+        ctx.configService = new Config.ConfigService(ctx)
+        ctx.questionService = new Question.QuestionService()
+        ctx.sessionStatusService = new SessionStatus.SessionStatusService()
+        ctx.instructionService = new InstructionPrompt.InstructionService()
+        ctx.sessionPromptService = new SessionPrompt.SessionPromptService()
+        ctx.permissionService = new Permission.PermissionService()
+        ctx.permissionNextService = new PermissionNext.PermissionNextService(ctx)
+        ctx.commandService = new Command.CommandService(ctx)
+        ctx.agentService = new Agent.AgentService(ctx)
+        ctx.providerService = new Provider.ProviderService(ctx)
+        ctx.modelsDevService = new ModelsDev.ModelsDevService(ctx)
+        ctx.toolRegistryService = new ToolRegistry.ToolRegistryService(ctx)
+        ctx.skillService = new Skill.SkillService(ctx)
+        if (!this.options.skipPlugins) {
+            ctx.fileWatcherService = new FileWatcher.FileWatcherService(ctx)
+        }
+        if (ctx.search) {
+            ctx.fileService = new File.FileService(ctx)
+        }
+        ctx.vcsService = new Vcs.VcsService()
 
         this.initialized = true
     }

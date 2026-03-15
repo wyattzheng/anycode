@@ -105,6 +105,10 @@ describe("CodeAgent: multi-agent isolation", () => {
         // Initialize both agents — they should NOT share Instance state
         await agent1.init()
         await agent2.init()
+        // Let async service inits settle, then clear agent2's memFS
+        // so we only measure writes from chat, not service setup
+        await new Promise(r => setTimeout(r, 100))
+        memFS2.clear()
 
         // Agent1 writes a file
         const session1 = await agent1.createSession()
@@ -115,7 +119,7 @@ describe("CodeAgent: multi-agent isolation", () => {
         // Agent1's memFS should have the file
         const agent1Paths = memFS1.getWrittenPaths()
 
-        // Agent2's memFS should be empty — it never ran a chat
+        // Agent2's memFS should have no writes — it never ran a chat
         const agent2Paths = memFS2.getWrittenPaths()
 
         expect(agent1Paths.length).toBeGreaterThan(0)

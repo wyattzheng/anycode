@@ -44,14 +44,14 @@ export interface AgentContext {
     state: Map<any, any>
 
     // ── Service instances ──────────────────────────────────────────
-    /** Environment variable service */
+    // Phase 0: stateless services (created in constructor)
     env: EnvService
-    /** Event bus service */
     bus: BusService
-    /** Task scheduler service */
     scheduler: SchedulerService
-    /** File read-time tracking + write locks */
     fileTime: FileTimeService
+
+    // Phase 1+: context-dependent services (created in init, optional for backward compat)
+    [key: string]: any
 }
 
 /**
@@ -64,3 +64,4 @@ export function getState<T>(context: AgentContext, key: any, init: () => T): T {
     context.state.set(key, s)
     return s
 }
+
