@@ -133,6 +133,7 @@ export function FileBrowser({ topLevel, requestLs }: FileBrowserProps) {
                 <div className="file-tree">
                     {isEmpty ? (
                         <div className="file-tree-empty">
+                            <FolderOpenIcon size={40} />
                             <p>加载中…</p>
                         </div>
                     ) : (

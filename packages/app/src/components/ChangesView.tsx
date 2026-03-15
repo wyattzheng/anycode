@@ -80,6 +80,7 @@ export function ChangesView({ changes }: ChangesViewProps) {
                 <div className="change-items">
                     {isEmpty ? (
                         <div className="changes-empty">
+                            <DiffIcon size={40} />
                             <p>工作区干净 ✨</p>
                         </div>
                     ) : (
