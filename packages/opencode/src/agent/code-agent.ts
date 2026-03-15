@@ -317,13 +317,13 @@ export class CodeAgent {
 
 
         ctx.agents = new Agent.AgentService(ctx)
-        ctx.provider = new Provider.ProviderService(ctx)
         ctx.modelsDev = new ModelsDev.ModelsDevService(ctx)
+        ctx.provider = new Provider.ProviderService(ctx)
         ctx.toolRegistry = new ToolRegistry.ToolRegistryService(ctx)
         ctx.skill = new Skill.SkillService(ctx)
         ctx.fileWatcher = new FileWatcher.FileWatcherService(ctx)
         ctx.file = new File.FileService(ctx)
-        ctx.vcs = new Vcs.VcsService()
+        ctx.vcs = new Vcs.VcsService(ctx)
 
         // Bind context to services that need it for instance methods
         ctx.instruction.bind(ctx)

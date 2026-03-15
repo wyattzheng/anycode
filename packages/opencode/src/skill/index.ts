@@ -145,7 +145,7 @@ export namespace Skill {
 
   // External skill directories to search for (project-level and global)
   // These follow the directory layout used by Claude Code and other agents.
-  const EXTERNAL_DIRS = [".claude", ".agents"]
+  const EXTERNAL_DIRS = [".claude", ".agents", ".opencode"]
   const EXTERNAL_SKILL_PATTERN = "skills/**/SKILL.md"
   const OPENCODE_SKILL_PATTERN = "{skill,skills}/**/SKILL.md"
   const SKILL_PATTERN = "**/SKILL.md"
