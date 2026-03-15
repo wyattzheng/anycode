@@ -62,11 +62,17 @@ export function App() {
         );
     }
 
-    // No directory yet — show fullscreen conversation
+    // No directory yet — empty main view + floating conversation + tab bar
     if (!directory) {
         return (
             <div className="app">
-                <ConversationOverlay sessionId={sessionId} fullscreen />
+                <div className="main-view" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <p style={{ color: "var(--color-text-dim)", fontSize: "13px", opacity: 0.5 }}>
+                        等待选择工作目录…
+                    </p>
+                </div>
+                <ConversationOverlay sessionId={sessionId} />
+                <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
             </div>
         );
     }

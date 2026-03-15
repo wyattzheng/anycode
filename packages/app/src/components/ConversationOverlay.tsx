@@ -43,10 +43,9 @@ function argSummary(args?: Record<string, unknown>) {
 
 interface ConversationOverlayProps {
     sessionId: string;
-    fullscreen?: boolean;
 }
 
-export function ConversationOverlay({ sessionId, fullscreen = false }: ConversationOverlayProps) {
+export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [recording, setRecording] = useState(false);
@@ -291,20 +290,16 @@ export function ConversationOverlay({ sessionId, fullscreen = false }: Conversat
     };
 
     return (
-        <div className={`conversation-panel ${fullscreen ? "fullscreen" : ""}`} style={fullscreen ? {} : { transform: `translate(${position.x}px, ${position.y}px)` }}>
-            {!fullscreen && (
-                <div className="conversation-header" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart}>
-                    <div className="drag-grip" />
-                    <div className="conversation-header-content"><ChatIcon /> 对话</div>
-                </div>
-            )}
+        <div className="conversation-panel" style={{ transform: `translate(${position.x}px, ${position.y}px)` }}>
+            <div className="conversation-header" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart}>
+                <div className="drag-grip" />
+                <div className="conversation-header-content"><ChatIcon /> 对话</div>
+            </div>
 
             <div className="conversation-messages" ref={msgsRef}>
                 {messages.length === 0 && (
                     <div className="co-text" style={{ color: "var(--color-text-dim)" }}>
-                        {fullscreen
-                            ? "你好！告诉我你想打开哪个项目目录 📂"
-                            : "你好！告诉我你想做什么 ✨"}
+                        你好！告诉我你想做什么 ✨
                     </div>
                 )}
                 {messages.map((msg, i) =>
