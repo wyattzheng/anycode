@@ -5,7 +5,7 @@ import type { MessageV2 } from "@/agent/memory/message-v2"
 import type { ProjectID } from "@/agent/project"
 import type { SessionID, MessageID, PartID } from "./schema"
 type WorkspaceID = string
-import { Timestamps } from "../storage"
+import { Timestamps } from "@/storage"
 
 type PartData = Omit<MessageV2.Part, "id" | "sessionID" | "messageID">
 type InfoData = Omit<MessageV2.Info, "id" | "sessionID">

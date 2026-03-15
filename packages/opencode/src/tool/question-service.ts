@@ -1,7 +1,7 @@
 import type { AgentContext } from "@/agent/context"
-import { Bus } from "@/bus"
-import { BusEvent } from "@/bus/bus-event"
-import { SessionID, MessageID } from "@/session/schema"
+import { Bus } from "@/agent/bus"
+import { BusEvent } from "@/agent/bus"
+import { SessionID, MessageID } from "@/agent/session/schema"
 import { Schema } from "effect"
 
 import { Log } from "@/util/log"

@@ -1,5 +1,5 @@
-import { BusEvent } from "@/bus/bus-event"
-import { SessionID, MessageID, PartID } from "@/session/schema"
+import { BusEvent } from "@/agent/bus"
+import { SessionID, MessageID, PartID } from "@/agent/session/schema"
 import z from "zod"
 import { NamedError } from "@/util/error"
 import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
@@ -8,14 +8,14 @@ import { LSP } from "@/util/lsp"
 import { fn } from "@/util/fn"
 import { NotFoundError } from "@/storage"
 import type { Filter } from "@/storage"
-import { ProviderTransform } from "@/provider/transform"
+import { ProviderTransform } from "@/agent/provider/transform"
 import { STATUS_CODES } from "http"
 import { Storage } from "@/storage"
-import { ProviderError } from "@/provider/error"
+import { ProviderError } from "@/agent/provider/error"
 import { iife } from "@/util/iife"
 interface SystemError extends Error { code?: string; errno?: number; syscall?: string; path?: string }
-import type { Provider } from "@/provider/provider"
-import { ModelID, ProviderID } from "@/provider/schema"
+import type { Provider } from "@/agent/provider/provider"
+import { ModelID, ProviderID } from "@/agent/provider/schema"
 
 export namespace MessageV2 {
   export function isMedia(mime: string) {

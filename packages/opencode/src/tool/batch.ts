@@ -1,6 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
-import { ProviderID, ModelID } from "../provider/schema"
+import { ProviderID, ModelID } from "@/agent/provider/schema"
 import DESCRIPTION from "./batch.txt"
 
 const DISALLOWED = new Set(["batch"])
@@ -31,8 +31,8 @@ export const BatchTool = Tool.define("batch", async () => {
       return `Invalid parameters for tool 'batch':\n${formattedErrors}\n\nExpected payload format:\n  [{"tool": "tool_name", "parameters": {...}}, {...}]`
     },
     async execute(params, ctx) {
-      const { Session } = await import("../session")
-      const { PartID } = await import("../session/schema")
+      const { Session } = await import("@/agent/session")
+      const { PartID } = await import("@/agent/session/schema")
 
       const toolCalls = params.tool_calls.slice(0, 25)
       const discardedCalls = params.tool_calls.slice(25)

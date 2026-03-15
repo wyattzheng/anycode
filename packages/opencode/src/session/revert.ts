@@ -6,7 +6,7 @@ import { Session } from "."
 import { Log } from "../util/log"
 
 import { Storage } from "@/storage"
-import { Bus } from "../bus"
+import { Bus } from "@/agent/bus"
 import { SessionPrompt } from "./session"
 import { SessionSummary } from "./summary"
 

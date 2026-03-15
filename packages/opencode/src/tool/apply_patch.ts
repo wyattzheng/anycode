@@ -2,7 +2,7 @@ import z from "zod"
 import * as path from "path"
 
 import { Tool } from "./tool"
-import { Bus } from "../bus"
+import { Bus } from "@/agent/bus"
 
 import { Patch } from "./patch"
 import { createTwoFilesPatch, diffLines } from "diff"

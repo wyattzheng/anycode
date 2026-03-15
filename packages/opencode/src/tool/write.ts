@@ -4,7 +4,7 @@ import { Tool } from "./tool"
 import { LSP } from "../util/lsp"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./write.txt"
-import { Bus } from "../bus"
+import { Bus } from "@/agent/bus"
 import { File } from "@/agent/project"
 
 

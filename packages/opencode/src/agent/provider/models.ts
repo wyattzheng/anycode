@@ -1,10 +1,10 @@
 import type { AgentContext } from "@/agent/context"
-import { Log } from "../util/log"
+import { Log } from "@/util/log"
 import path from "path"
 import z from "zod"
-import { Installation } from "../util/installation"
-import { Flag } from "../util/flag"
-import { Filesystem } from "../util/filesystem"
+import { Installation } from "@/util/installation"
+import { Flag } from "@/util/flag"
+import { Filesystem } from "@/util/filesystem"
 
 // Try to import bundled snapshot (generated at build time)
 // Falls back to undefined in dev mode when snapshot doesn't exist

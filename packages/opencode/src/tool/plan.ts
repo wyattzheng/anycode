@@ -1,11 +1,11 @@
 import z from "zod"
 import path from "path"
 import { Tool } from "./tool"
-import { Question } from "../session/question"
-import { Session } from "../session"
+import { Question } from "./question-service"
+import { Session } from "@/agent/session"
 import { MessageV2 } from "@/agent/memory/message-v2"
-import { Provider } from "../provider/provider"
-import { type SessionID, MessageID, PartID } from "../session/schema"
+import { Provider } from "@/agent/provider/provider"
+import { type SessionID, MessageID, PartID } from "@/agent/session/schema"
 import EXIT_DESCRIPTION from "./plan-exit.txt"
 
 async function getLastModel(context: import("../agent/context").AgentContext, sessionID: SessionID) {

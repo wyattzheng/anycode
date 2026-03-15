@@ -11,7 +11,7 @@ import { createTwoFilesPatch, diffLines } from "diff"
 import DESCRIPTION from "./edit.txt"
 import { File } from "@/agent/project"
 
-import { Bus } from "../bus"
+import { Bus } from "@/agent/bus"
 
 
 import { assertExternalDirectory } from "./external-directory"

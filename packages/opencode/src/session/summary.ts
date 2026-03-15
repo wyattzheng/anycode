@@ -7,7 +7,7 @@ import { Identifier } from "@/util/id"
 import { SessionID, MessageID } from "./schema"
 
 import { Storage } from "@/storage"
-import { Bus } from "@/bus"
+import { Bus } from "@/agent/bus"
 import type { AgentContext } from "@/agent/context"
 
 export namespace SessionSummary {

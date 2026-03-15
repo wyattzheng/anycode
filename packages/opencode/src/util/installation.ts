@@ -3,7 +3,7 @@
  * Provides VERSION/CHANNEL/USER_AGENT constants used throughout the codebase.
  */
 import z from "zod"
-import { BusEvent } from "@/bus/bus-event"
+import { BusEvent } from "@/agent/bus"
 import { Flag } from "../util/flag"
 
 declare global {

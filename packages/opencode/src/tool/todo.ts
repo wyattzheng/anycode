@@ -1,7 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import DESCRIPTION_WRITE from "./todowrite.txt"
-import { Todo } from "../session"
+import { Todo } from "@/agent/session"
 
 export const TodoWriteTool = Tool.define("todowrite", {
   description: DESCRIPTION_WRITE,

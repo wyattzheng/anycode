@@ -1,6 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
-import { Question } from "../session/question"
+import { Question } from "./question-service"
 import DESCRIPTION from "./question.txt"
 
 export const QuestionTool = Tool.define("question", {

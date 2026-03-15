@@ -1,8 +1,8 @@
 import { tool, jsonSchema, wrapLanguageModel, type ModelMessage, type StreamTextResult, type ToolSet, streamText } from "ai"
 import { mergeDeep, pipe } from "remeda"
 import type { AgentContext } from "@/agent/context"
-import { ProviderTransform } from "@/provider/transform"
-import { Provider } from "@/provider/provider"
+import { ProviderTransform } from "@/agent/provider/transform"
+import { Provider } from "@/agent/provider/provider"
 import { Agent } from "@/agent/agent"
 import { SystemPrompt } from "@/agent/prompt"
 import { Flag } from "@/util/flag"
@@ -10,16 +10,16 @@ import { Installation } from "@/util/installation"
 import { Auth } from "@/util/auth"
 import { Log } from "@/util/log"
 import { MessageV2 } from "@/agent/memory/message-v2"
-import { Session } from "@/session"
-import { PartID, SessionID } from "@/session/schema"
+import { Session } from "@/agent/session"
+import { PartID, SessionID } from "@/agent/session/schema"
 import { ContextCompaction } from "@/agent/memory/compaction"
 import { NamedError } from "@/util/error"
 import { iife } from "@/util/iife"
 
 
-import { Bus } from "@/bus"
+import { Bus } from "@/agent/bus"
 import { SessionSummary } from "@/session/summary"
-import { Question } from "@/session/question"
+import { Question } from "@/tool/question-service"
 
 export namespace SessionRetry {
   export const RETRY_INITIAL_DELAY = 2000

@@ -1,5 +1,5 @@
 import type { AgentContext } from "@/agent/context"
-import type { Provider } from "@/provider/provider"
+import type { Provider } from "@/agent/provider/provider"
 import type { Agent } from "@/agent/agent"
 import { Skill } from "@/skill"
 
