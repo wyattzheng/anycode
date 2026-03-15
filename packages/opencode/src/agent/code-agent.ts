@@ -64,7 +64,6 @@ import { defer } from "../util/defer"
 import { ulid } from "ulid"
 import { PartID, MessageID as MsgID, SessionID } from "../session/schema"
 import { SystemPrompt } from "../session"
-import { TaskTool } from "../tool/task"
 import { SessionSummary } from "../session/summary"
 import { SessionCompaction, LLMRunner } from "../session/session"
 import MAX_STEPS from "../session/prompt/max-steps.txt"
@@ -751,11 +750,6 @@ export class CodeAgent {
             })
             const task = tasks.pop()
 
-            // ── Subtask ──
-            if (task?.type === "subtask") {
-                await this.handleSubtask({ context, sessionID, session, lastUser, task, model, msgs, abort })
-                continue
-            }
 
             // ── Compaction ──
             if (task?.type === "compaction") {
@@ -908,93 +902,6 @@ export class CodeAgent {
         }
 
         return result as any
-    }
-
-    /**
-     * Execute a pending subtask (task tool).
-     */
-    private async handleSubtask(input: {
-        context: AgentContext
-        sessionID: SessionID
-        session: Session.Info
-        lastUser: MessageV2.User
-        task: MessageV2.SubtaskPart
-        model: Provider.Model
-        msgs: MessageV2.WithParts[]
-        abort: AbortSignal
-    }): Promise<void> {
-        const { context, sessionID, session, lastUser, task, model, msgs, abort } = input
-        const taskTool = await TaskTool.init()
-        const taskModel = task.model ? await context.provider.getModel(task.model.providerID, task.model.modelID) : model
-
-        const assistantMessage = (await Session.updateMessage(context, {
-            id: MsgID.ascending(), role: "assistant", parentID: lastUser.id, sessionID,
-            mode: task.agent, agent: task.agent, variant: lastUser.variant,
-            path: { cwd: context.directory, root: context.worktree },
-            cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-            modelID: taskModel.id, providerID: taskModel.providerID,
-            time: { created: Date.now() },
-        })) as MessageV2.Assistant
-
-        let part = (await Session.updatePart(context, {
-            id: PartID.ascending(), messageID: assistantMessage.id, sessionID: assistantMessage.sessionID,
-            type: "tool", callID: ulid(), tool: TaskTool.id,
-            state: {
-                status: "running",
-                input: { prompt: task.prompt, description: task.description, subagent_type: task.agent, command: task.command },
-                time: { start: Date.now() },
-            },
-        })) as MessageV2.ToolPart
-
-        const taskArgs = { prompt: task.prompt, description: task.description, subagent_type: task.agent, command: task.command }
-        let executionError: Error | undefined
-        const taskAgent = await context.agents.get(task.agent)
-        const taskCtx: Tool.Context = {
-            ...context, agent: task.agent, messageID: assistantMessage.id, sessionID, abort,
-            callID: part.callID, extra: { bypassAgentCheck: true }, messages: msgs,
-            async metadata(mi) {
-                part = (await Session.updatePart(context, { ...part, type: "tool", state: { ...part.state, ...mi } } satisfies MessageV2.ToolPart)) as MessageV2.ToolPart
-            },
-            async ask(req) {
-                await context.permissionNext.ask({ ...req, sessionID, ruleset: PermissionNext.merge(taskAgent.permission, session.permission ?? []) })
-            },
-        }
-
-        const result = await taskTool.execute(taskArgs, taskCtx).catch((error) => { executionError = error; return undefined })
-        const attachments = result?.attachments?.map((a) => ({ ...a, id: PartID.ascending(), sessionID, messageID: assistantMessage.id }))
-
-        assistantMessage.finish = "tool-calls"
-        assistantMessage.time.completed = Date.now()
-        await Session.updateMessage(context, assistantMessage)
-
-        if (result && part.state.status === "running") {
-            await Session.updatePart(context, {
-                ...part, state: {
-                    status: "completed", input: part.state.input, title: result.title, metadata: result.metadata,
-                    output: result.output, attachments, time: { ...part.state.time, end: Date.now() },
-                }
-            } satisfies MessageV2.ToolPart)
-        }
-        if (!result) {
-            await Session.updatePart(context, {
-                ...part, state: {
-                    status: "error",
-                    error: executionError ? `Tool execution failed: ${executionError.message}` : "Tool execution failed",
-                    time: { start: part.state.status === "running" ? part.state.time.start : Date.now(), end: Date.now() },
-                    metadata: "metadata" in part.state ? part.state.metadata : undefined,
-                    input: part.state.input,
-                }
-            } satisfies MessageV2.ToolPart)
-        }
-
-        if (task.command) {
-            const summaryUserMsg = { id: MsgID.ascending(), sessionID, role: "user" as const, time: { created: Date.now() }, agent: lastUser.agent, model: lastUser.model }
-            await Session.updateMessage(context, summaryUserMsg)
-            await Session.updatePart(context, {
-                id: PartID.ascending(), messageID: summaryUserMsg.id, sessionID,
-                type: "text", text: "Summarize the task tool output above and continue with your task.", synthetic: true,
-            } satisfies MessageV2.TextPart)
-        }
     }
 
     // ── Private helpers ────────────────────────────────────────────────────
