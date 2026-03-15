@@ -44,6 +44,10 @@ import { GlobalBus } from "../bus/global"
 import { MessageV2 } from "../session/message-v2"
 import { PermissionNext } from "../permission/next"
 import { Plugin } from "../util/plugin"
+import { Truncate } from "../tool/truncation"
+import { Snapshot } from "../snapshot"
+import { FileWatcher } from "../file/watcher"
+import { File } from "../file"
 import z from "zod"
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -224,6 +228,7 @@ export class CodeAgent {
     private _dbClient: any
     private _state = new Map<any, any>()
     private _git: GitProvider
+    private _context!: AgentContext
 
     // ── Service instances ──────────────────────────────────────────
     readonly env: EnvService
@@ -235,7 +240,7 @@ export class CodeAgent {
         this.options = options
         this._git = options.git ?? new NodeGitProvider()
 
-        // Create service instances
+        // Create service instances (no context dependency)
         this.env = new EnvService()
         this.bus = new BusService()
         this.scheduler = new SchedulerService()
@@ -251,10 +256,16 @@ export class CodeAgent {
 
     /**
      * Get the opencode AgentContext representation.
+     * Cached as a single instance after init().
      */
     get agentContext(): AgentContext {
-        const worktree = this.options.worktree ?? this.options.directory
+        if (this._context) return this._context
+        // Pre-init fallback (for registration calls before init completes)
+        return this.buildContext()
+    }
 
+    private buildContext(): AgentContext {
+        const worktree = this.options.worktree ?? this.options.directory
         return {
             directory: this.options.directory,
             worktree,
@@ -314,9 +325,12 @@ export class CodeAgent {
             this._dbClient = await this._storageProvider!.connect(migrations)
         }
 
+        // Build and cache the context (now that db is ready)
+        this._context = this.buildContext()
+
         if (this.options.tools) {
             for (const [name, def] of Object.entries(this.options.tools)) {
-                ToolRegistry.register(this.agentContext, {
+                ToolRegistry.register(this._context, {
                     id: name,
                     init: async () => ({
                         parameters: z.object(def.args),
