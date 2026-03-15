@@ -153,7 +153,7 @@ async function initAgent() {
               attachment: true,
               tool_call: true,
               temperature: true,
-              reasoning: false,
+              reasoning: /thinking|reasoning/i.test(MODEL),
               limit: { context: 200000, output: 32000 },
               cost: { input: 0, output: 0 },
             },
