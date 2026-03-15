@@ -2,10 +2,24 @@ import type { AgentContext } from "@/agent/context"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { SessionID, MessageID } from "@/session/schema"
+import { Schema } from "effect"
 
 import { Log } from "@/util/log"
 import z from "zod"
-import { QuestionID } from "./question.sql"
+import { Identifier } from "@/util/id"
+import { withStatics } from "@/util/schema"
+
+const questionIdSchema = Schema.String.pipe(Schema.brand("QuestionID"))
+
+export type QuestionID = typeof questionIdSchema.Type
+
+export const QuestionID = questionIdSchema.pipe(
+  withStatics((schema: typeof questionIdSchema) => ({
+    make: (id: string) => schema.makeUnsafe(id),
+    ascending: (id?: string) => schema.makeUnsafe(Identifier.ascending("question", id)),
+    zod: Identifier.schema("question").pipe(z.custom<QuestionID>()),
+  })),
+)
 
 export namespace Question {
   const log = Log.create({ service: "question" })
