@@ -335,7 +335,7 @@ export namespace SessionPrompt {
           context: input.context,
         })
 
-      const model = await Provider.getModel(context, lastUser.model.providerID, lastUser.model.modelID).catch((e) => {
+      const model = await context.provider.getModel(lastUser.model.providerID, lastUser.model.modelID).catch((e) => {
         if (Provider.ModelNotFoundError.isInstance(e)) {
           const hint = e.data.suggestions?.length ? ` Did you mean: ${e.data.suggestions.join(", ")}?` : ""
           Bus.publish(context, Session.Event.Error, {
@@ -353,7 +353,7 @@ export namespace SessionPrompt {
       // TODO: centralize "invoke tool" logic
       if (task?.type === "subtask") {
         const taskTool = await TaskTool.init()
-        const taskModel = task.model ? await Provider.getModel(context, task.model.providerID, task.model.modelID) : model
+        const taskModel = task.model ? await context.provider.getModel(task.model.providerID, task.model.modelID) : model
         const assistantMessage = (await Session.updateMessage(context, {
           id: MessageID.ascending(),
           role: "assistant",
@@ -436,7 +436,7 @@ export namespace SessionPrompt {
             } satisfies MessageV2.ToolPart)) as MessageV2.ToolPart
           },
           async ask(req) {
-            await PermissionNext.ask(context, {
+            await context.permissionNext.ask({
               ...req,
               sessionID: sessionID,
               ruleset: PermissionNext.merge(taskAgent.permission, session.permission ?? []),
@@ -600,7 +600,7 @@ export namespace SessionPrompt {
         abort,
         context,
       })
-      using _ = defer(() => InstructionPrompt.clear(context, processor.message.id))
+      using _ = defer(() => context.instruction.clear(processor.message.id))
 
       // Check if user explicitly invoked an agent via @ in this turn
       const lastUserMsg = msgs.findLast((m) => m.info.role === "user")
@@ -660,7 +660,7 @@ export namespace SessionPrompt {
       const system = [
         ...(await SystemPrompt.environment(model, context)),
         ...(skills ? [skills] : []),
-        ...(await InstructionPrompt.system(context)),
+        ...(await context.instruction.system()),
       ]
       const format = lastUser.format ?? { type: "text" }
       if (format.type === "json_schema") {
@@ -742,7 +742,7 @@ export namespace SessionPrompt {
     for await (const item of MessageV2.stream(context, sessionID)) {
       if (item.info.role === "user" && item.info.model) return item.info.model
     }
-    return Provider.defaultModel(context)
+    return context.provider.defaultModel()
   }
 
   /** @internal Exported for testing */
@@ -787,7 +787,7 @@ export namespace SessionPrompt {
         }
       },
       async ask(req) {
-        await PermissionNext.ask(input.agentContext, {
+        await input.agentContext.permissionNext.ask({
           ...req,
           sessionID: input.session.id,
           tool: { messageID: input.processor.message.id, callID: options.toolCallId },
@@ -884,7 +884,7 @@ export namespace SessionPrompt {
     const model = input.model ?? agent.model ?? (await lastModel(context, input.sessionID))
     const full =
       !input.variant && agent.variant
-        ? await Provider.getModel(context, model.providerID, model.modelID).catch(() => undefined)
+        ? await context.provider.getModel(model.providerID, model.modelID).catch(() => undefined)
         : undefined
     const variant = input.variant ?? (agent.variant && full?.variants?.[agent.variant] ? agent.variant : undefined)
 
@@ -902,7 +902,7 @@ export namespace SessionPrompt {
       format: input.format,
       variant,
     }
-    using _ = defer(() => InstructionPrompt.clear(input.context, info.id))
+    using _ = defer(() => input.context.instruction.clear(info.id))
 
     type Draft<T> = T extends MessageV2.Part ? Omit<T, "id"> & { id?: string } : never
     const assign = (part: Draft<MessageV2.Part>): MessageV2.Part => ({
@@ -1002,7 +1002,7 @@ export namespace SessionPrompt {
 
                 await ReadTool.init()
                   .then(async (t) => {
-                    const model = await Provider.getModel(context, info.model.providerID, info.model.modelID)
+                    const model = await context.provider.getModel(info.model.providerID, info.model.modelID)
                     const readCtx: Tool.Context = {
                       ...input.context,
                       sessionID: input.sessionID,
@@ -1672,7 +1672,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     })()
 
     try {
-      await Provider.getModel(input.context, taskModel.providerID, taskModel.modelID)
+      await input.context.provider.getModel(taskModel.providerID, taskModel.modelID)
     } catch (e) {
       if (Provider.ModelNotFoundError.isInstance(e)) {
         const { providerID, modelID, suggestions } = e.data
@@ -1786,9 +1786,9 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     const agent = await input.context.agents.get("title")
     if (!agent) return
     const model = await iife(async () => {
-      if (agent.model) return await Provider.getModel(input.context, agent.model.providerID, agent.model.modelID)
+      if (agent.model) return await input.context.provider.getModel(agent.model.providerID, agent.model.modelID)
       return (
-        (await Provider.getSmallModel(input.context, input.providerID)) ?? (await Provider.getModel(input.context, input.providerID, input.modelID))
+        (await input.context.provider.getSmallModel(input.providerID)) ?? (await input.context.provider.getModel(input.providerID, input.modelID))
       )
     })
     const result = await LLM.stream(input.context, {

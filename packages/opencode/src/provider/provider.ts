@@ -810,9 +810,42 @@ export namespace Provider {
    */
   export class ProviderService {
     readonly _promise: ReturnType<typeof initProvider>
+    private context!: AgentContext
 
     constructor(context: AgentContext) {
       this._promise = initProvider(context)
+    }
+
+    bind(context: AgentContext) {
+      this.context = context
+    }
+
+    defaultModel() {
+      return defaultModel(this.context)
+    }
+
+    getModel(providerID: ProviderID, modelID: ModelID) {
+      return getModel(this.context, providerID, modelID)
+    }
+
+    getLanguage(model: Model) {
+      return getLanguage(this.context, model)
+    }
+
+    getSmallModel(providerID: ProviderID) {
+      return getSmallModel(this.context, providerID)
+    }
+
+    getProvider(providerID: ProviderID) {
+      return getProvider(this.context, providerID)
+    }
+
+    list() {
+      return this._promise.then((state) => state.providers)
+    }
+
+    closest(providerID: ProviderID, query: string[]) {
+      return closest(this.context, providerID, query)
     }
   }
 

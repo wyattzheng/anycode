@@ -350,6 +350,12 @@ export class CodeAgent {
         ctx.file = new File.FileService(ctx)
         ctx.vcs = new Vcs.VcsService()
 
+        // Bind context to services that need it for instance methods
+        ctx.instruction.bind(ctx)
+        ctx.permissionNext.bind(ctx)
+        ctx.provider.bind(ctx)
+        ctx.question.bind(ctx)
+
         this._context = ctx
 
         // Register custom tools
@@ -537,7 +543,7 @@ export class CodeAgent {
                                 deny: "reject",
                             }
 
-                            await PermissionNext.reply(this.agentContext, {
+                            await this.agentContext.permissionNext.reply({
                                 requestID: request.id,
                                 reply: replyMap[reply],
                             })

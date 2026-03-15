@@ -47,6 +47,32 @@ export namespace InstructionPrompt {
    */
   export class InstructionService {
     readonly claims = new Map<string, Set<string>>()
+    private context!: AgentContext
+
+    /** Must be called after construction to bind context */
+    bind(context: AgentContext) {
+      this.context = context
+    }
+
+    clear(messageID: string) {
+      this.claims.delete(messageID)
+    }
+
+    systemPaths() {
+      return _systemPaths(this.context)
+    }
+
+    system() {
+      return _system(this.context)
+    }
+
+    find(dir: string) {
+      return _find(this.context, dir)
+    }
+
+    resolve(messages: MessageV2.WithParts[], filepath: string, messageID: string) {
+      return _resolve(this.context, messages, filepath, messageID)
+    }
   }
 
 
@@ -66,11 +92,11 @@ export namespace InstructionPrompt {
     claimed.add(filepath)
   }
 
-  export function clear(context: AgentContext, messageID: string) {
+  function _clear(context: AgentContext, messageID: string) {
     context.instruction.claims.delete(messageID)
   }
 
-  export async function systemPaths(context: AgentContext) {
+  async function _systemPaths(context: AgentContext) {
     const config = await context.config.get()
     const paths = new Set<string>()
 
@@ -115,7 +141,7 @@ export namespace InstructionPrompt {
     return paths
   }
 
-  export async function system(context: AgentContext) {
+  async function _system(context: AgentContext) {
     // Short-circuit: if instructions were injected via AgentContext context,
     // skip all filesystem-based instruction loading.
     const injected = context.instructions
@@ -124,7 +150,7 @@ export namespace InstructionPrompt {
     }
 
     const config = await context.config.get()
-    const paths = await systemPaths(context)
+    const paths = await _systemPaths(context)
 
     const files = Array.from(paths).map(async (p) => {
       const content = await Filesystem.readText(context, p).catch(() => "")
@@ -149,7 +175,7 @@ export namespace InstructionPrompt {
     return Promise.all([...files, ...fetches]).then((result) => result.filter(Boolean))
   }
 
-  export function loaded(messages: MessageV2.WithParts[]) {
+  export function loaded(messages: MessageV2.WithParts[]) { // stays exported — used by read tool directly
     const paths = new Set<string>()
     for (const msg of messages) {
       for (const part of msg.parts) {
@@ -166,15 +192,15 @@ export namespace InstructionPrompt {
     return paths
   }
 
-  export async function find(context: AgentContext, dir: string) {
+  async function _find(context: AgentContext, dir: string) {
     for (const file of FILES) {
       const filepath = path.resolve(path.join(dir, file))
       if (await Filesystem.exists(context, filepath)) return filepath
     }
   }
 
-  export async function resolve(context: AgentContext, messages: MessageV2.WithParts[], filepath: string, messageID: string) {
-    const system = await systemPaths(context)
+  async function _resolve(context: AgentContext, messages: MessageV2.WithParts[], filepath: string, messageID: string) {
+    const system = await _systemPaths(context)
     const already = loaded(messages)
     const results: { filepath: string; content: string }[] = []
 
@@ -183,7 +209,7 @@ export namespace InstructionPrompt {
     const root = path.resolve(context.directory)
 
     while (current.startsWith(root) && current !== root) {
-      const found = await find(context, current)
+      const found = await _find(context, current)
 
       if (found && found !== target && !system.has(found) && !already.has(found) && !isClaimed(context, messageID, found)) {
         claim(context, messageID, found)

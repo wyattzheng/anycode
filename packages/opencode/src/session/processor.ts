@@ -169,7 +169,7 @@ export namespace SessionProcessor {
                       )
                     ) {
                       const agent = await input.context.agents.get(input.assistantMessage.agent)
-                      await PermissionNext.ask(input.context, {
+                      await input.context.permissionNext.ask({
                         permission: "doom_loop",
                         patterns: [value.toolName],
                         sessionID: input.assistantMessage.sessionID,

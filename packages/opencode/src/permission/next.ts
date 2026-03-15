@@ -119,15 +119,32 @@ export namespace PermissionNext {
   export class PermissionNextService {
     readonly pending = new Map<PermissionID, PendingEntry>()
     approved: Ruleset
+    private context!: AgentContext
 
     constructor(context: AgentContext) {
       const row = context.db.findOne("permission")
       this.approved = row?.data ?? ([] as Ruleset)
     }
+
+    bind(context: AgentContext) {
+      this.context = context
+    }
+
+    ask(input: Omit<z.infer<typeof Request>, "id"> & { id?: z.infer<typeof Request>["id"]; ruleset: z.infer<typeof Ruleset> }) {
+      return _ask(this.context, input)
+    }
+
+    reply(input: { requestID: z.infer<typeof PermissionID.zod>; reply: z.infer<typeof Reply>; message?: string }) {
+      return _reply(this.context, input)
+    }
+
+    list() {
+      return Array.from(this.pending.values(), (x) => x.info)
+    }
   }
 
 
-  export async function ask(context: import("../agent/context").AgentContext, input: Omit<z.infer<typeof Request>, "id"> & { id?: z.infer<typeof Request>["id"]; ruleset: z.infer<typeof Ruleset> }) {
+  async function _ask(context: import("../agent/context").AgentContext, input: Omit<z.infer<typeof Request>, "id"> & { id?: z.infer<typeof Request>["id"]; ruleset: z.infer<typeof Ruleset> }) {
     const s = await context.permissionNext
     const { ruleset, ...request } = input
     for (const pattern of request.patterns ?? []) {
@@ -154,7 +171,7 @@ export namespace PermissionNext {
     }
   }
 
-  export async function reply(context: import("../agent/context").AgentContext, input: { requestID: z.infer<typeof PermissionID.zod>; reply: z.infer<typeof Reply>; message?: string }) {
+  async function _reply(context: import("../agent/context").AgentContext, input: { requestID: z.infer<typeof PermissionID.zod>; reply: z.infer<typeof Reply>; message?: string }) {
     const s = await context.permissionNext
     const existing = s.pending.get(input.requestID)
     if (!existing) return

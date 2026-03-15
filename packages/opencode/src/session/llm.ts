@@ -58,9 +58,9 @@ export namespace LLM {
       providerID: input.model.providerID,
     })
     const [language, cfg, provider, auth] = await Promise.all([
-      Provider.getLanguage(context, input.model),
+      context.provider.getLanguage(input.model),
       context.config.get(),
-      Provider.getProvider(context, input.model.providerID),
+      context.provider.getProvider(input.model.providerID),
       Auth.get(input.model.providerID),
     ])
     const isCodex = provider.id === "openai" && auth?.type === "oauth"

@@ -12,7 +12,7 @@ async function getLastModel(context: import("../agent/context").AgentContext, se
   for await (const item of MessageV2.stream(context, sessionID)) {
     if (item.info.role === "user" && item.info.model) return item.info.model
   }
-  return Provider.defaultModel(context)
+  return context.provider.defaultModel()
 }
 
 export const PlanExitTool = Tool.define("plan_exit", {

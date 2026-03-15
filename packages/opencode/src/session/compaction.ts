@@ -132,8 +132,8 @@ export namespace SessionCompaction {
 
     const agent = await context.agents.get("compaction")
     const model = agent.model
-      ? await Provider.getModel(context, agent.model.providerID, agent.model.modelID)
-      : await Provider.getModel(context, userMessage.model.providerID, userMessage.model.modelID)
+      ? await context.provider.getModel(agent.model.providerID, agent.model.modelID)
+      : await context.provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
     const msg = (await Session.updateMessage(context, {
       id: MessageID.ascending(),
       role: "assistant",

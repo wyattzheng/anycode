@@ -1265,7 +1265,7 @@ export namespace Config {
 
   async function loadFile(context: AgentContext, filepath: string): Promise<Info> {
     log.info("loading", { path: filepath })
-    const text = await readFile(context, filepath)
+    const text = await ConfigPaths.readFile(context, filepath)
     if (!text) return {}
     return load(context, text, { path: filepath })
   }

@@ -100,9 +100,9 @@ export namespace Agent {
       model?: { providerID: ProviderID; modelID: ModelID }
     }): Promise<{ identifier: string; whenToUse: string; systemPrompt: string }> {
       const cfg = await this.context.config.get()
-      const defaultModel = input.model ?? (await Provider.defaultModel(this.context))
-      const model = await Provider.getModel(this.context, defaultModel.providerID, defaultModel.modelID)
-      const language = await Provider.getLanguage(this.context, model)
+      const defaultModel = input.model ?? (await this.context.provider.defaultModel())
+      const model = await this.context.provider.getModel(defaultModel.providerID, defaultModel.modelID)
+      const language = await this.context.provider.getLanguage(model)
 
       const system = [PROMPT_GENERATE]
       await Plugin.trigger("experimental.chat.system.transform", { model }, { system })
