@@ -12,7 +12,7 @@ import DESCRIPTION from "./edit.txt"
 import { File } from "../file"
 import { FileWatcher } from "../file/watcher"
 import { Bus } from "../bus"
-import { FileTime } from "../file/time"
+
 import { Snapshot } from "@/snapshot"
 import { assertExternalDirectory } from "./external-directory"
 
@@ -54,7 +54,7 @@ export const EditTool = Tool.define("edit", {
     let diff = ""
     let contentOld = ""
     let contentNew = ""
-    await FileTime.withLock(ctx, filePath, async () => {
+    await ctx.fileTime.withLock(filePath, async () => {
       if (params.oldString === "") {
         const existed = await ctx.fs.exists(filePath)
         contentNew = params.newString
@@ -76,14 +76,14 @@ export const EditTool = Tool.define("edit", {
           file: filePath,
           event: existed ? "change" : "add",
         })
-        FileTime.read(ctx as any, ctx.sessionID, filePath)
+        ctx.fileTime.read(ctx.sessionID, filePath)
         return
       }
 
       const stats = await ctx.fs.stat(filePath)
       if (!stats) throw new Error(`File ${filePath} not found`)
       if (stats.isDirectory) throw new Error(`Path is a directory, not a file: ${filePath}`)
-      await FileTime.assert(ctx as any, ctx.sessionID, filePath)
+      await ctx.fileTime.assert(ctx, ctx.sessionID, filePath)
       contentOld = await ctx.fs.readText(filePath)
 
       const ending = detectLineEnding(contentOld)
@@ -117,7 +117,7 @@ export const EditTool = Tool.define("edit", {
       diff = trimDiff(
         createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
       )
-      FileTime.read(ctx as any, ctx.sessionID, filePath)
+      ctx.fileTime.read(ctx.sessionID, filePath)
     })
 
     const filediff: Snapshot.FileDiff = {

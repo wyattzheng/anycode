@@ -3,7 +3,7 @@ import * as path from "path"
 import { Filesystem } from "../util/filesystem"
 import { Tool } from "./tool"
 import { LSP } from "../util/lsp"
-import { FileTime } from "../file/time"
+
 import DESCRIPTION from "./read.txt"
 import { assertExternalDirectory } from "./external-directory"
 import { InstructionPrompt } from "../session/instruction"
@@ -194,7 +194,7 @@ export const ReadTool = Tool.define("read", {
 
     // just warms the lsp client
     LSP.touchFile(filepath, false)
-    FileTime.read(ctx as any, ctx.sessionID, filepath)
+    ctx.fileTime.read(ctx.sessionID, filepath)
 
     if (instructions.length > 0) {
       output += `\n\n<system-reminder>\n${instructions.map((i) => i.content).join("\n\n")}\n</system-reminder>`

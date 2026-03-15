@@ -7,7 +7,7 @@ import DESCRIPTION from "./write.txt"
 import { Bus } from "../bus"
 import { File } from "../file"
 import { FileWatcher } from "../file/watcher"
-import { FileTime } from "../file/time"
+
 import { trimDiff } from "./edit"
 import { assertExternalDirectory } from "./external-directory"
 
@@ -26,7 +26,7 @@ export const WriteTool = Tool.define("write", {
 
     const exists = await ctx.fs.exists(filepath)
     const contentOld = exists ? await ctx.fs.readText(filepath) : ""
-    if (exists) await FileTime.assert(ctx as any, ctx.sessionID, filepath)
+    if (exists) await ctx.fileTime.assert(ctx, ctx.sessionID, filepath)
 
     const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, params.content))
     await ctx.ask({
@@ -47,7 +47,7 @@ export const WriteTool = Tool.define("write", {
       file: filepath,
       event: exists ? "change" : "add",
     })
-    FileTime.read(ctx as any, ctx.sessionID, filepath)
+    ctx.fileTime.read(ctx.sessionID, filepath)
 
     let output = "Wrote file successfully."
     await LSP.touchFile(filepath, true)

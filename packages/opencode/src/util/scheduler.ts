@@ -62,6 +62,7 @@ export namespace Scheduler {
   }
 
   function state(context: AgentContext) {
+    if (context.scheduler) return context.scheduler
     return getState(context, STATE_KEY, () => new SchedulerService())
   }
 

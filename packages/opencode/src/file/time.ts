@@ -29,6 +29,24 @@ export class FileTimeService {
     return this.readTimes[sessionID]?.[file]
   }
 
+  async assert(context: AgentContext, sessionID: string, filepath: string) {
+    if (Flag.OPENCODE_DISABLE_FILETIME_CHECK === true) {
+      return
+    }
+
+    const time = this.get(sessionID, filepath)
+    if (!time) throw new Error(`You must read file ${filepath} before overwriting it. Use the Read tool first`)
+    const s = await Filesystem.stat(context, filepath)
+    const mtimeMs = s?.mtimeMs
+    // Allow a 50ms tolerance for Windows NTFS timestamp fuzziness / async flushing
+    if (mtimeMs && mtimeMs > time.getTime() + 50) {
+      const mtime = new Date(mtimeMs)
+      throw new Error(
+        `File ${filepath} has been modified since it was last read.\nLast modification: ${mtime.toISOString()}\nLast read: ${time.toISOString()}\n\nPlease read the file again before modifying it.`,
+      )
+    }
+  }
+
   async withLock<T>(filepath: string, fn: () => Promise<T>): Promise<T> {
     const currentLock = this.locks.get(filepath) ?? Promise.resolve()
     let release: () => void = () => {}
@@ -50,11 +68,14 @@ export class FileTimeService {
 }
 
 // ── Backward-compatible namespace wrapper ──────────────────────────
+// Uses context.fileTime (set by CodeAgent) if available, otherwise falls back to getState.
+// This ensures all code paths share the same FileTimeService instance.
 
 const STATE_KEY = Symbol("file.time")
 
 export namespace FileTime {
   function svc(context: AgentContext) {
+    if (context.fileTime) return context.fileTime
     return getState(context, STATE_KEY, () => new FileTimeService())
   }
 
@@ -77,20 +98,7 @@ export namespace FileTime {
   }
 
   export async function assert(context: AgentContext, sessionID: string, filepath: string) {
-    if (Flag.OPENCODE_DISABLE_FILETIME_CHECK === true) {
-      return
-    }
-
-    const time = get(context, sessionID, filepath)
-    if (!time) throw new Error(`You must read file ${filepath} before overwriting it. Use the Read tool first`)
-    const s = await Filesystem.stat(context, filepath)
-    const mtimeMs = s?.mtimeMs
-    // Allow a 50ms tolerance for Windows NTFS timestamp fuzziness / async flushing
-    if (mtimeMs && mtimeMs > time.getTime() + 50) {
-      const mtime = new Date(mtimeMs)
-      throw new Error(
-        `File ${filepath} has been modified since it was last read.\nLast modification: ${mtime.toISOString()}\nLast read: ${time.toISOString()}\n\nPlease read the file again before modifying it.`,
-      )
-    }
+    return svc(context).assert(context, sessionID, filepath)
   }
 }
+
