@@ -55,7 +55,7 @@ export namespace Skill {
   /**
    * SkillService — caches discovered skills from filesystem and URLs.
    */
-  export class Service {
+  export class SkillService {
     readonly _promise: ReturnType<typeof initSkills>
 
     constructor(context: AgentContext) {
@@ -65,7 +65,7 @@ export namespace Skill {
 
   const STATE_KEY = Symbol("skill")
   export function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => new Service(context))._promise
+    return getState(context, STATE_KEY, () => new SkillService(context))._promise
   }
   async function initSkills(context: AgentContext) {
     const skills: Record<string, Info> = {}

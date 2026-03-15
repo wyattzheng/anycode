@@ -114,16 +114,22 @@ export namespace PermissionNext {
     reject: (e: any) => void
   }
 
+  /**
+   * PermissionNextService — manages pending permission requests and approved rules.
+   */
+  export class PermissionNextService {
+    readonly pending = new Map<PermissionID, PendingEntry>()
+    approved: Ruleset
+
+    constructor(context: AgentContext) {
+      const row = context.db.findOne("permission")
+      this.approved = row?.data ?? ([] as Ruleset)
+    }
+  }
+
   const STATE_KEY = Symbol("permission.next")
   function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => {
-      const row = context.db.findOne("permission")
-      const stored = row?.data ?? ([] as Ruleset)
-      return {
-        pending: new Map<PermissionID, PendingEntry>(),
-        approved: stored,
-      }
-    })
+    return getState(context, STATE_KEY, () => new PermissionNextService(context))
   }
 
   export async function ask(context: import("../agent/context").AgentContext, input: Omit<z.infer<typeof Request>, "id"> & { id?: z.infer<typeof Request>["id"]; ruleset: z.infer<typeof Ruleset> }) {

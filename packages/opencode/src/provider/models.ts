@@ -90,7 +90,7 @@ export namespace ModelsDev {
   /**
    * ModelsDevService — caches the resolved model data.
    */
-  export class Service {
+  export class ModelsDevService {
     readonly _promise: Promise<{ data: Record<string, unknown> }>
 
     constructor(context: AgentContext) {
@@ -104,7 +104,7 @@ export namespace ModelsDev {
 
   const STATE_KEY = Symbol("models.dev")
   function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => new Service(context))._promise
+    return getState(context, STATE_KEY, () => new ModelsDevService(context))._promise
   }
   async function initModels(context: AgentContext) {
       let data: Record<string, unknown> | undefined

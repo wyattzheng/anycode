@@ -62,12 +62,17 @@ export namespace Permission {
     ),
   }
 
+  /**
+   * PermissionService — manages pending permission requests and approved patterns.
+   */
+  export class PermissionService {
+    readonly pending = new Map<SessionID, Map<PermissionID, PendingEntry>>()
+    readonly approved = new Map<SessionID, Map<string, boolean>>()
+  }
+
   const STATE_KEY = Symbol("permission")
   function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => ({
-      pending: new Map<SessionID, Map<PermissionID, PendingEntry>>(),
-      approved: new Map<SessionID, Map<string, boolean>>(),
-    }))
+    return getState(context, STATE_KEY, () => new PermissionService())
   }
 
   export function pending(context: AgentContext) {

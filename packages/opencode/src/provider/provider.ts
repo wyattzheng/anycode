@@ -810,7 +810,7 @@ export namespace Provider {
   /**
    * ProviderService — caches resolved LLM providers and SDK instances.
    */
-  export class Service {
+  export class ProviderService {
     readonly _promise: ReturnType<typeof initProvider>
 
     constructor(context: AgentContext) {
@@ -820,7 +820,7 @@ export namespace Provider {
 
   const STATE_KEY = Symbol("provider")
   function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => new Service(context))._promise
+    return getState(context, STATE_KEY, () => new ProviderService(context))._promise
   }
   async function initProvider(context: AgentContext) {
     using _ = log.time("state")

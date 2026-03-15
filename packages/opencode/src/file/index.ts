@@ -332,9 +332,20 @@ export namespace File {
     ),
   }
 
+  /**
+   * FileService — caches directory/file listings.
+   */
+  export class FileService {
+    readonly _promise: ReturnType<typeof initFile>
+
+    constructor(context: AgentContext) {
+      this._promise = initFile(context)
+    }
+  }
+
   const STATE_KEY = Symbol("file")
   function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => initFile(context))
+    return getState(context, STATE_KEY, () => new FileService(context))._promise
   }
   async function initFile(context: AgentContext) {
     type Entry = { files: string[]; dirs: string[] }

@@ -60,7 +60,7 @@ export namespace Command {
   /**
    * CommandService — caches resolved command definitions.
    */
-  export class Service {
+  export class CommandService {
     readonly _promise: ReturnType<typeof initCommands>
 
     constructor(context: AgentContext) {
@@ -70,7 +70,7 @@ export namespace Command {
 
   const STATE_KEY = Symbol("command")
   function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => new Service(context))._promise
+    return getState(context, STATE_KEY, () => new CommandService(context))._promise
   }
   async function initCommands(context: AgentContext) {
     const cfg = await Config.get(context)

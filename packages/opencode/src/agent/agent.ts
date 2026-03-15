@@ -52,7 +52,7 @@ export namespace Agent {
   /**
    * AgentService — caches resolved agent definitions.
    */
-  export class Service {
+  export class AgentService {
     readonly _promise: ReturnType<typeof initAgents>
 
     constructor(context: AgentContext) {
@@ -70,7 +70,7 @@ export namespace Agent {
 
   const STATE_KEY = Symbol("agent")
   function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => new Service(context))._promise
+    return getState(context, STATE_KEY, () => new AgentService(context))._promise
   }
   async function initAgents(context: AgentContext) {
     const cfg = await Config.get(context)

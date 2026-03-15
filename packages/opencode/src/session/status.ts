@@ -43,9 +43,32 @@ export namespace SessionStatus {
     ),
   }
 
+  /**
+   * SessionStatusService — tracks per-session busy/idle/retry status.
+   */
+  export class SessionStatusService {
+    private statuses: Record<string, Info> = {}
+
+    get(sessionID: string): Info {
+      return this.statuses[sessionID] ?? { type: "idle" }
+    }
+
+    list(): Record<string, Info> {
+      return this.statuses
+    }
+
+    set(sessionID: string, status: Info): void {
+      if (status.type === "idle") {
+        delete this.statuses[sessionID]
+        return
+      }
+      this.statuses[sessionID] = status
+    }
+  }
+
   const STATE_KEY = Symbol("session.status")
   function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => ({} as Record<string, Info>))
+    return getState(context, STATE_KEY, () => new SessionStatusService())
   }
 
   export function get(context: AgentContext, sessionID: SessionID) {

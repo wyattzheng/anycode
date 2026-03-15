@@ -46,6 +46,17 @@ export namespace FileWatcher {
     }
   })
 
+  /**
+   * FileWatcherService — manages parcel watcher subscriptions.
+   */
+  export class FileWatcherService {
+    readonly _promise: ReturnType<typeof initWatcher>
+
+    constructor(context: AgentContext) {
+      this._promise = initWatcher(context)
+    }
+  }
+
   const STATE_KEY = Symbol("file.watcher")
   async function initWatcher(context: AgentContext) {
       log.info("init")
@@ -113,7 +124,7 @@ export namespace FileWatcher {
       return { subs }
   }
   function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => initWatcher(context))
+    return getState(context, STATE_KEY, () => new FileWatcherService(context))._promise
   }
 
   export function init(context: AgentContext) {

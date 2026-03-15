@@ -43,11 +43,16 @@ async function resolveRelative(context: AgentContext, instruction: string): Prom
 }
 
 export namespace InstructionPrompt {
+  /**
+   * InstructionService — tracks claimed instruction files per session.
+   */
+  export class InstructionService {
+    readonly claims = new Map<string, Set<string>>()
+  }
+
   const STATE_KEY = Symbol("instruction")
   function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => ({
-      claims: new Map<string, Set<string>>(),
-    }))
+    return getState(context, STATE_KEY, () => new InstructionService())
   }
 
   function isClaimed(context: AgentContext, messageID: string, filepath: string) {

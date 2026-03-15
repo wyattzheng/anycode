@@ -65,21 +65,25 @@ const STRUCTURED_OUTPUT_SYSTEM_PROMPT = `IMPORTANT: The user has requested struc
 export namespace SessionPrompt {
   const log = Log.create({ service: "session.prompt" })
 
+  /**
+   * SessionPromptService — manages active prompt sessions (abort + callbacks).
+   */
+  export class SessionPromptService {
+    readonly sessions: Record<
+      string,
+      {
+        abort: AbortController
+        callbacks: {
+          resolve(input: MessageV2.WithParts): void
+          reject(reason?: any): void
+        }[]
+      }
+    > = {}
+  }
+
   const STATE_KEY = Symbol("session.prompt")
   const getState_ = (context: AgentContext) => {
-    return getState(context, STATE_KEY, () => {
-      const data: Record<
-        string,
-        {
-          abort: AbortController
-          callbacks: {
-            resolve(input: MessageV2.WithParts): void
-            reject(reason?: any): void
-          }[]
-        }
-      > = {}
-      return data
-    })
+    return getState(context, STATE_KEY, () => new SessionPromptService()).sessions
   }
 
   export function assertNotBusy(context: AgentContext, sessionID: SessionID) {

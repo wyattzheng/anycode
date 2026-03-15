@@ -39,6 +39,14 @@ export namespace Vcs {
     return text
   }
 
+  /**
+   * VcsService — tracks current VCS branch and watches for changes.
+   */
+  export class VcsService {
+    branch: string | undefined = undefined
+    unsub: (() => void) | undefined = undefined
+  }
+
   const STATE_KEY = Symbol("vcs")
   function state(context: AgentContext) {
     return getState(context, STATE_KEY, () => {

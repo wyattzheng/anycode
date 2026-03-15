@@ -88,11 +88,16 @@ export namespace Question {
     reject: (e: any) => void
   }
 
+  /**
+   * QuestionService — manages pending questions awaiting user answers.
+   */
+  export class QuestionService {
+    readonly pending = new Map<QuestionID, PendingEntry>()
+  }
+
   const STATE_KEY = Symbol("question")
   function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => ({
-      pending: new Map<QuestionID, PendingEntry>(),
-    }))
+    return getState(context, STATE_KEY, () => new QuestionService())
   }
 
   export async function ask(context: AgentContext, input: {

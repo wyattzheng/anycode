@@ -38,7 +38,7 @@ export namespace ToolRegistry {
   /**
    * ToolRegistryService — caches resolved tool list.
    */
-  export class Service {
+  export class ToolRegistryService {
     readonly _promise: ReturnType<typeof initTools>
 
     constructor(context: AgentContext) {
@@ -48,7 +48,7 @@ export namespace ToolRegistry {
 
   const STATE_KEY = Symbol("tool.registry")
   export function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => new Service(context))._promise
+    return getState(context, STATE_KEY, () => new ToolRegistryService(context))._promise
   }
   async function initTools(context: AgentContext) {
     const custom = [] as Tool.Info[]
