@@ -17,6 +17,9 @@ export class SqlJsStorage implements StorageProvider {
         const SQL = await initSqlJs()
         this.db = new SQL.Database()
 
+        // Enable foreign key support (required for CASCADE deletes)
+        this.db.run("PRAGMA foreign_keys = ON")
+
         // Apply migrations
         this.applyMigrations(migrations)
 

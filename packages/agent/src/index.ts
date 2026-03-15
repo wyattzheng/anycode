@@ -315,6 +315,21 @@ export class CodeAgent {
             })
         }
 
+        // If a custom project was provided, ensure it exists in DB too (FK constraint)
+        if (this.options.project && this.options.project.id !== "global") {
+            const pid = this.options.project.id
+            if (!this._dbClient.findOne("project", { op: "eq", field: "id", value: pid })) {
+                this._dbClient.insert("project", {
+                    id: pid,
+                    worktree: this.options.project.worktree ?? "/",
+                    vcs: this.options.project.vcs ?? null,
+                    sandboxes: this.options.project.sandboxes ?? [],
+                    time_created: Date.now(),
+                    time_updated: Date.now()
+                })
+            }
+        }
+
         // Initialize plugins (skip if in test/lightweight mode)
         if (!this.options.skipPlugins) {
             const { Plugin } = await import("@any-code/opencode/util/plugin")
