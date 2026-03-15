@@ -513,52 +513,6 @@ export class CodeAgent {
                 GlobalBus.on("event", globalHandler)
                 unsubs.push(() => GlobalBus.off("event", globalHandler))
 
-                // ── Permission handling ────────────────────────────
-                unsubs.push(
-                    Bus.subscribe(this.agentContext, PermissionNext.Event.Asked, async (payload: any) => {
-                        const request = payload.properties
-                        if (request.sessionID !== sessionId) return
-
-                        const permRequest: PermissionRequest = {
-                            id: request.id,
-                            permission: request.permission,
-                            patterns: request.patterns ?? [],
-                            metadata: request.metadata ?? {},
-                        }
-
-                        push({
-                            type: "permission_request" as CodeAgentEventType,
-                            toolName: request.permission,
-                            toolArgs: request.metadata,
-                        })
-
-                        let reply: PermissionReply = "allow"
-                        if (this.options.onPermissionRequest) {
-                            try {
-                                reply = await this.options.onPermissionRequest(permRequest)
-                            } catch {
-                                reply = "deny"
-                            }
-                        }
-
-                        const replyMap: Record<PermissionReply, "once" | "always" | "reject"> = {
-                            allow: "once",
-                            always: "always",
-                            deny: "reject",
-                        }
-
-                        await this.agentContext.permissionNext.reply({
-                            requestID: request.id,
-                            reply: replyMap[reply],
-                        })
-
-                        push({
-                            type: "permission_resolved" as CodeAgentEventType,
-                            toolName: request.permission,
-                            content: reply,
-                        })
-                    }),
-                )
 
                 const providerID = this.options.provider.id
                 const modelID = this.options.provider.model
@@ -679,10 +633,6 @@ export class CodeAgent {
         const permissions: PermissionNext.Ruleset = []
         for (const [tool, enabled] of Object.entries(input.tools ?? {})) {
             permissions.push({ permission: tool, action: enabled ? "allow" : "deny", pattern: "*" })
-        }
-        if (permissions.length > 0) {
-            session.permission = permissions
-            await Session.setPermission(context, { sessionID: session.id, permission: permissions })
         }
         return message
     }

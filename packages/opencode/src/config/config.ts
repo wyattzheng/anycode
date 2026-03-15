@@ -158,9 +158,7 @@ export namespace Config {
       ) as Info
     }
 
-    if (Flag.OPENCODE_PERMISSION) {
-      result.permission = mergeDeep(result.permission ?? {}, JSON.parse(Flag.OPENCODE_PERMISSION))
-    }
+
 
     if (!result.username) result.username = os.userInfo().username
 
@@ -244,73 +242,6 @@ export namespace Config {
   export const Mcp = z.discriminatedUnion("type", [McpLocal, McpRemote])
   export type Mcp = z.infer<typeof Mcp>
 
-  export const PermissionAction = z.enum(["ask", "allow", "deny"]).meta({
-    ref: "PermissionActionConfig",
-  })
-  export type PermissionAction = z.infer<typeof PermissionAction>
-
-  export const PermissionObject = z.record(z.string(), PermissionAction).meta({
-    ref: "PermissionObjectConfig",
-  })
-  export type PermissionObject = z.infer<typeof PermissionObject>
-
-  export const PermissionRule = z.union([PermissionAction, PermissionObject]).meta({
-    ref: "PermissionRuleConfig",
-  })
-  export type PermissionRule = z.infer<typeof PermissionRule>
-
-  // Capture original key order before zod reorders, then rebuild in original order
-  const permissionPreprocess = (val: unknown) => {
-    if (typeof val === "object" && val !== null && !Array.isArray(val)) {
-      return { __originalKeys: Object.keys(val), ...val }
-    }
-    return val
-  }
-
-  const permissionTransform = (x: unknown): Record<string, PermissionRule> => {
-    if (typeof x === "string") return { "*": x as PermissionAction }
-    const obj = x as { __originalKeys?: string[] } & Record<string, unknown>
-    const { __originalKeys, ...rest } = obj
-    if (!__originalKeys) return rest as Record<string, PermissionRule>
-    const result: Record<string, PermissionRule> = {}
-    for (const key of __originalKeys) {
-      if (key in rest) result[key] = rest[key] as PermissionRule
-    }
-    return result
-  }
-
-  export const Permission = z
-    .preprocess(
-      permissionPreprocess,
-      z
-        .object({
-          __originalKeys: z.string().array().optional(),
-          read: PermissionRule.optional(),
-          edit: PermissionRule.optional(),
-          glob: PermissionRule.optional(),
-          grep: PermissionRule.optional(),
-          list: PermissionRule.optional(),
-          bash: PermissionRule.optional(),
-          task: PermissionRule.optional(),
-          external_directory: PermissionRule.optional(),
-          todowrite: PermissionAction.optional(),
-          todoread: PermissionAction.optional(),
-          question: PermissionAction.optional(),
-          webfetch: PermissionAction.optional(),
-          websearch: PermissionAction.optional(),
-          codesearch: PermissionAction.optional(),
-          lsp: PermissionRule.optional(),
-          doom_loop: PermissionAction.optional(),
-          skill: PermissionRule.optional(),
-        })
-        .catchall(PermissionRule)
-        .or(PermissionAction),
-    )
-    .transform(permissionTransform)
-    .meta({
-      ref: "PermissionConfig",
-    })
-  export type Permission = z.infer<typeof Permission>
 
   export const Skills = z.object({
     paths: z.array(z.string()).optional().describe("Additional paths to skill folders"),
@@ -331,77 +262,37 @@ export namespace Config {
       temperature: z.number().optional(),
       top_p: z.number().optional(),
       prompt: z.string().optional(),
-      tools: z.record(z.string(), z.boolean()).optional().describe("@deprecated Use 'permission' field instead"),
+      tools: z.record(z.string(), z.boolean()).optional(),
       disable: z.boolean().optional(),
-      description: z.string().optional().describe("Description of when to use the agent"),
+      description: z.string().optional(),
       mode: z.enum(["subagent", "primary", "all"]).optional(),
-      hidden: z
-        .boolean()
-        .optional()
-        .describe("Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)"),
+      hidden: z.boolean().optional(),
       options: z.record(z.string(), z.any()).optional(),
       color: z
         .union([
           z.string().regex(/^#[0-9a-fA-F]{6}$/, "Invalid hex color format"),
           z.enum(["primary", "secondary", "accent", "success", "warning", "error", "info"]),
         ])
-        .optional()
-        .describe("Hex color code (e.g., #FF5733) or theme color (e.g., primary)"),
-      steps: z
-        .number()
-        .int()
-        .positive()
-        .optional()
-        .describe("Maximum number of agentic iterations before forcing text-only response"),
-      maxSteps: z.number().int().positive().optional().describe("@deprecated Use 'steps' field instead."),
-      permission: Permission.optional(),
+        .optional(),
+      steps: z.number().int().positive().optional(),
+      maxSteps: z.number().int().positive().optional(),
     })
     .catchall(z.any())
-    .transform((agent, ctx) => {
+    .transform((agent) => {
       const knownKeys = new Set([
-        "name",
-        "model",
-        "variant",
-        "prompt",
-        "description",
-        "temperature",
-        "top_p",
-        "mode",
-        "hidden",
-        "color",
-        "steps",
-        "maxSteps",
-        "options",
-        "permission",
-        "disable",
-        "tools",
+        "name", "model", "variant", "prompt", "description", "temperature", "top_p",
+        "mode", "hidden", "color", "steps", "maxSteps", "options", "disable", "tools",
       ])
 
-      // Extract unknown properties into options
       const options: Record<string, unknown> = { ...agent.options }
       for (const [key, value] of Object.entries(agent)) {
         if (!knownKeys.has(key)) options[key] = value
       }
 
-      // Convert legacy tools config to permissions
-      const permission: Permission = {}
-      for (const [tool, enabled] of Object.entries(agent.tools ?? {})) {
-        const action = enabled ? "allow" : "deny"
-        // write, edit, patch, multiedit all map to edit permission
-        if (tool === "write" || tool === "edit" || tool === "patch" || tool === "multiedit") {
-          permission.edit = action
-        } else {
-          permission[tool] = action
-        }
-      }
-      Object.assign(permission, agent.permission)
-
-      // Convert legacy maxSteps to steps
       const steps = agent.steps ?? agent.maxSteps
 
-      return { ...agent, options, permission, steps } as typeof agent & {
+      return { ...agent, options, steps } as typeof agent & {
         options?: Record<string, unknown>
-        permission?: Permission
         steps?: number
       }
     })
@@ -512,7 +403,6 @@ export namespace Config {
         )
         .optional(),
       instructions: z.array(z.string()).optional(),
-      permission: Permission.optional(),
       compaction: z
         .object({
           auto: z.boolean().optional().describe("Enable automatic compaction when context is full (default: true)"),

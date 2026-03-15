@@ -74,8 +74,6 @@ export namespace Session {
             diffs: row.summary_diffs ?? undefined,
           }
         : undefined
-    const share = row.share_url ? { url: row.share_url } : undefined
-    const revert = row.revert ?? undefined
     return {
       id: row.id,
       slug: row.slug,
@@ -86,9 +84,7 @@ export namespace Session {
       title: row.title,
       version: row.version,
       summary,
-      share,
-      revert,
-      permission: row.permission ?? undefined,
+      revert: row.revert ?? undefined,
       time: {
         created: row.time_created,
         updated: row.time_updated,
@@ -108,13 +104,13 @@ export namespace Session {
       directory: info.directory,
       title: info.title,
       version: info.version,
-      share_url: info.share?.url,
+      share_url: undefined,
       summary_additions: info.summary?.additions,
       summary_deletions: info.summary?.deletions,
       summary_files: info.summary?.files,
       summary_diffs: info.summary?.diffs,
       revert: info.revert ?? null,
-      permission: info.permission,
+
       time_created: info.time.created,
       time_updated: info.time.updated,
       time_compacting: info.time.compacting,
@@ -148,11 +144,6 @@ export namespace Session {
           diffs: Snapshot.FileDiff.array().optional(),
         })
         .optional(),
-      share: z
-        .object({
-          url: z.string(),
-        })
-        .optional(),
       title: z.string(),
       version: z.string(),
       time: z.object({
@@ -161,7 +152,6 @@ export namespace Session {
         compacting: z.number().optional(),
         archived: z.number().optional(),
       }),
-      permission: PermissionNext.Ruleset.optional(),
       revert: z
         .object({
           messageID: MessageID.zod,
@@ -232,7 +222,6 @@ export namespace Session {
   export type CreateInput = {
     parentID?: SessionID
     title?: string
-    permission?: PermissionNext.Ruleset
     workspaceID?: WorkspaceID
   }
 
@@ -244,7 +233,6 @@ export namespace Session {
         parentID: input?.parentID,
         directory: context.directory,
         title: input?.title,
-        permission: input?.permission,
         workspaceID: input?.workspaceID,
       })
     }
@@ -315,7 +303,6 @@ export namespace Session {
       parentID?: SessionID
       workspaceID?: WorkspaceID
       directory: string
-      permission?: PermissionNext.Ruleset
     },
   ) {
     const result: Info = {
@@ -327,7 +314,6 @@ export namespace Session {
       workspaceID: input.workspaceID,
       parentID: input.parentID,
       title: input.title ?? createDefaultTitle(!!input.parentID),
-      permission: input.permission,
       time: {
         created: Date.now(),
         updated: Date.now(),
@@ -340,11 +326,6 @@ export namespace Session {
           info: result,
         })
     }
-    const cfg = await context.config.get()
-    if (!result.parentID && (Flag.OPENCODE_AUTO_SHARE || cfg.share === "auto"))
-      share(result.id).catch(() => {
-        // Silently ignore sharing errors during session creation
-      })
     Bus.publish(context, Event.Updated, {
       info: result,
     })
@@ -364,13 +345,7 @@ export namespace Session {
     return fromRow(row)
   }
 
-  export const share = fn(SessionID.zod, async (_id) => {
-    throw new Error("Sharing is not available in agent mode")
-  })
 
-  export const unshare = fn(SessionID.zod, async (_id) => {
-    throw new Error("Sharing is not available in agent mode")
-  })
 
   export async function setTitle(context: import("@any-code/opencode/agent/context").AgentContext, input: any) {
     const row = context.db.update("session",
@@ -602,7 +577,7 @@ export namespace Session {
       for (const child of await children(context, sessionID)) {
         await remove(context, child.id)
       }
-      await unshare(sessionID).catch(() => {})
+
       // CASCADE delete handles messages and parts automatically
       {
         context.db.remove("session", { op: "eq", field: "id", value: sessionID })
