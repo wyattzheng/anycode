@@ -44,7 +44,7 @@ import { MessageV2 } from "@/agent/memory/message-v2"
 
 import { Truncate } from "../tool/truncation"
 
-import { FileWatcher } from "./project"
+
 
 import { Question } from "../session/question"
 import { SessionStatus } from "../session"
@@ -320,7 +320,7 @@ export class CodeAgent {
         ctx.provider = new Provider.ProviderService(ctx)
         ctx.toolRegistry = new ToolRegistry.ToolRegistryService(ctx)
         ctx.skill = new Skill.SkillService(ctx)
-        ctx.fileWatcher = new FileWatcher.FileWatcherService(ctx)
+
 
 
 

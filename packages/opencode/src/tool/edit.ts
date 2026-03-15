@@ -10,7 +10,7 @@ import { LSP } from "../util/lsp"
 import { createTwoFilesPatch, diffLines } from "diff"
 import DESCRIPTION from "./edit.txt"
 import { File } from "@/agent/project"
-import { FileWatcher } from "@/agent/project"
+
 import { Bus } from "../bus"
 
 
@@ -72,10 +72,7 @@ export const EditTool = Tool.define("edit", {
         await Bus.publish(undefined, File.Event.Edited, {
           file: filePath,
         })
-        await Bus.publish(undefined, FileWatcher.Event.Updated, {
-          file: filePath,
-          event: existed ? "change" : "add",
-        })
+
         ctx.fileTime.read(ctx.sessionID, filePath)
         return
       }
@@ -109,10 +106,7 @@ export const EditTool = Tool.define("edit", {
       await Bus.publish(undefined, File.Event.Edited, {
         file: filePath,
       })
-      await Bus.publish(undefined, FileWatcher.Event.Updated, {
-        file: filePath,
-        event: "change",
-      })
+
       contentNew = await ctx.fs.readText(filePath)
       diff = trimDiff(
         createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),

@@ -18,7 +18,7 @@ import type { Provider } from "../provider/provider"
 import type { ModelsDev } from "../provider/models"
 import type { ToolRegistry } from "../tool/registry"
 import type { Skill } from "../skill"
-import type { FileWatcher } from "./project"
+
 
 
 
@@ -76,7 +76,7 @@ export interface AgentContext {
     modelsDev: ModelsDev.ModelsDevService
     toolRegistry: ToolRegistry.ToolRegistryService
     skill: Skill.SkillService
-    fileWatcher: FileWatcher.FileWatcherService
+
 
 
 }

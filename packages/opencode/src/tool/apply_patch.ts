@@ -3,7 +3,7 @@ import * as path from "path"
 
 import { Tool } from "./tool"
 import { Bus } from "../bus"
-import { FileWatcher } from "@/agent/project"
+
 import { Patch } from "./patch"
 import { createTwoFilesPatch, diffLines } from "diff"
 import { assertExternalDirectory } from "./external-directory"
@@ -225,10 +225,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
       }
     }
 
-    // Publish file change events
-    for (const update of updates) {
-      await Bus.publish(undefined, FileWatcher.Event.Updated, update)
-    }
+
 
     // Notify LSP of file changes and collect diagnostics
     for (const change of fileChanges) {

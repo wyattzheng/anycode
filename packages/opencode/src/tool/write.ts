@@ -6,7 +6,7 @@ import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./write.txt"
 import { Bus } from "../bus"
 import { File } from "@/agent/project"
-import { FileWatcher } from "@/agent/project"
+
 
 import { trimDiff } from "./edit"
 import { assertExternalDirectory } from "./external-directory"
@@ -43,10 +43,7 @@ export const WriteTool = Tool.define("write", {
     await Bus.publish(undefined, File.Event.Edited, {
       file: filepath,
     })
-    await Bus.publish(undefined, FileWatcher.Event.Updated, {
-      file: filepath,
-      event: exists ? "change" : "add",
-    })
+
     ctx.fileTime.read(ctx.sessionID, filepath)
 
     let output = "Wrote file successfully."
