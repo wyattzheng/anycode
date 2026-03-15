@@ -16,7 +16,7 @@ import { SessionCompaction } from "@/session/session"
 import { NamedError } from "@/util/error"
 import { iife } from "@/util/iife"
 import { Snapshot } from "@/snapshot"
-import { PermissionNext } from "@/permission"
+
 import { Bus } from "@/bus"
 import { SessionSummary } from "@/session/summary"
 import { Question } from "@/session/question"
@@ -153,12 +153,12 @@ export namespace LLM {
       modelID: input.model.id,
       providerID: input.model.providerID,
     })
-    const [language, cfg, provider, auth] = await Promise.all([
+    const [language, provider, auth] = await Promise.all([
       context.provider.getLanguage(input.model),
-      context.config.get(),
       context.provider.getProvider(input.model.providerID),
       Auth.get(input.model.providerID),
     ])
+    const cfg = context.config
     const isCodex = provider.id === "openai" && auth?.type === "oauth"
 
     const system = []
@@ -328,9 +328,8 @@ export namespace LLM {
   }
 
   async function resolveTools(input: Pick<StreamInput, "tools" | "agent" | "user">) {
-    const disabled = PermissionNext.disabled(Object.keys(input.tools), input.agent.permission)
     for (const tool of Object.keys(input.tools)) {
-      if (input.user.tools?.[tool] === false || disabled.has(tool)) {
+      if (input.user.tools?.[tool] === false) {
         delete input.tools[tool]
       }
     }
@@ -380,7 +379,7 @@ export namespace LLMRunner {
       async process(streamInput: LLM.StreamInput) {
         log.info("process")
         needsCompaction = false
-        const shouldBreak = (await input.context.config.get()).experimental?.continue_loop_on_deny !== true
+        const shouldBreak = (input.context.config).experimental?.continue_loop_on_deny !== true
         while (true) {
           try {
             let currentText: MessageV2.TextPart | undefined
@@ -500,18 +499,7 @@ export namespace LLMRunner {
                           JSON.stringify(p.state.input) === JSON.stringify(value.input),
                       )
                     ) {
-                      const agent = await input.context.agents.get(input.assistantMessage.agent)
-                      await input.context.permissionNext.ask({
-                        permission: "doom_loop",
-                        patterns: [value.toolName],
-                        sessionID: input.assistantMessage.sessionID,
-                        metadata: {
-                          tool: value.toolName,
-                          input: value.input,
-                        },
-                        always: [value.toolName],
-                        ruleset: agent.permission,
-                      })
+                      // Doom loop detected — previously asked for permission, now always-allowed
                     }
                   }
                   break
@@ -557,7 +545,6 @@ export namespace LLMRunner {
                     })
 
                     if (
-                      value.error instanceof PermissionNext.RejectedError ||
                       value.error instanceof Question.RejectedError
                     ) {
                       blocked = shouldBreak

@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll } from "vitest"
 import { CodeAgent } from "../src/index"
 import { InMemoryFS } from "./fixtures/in-memory-fs"
 import { InMemorySearchProvider } from "./fixtures/search-memory"
-import { ConfigMarkdown } from "@any-code/opencode/config/markdown"
+import { ConfigMarkdown } from "@any-code/opencode/util/markdown"
 import { SqlJsStorage } from "../src/storage-sqljs"
 
 describe("ConfigMarkdown", () => {

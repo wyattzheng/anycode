@@ -6,7 +6,7 @@ import { Bus } from "@/bus"
 import { Decimal } from "decimal.js"
 import z from "zod"
 import { type ProviderMetadata } from "ai"
-import { Config } from "../config/config"
+
 import { Flag } from "../util/flag"
 import { Installation } from "../util/installation"
 
@@ -25,7 +25,7 @@ import { SessionID, MessageID, PartID } from "./schema"
 
 import type { Provider } from "@/provider/provider"
 import { ModelID, ProviderID } from "@/provider/schema"
-import { PermissionNext } from "@/permission"
+
 import type { LanguageModelV2Usage } from "@ai-sdk/provider"
 import { iife } from "@/util/iife"
 
@@ -362,17 +362,6 @@ export namespace Session {
     const row = context.db.update("session",
       { op: "eq", field: "id", value: input.sessionID },
       { time_archived: input.time },
-    )
-    if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
-    const info = fromRow(row)
-    Bus.publish(undefined, Event.Updated, { info })
-    return info
-  }
-
-  export async function setPermission(context: import("@any-code/opencode/agent/context").AgentContext, input: any) {
-    const row = context.db.update("session",
-      { op: "eq", field: "id", value: input.sessionID },
-      { permission: input.permission, time_updated: Date.now() },
     )
     if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
     const info = fromRow(row)
@@ -909,7 +898,7 @@ export namespace SystemPrompt {
   }
 
   export async function skills(context: AgentContext, agent: Agent.Info) {
-    if (PermissionNext.disabled(["skill"], agent.permission).has("skill")) return
+
 
     const list = await context.skill.available(agent)
 

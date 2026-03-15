@@ -14,7 +14,7 @@ import { SkillTool } from "./skill"
 import type { Agent } from "../agent/agent"
 import { Tool } from "./tool"
 import type { AgentContext } from "../agent/context"
-import { Config } from "../config/config"
+
 import path from "path"
 import z from "zod"
 import { ProviderID, type ModelID } from "../provider/schema"
@@ -81,20 +81,6 @@ export namespace ToolRegistry {
 
   async function initTools(context: AgentContext) {
     const custom = [] as Tool.Info[]
-
-    const matches: string[] = []
-    for (const dir of await Config.directories(context)) {
-      matches.push(...await Glob.scan(context, "{tool,tools}/*.{js,ts}", { cwd: dir, absolute: true, dot: true, symlink: true }))
-    }
-    if (matches.length) await Config.waitForDependencies(context)
-    for (const match of matches) {
-      const namespace = path.basename(match, path.extname(match))
-      const mod = await import(pathToFileURL(match).href)
-      for (const [id, def] of Object.entries<ToolDefinition>(mod)) {
-        custom.push(fromPlugin(id === "default" ? namespace : `${namespace}_${id}`, def))
-      }
-    }
-
     return { custom }
   }
 
@@ -124,7 +110,7 @@ export namespace ToolRegistry {
 
   async function all(context: AgentContext): Promise<Tool.Info[]> {
     const custom = await context.toolRegistry._promise.then((x) => x.custom)
-    const config = await context.config.get()
+    const config = context.config
     const question = ["app", "cli", "desktop"].includes(Flag.OPENCODE_CLIENT) || Flag.OPENCODE_ENABLE_QUESTION_TOOL
 
     return [

@@ -41,13 +41,12 @@ import { SessionPrompt } from "../session/session"
 import { Bus } from "../bus"
 import { GlobalBus } from "../bus/global"
 import { MessageV2 } from "../session/message-v2"
-import { PermissionNext } from "../permission"
-import { Permission } from "../permission"
+
 import { Truncate } from "../tool/truncation"
 import { Snapshot } from "../snapshot"
 import { FileWatcher } from "../file"
 import { File } from "../file"
-import { Config } from "../config/config"
+
 import { Question } from "../session/question"
 import { SessionStatus } from "../session"
 import { InstructionPrompt } from "../session/instruction"
@@ -82,24 +81,7 @@ export interface CodeAgentProvider {
     baseUrl?: string
 }
 
-/**
- * A permission request from the agent.
- * When a tool needs permission (e.g., writing files, running commands),
- * the agent emits this to let the App layer decide.
- */
-export interface PermissionRequest {
-    /** Unique ID for this permission request */
-    id: string
-    /** Permission type (e.g., "write", "bash", "edit", "external_directory") */
-    permission: string
-    /** Patterns being requested (e.g., file paths, command patterns) */
-    patterns: string[]
-    /** Additional metadata about the request */
-    metadata: Record<string, unknown>
-}
 
-/** Result of a permission request callback */
-export type PermissionReply = "allow" | "always" | "deny"
 
 /**
  * StorageProvider — abstraction over the database backend.
@@ -132,7 +114,7 @@ export interface CodeAgentOptions {
      * Pre-built configuration object.
      * When provided, bypasses all filesystem-based config loading
      * (opencode.json, .opencode/ directories, etc.).
-     * Should conform to opencode's Config.Info schema.
+     * Should conform to opencode's config schema.
      */
     config?: Record<string, unknown>
 
@@ -140,17 +122,7 @@ export interface CodeAgentOptions {
     skipPlugins?: boolean
 
     /**
-     * Callback for handling permission requests.
-     * Called when a tool needs permission that isn't auto-allowed by the ruleset.
-     *
-     * If not provided, all permissions are auto-allowed.
-     *
-     * Return:
-     * - "allow" — allow this one time
-     * - "always" — always allow this permission pattern
-     * - "deny" — reject this request
-     */
-    onPermissionRequest?: (request: PermissionRequest) => Promise<PermissionReply>
+
 
     /**
      * Virtual File System implementation.
@@ -215,8 +187,7 @@ export type CodeAgentEventType =
     | "text_delta"
     | "tool_call_start"
     | "tool_call_done"
-    | "permission_request"
-    | "permission_resolved"
+
     | "error"
     | "done"
 
@@ -338,13 +309,12 @@ export class CodeAgent {
         } as AgentContext
 
         // Phase 1: context-dependent services
-        ctx.config = new Config.ConfigService(ctx)
+        ctx.config = (this.options.config ?? {}) as Record<string, any>
         ctx.question = new Question.QuestionService()
         ctx.sessionStatus = new SessionStatus.SessionStatusService(ctx)
         ctx.instruction = new InstructionPrompt.InstructionService()
         ctx.sessionPrompt = new SessionPrompt.SessionPromptService()
-        ctx.permission = new Permission.PermissionService()
-        ctx.permissionNext = new PermissionNext.PermissionNextService(ctx)
+
 
         ctx.agents = new Agent.AgentService(ctx)
         ctx.provider = new Provider.ProviderService(ctx)
@@ -357,7 +327,7 @@ export class CodeAgent {
 
         // Bind context to services that need it for instance methods
         ctx.instruction.bind(ctx)
-        ctx.permissionNext.bind(ctx)
+
         ctx.provider.bind(ctx)
         ctx.question.bind(ctx)
 
@@ -630,10 +600,7 @@ export class CodeAgent {
         const message = await SessionPrompt.createUserMessage(context, input)
         await Session.touch(context, input.sessionID)
 
-        const permissions: PermissionNext.Ruleset = []
-        for (const [tool, enabled] of Object.entries(input.tools ?? {})) {
-            permissions.push({ permission: tool, action: enabled ? "allow" : "deny", pattern: "*" })
-        }
+
         return message
     }
 

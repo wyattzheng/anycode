@@ -31,12 +31,12 @@ import { Flag } from "../util/flag"
 import { ulid } from "ulid"
 
 import { pathToFileURL, fileURLToPath } from "url"
-import { ConfigMarkdown } from "../config/markdown"
+import { ConfigMarkdown } from "../util/markdown"
 import { SessionSummary } from "./summary"
 import { NamedError } from "@/util/error"
 import { fn } from "@/util/fn"
 import { Tool } from "@/tool/tool"
-import { PermissionNext } from "@/permission"
+
 import { SessionStatus } from "."
 import { LLMRunner, LLM } from "@/agent/llm-runner"
 import { iife } from "@/util/iife"
@@ -44,7 +44,7 @@ import { Truncate } from "@/tool/truncation"
 import { decodeDataUrl } from "@/util/data-url"
 
 import { Snapshot } from "@/snapshot"
-import { Config } from "@/config/config"
+
 import { Question } from "@/session/question"
 import { Installation } from "@/util/installation"
 import { BusEvent } from "@/bus/bus-event"
@@ -289,13 +289,8 @@ export namespace SessionPrompt {
           })
         }
       },
-      async ask(req) {
-        await input.agentContext.permissionNext.ask({
-          ...req,
-          sessionID: input.session.id,
-          tool: { messageID: input.processor.message.id, callID: options.toolCallId },
-          ruleset: [],
-        })
+      async ask(_req) {
+        // no-op: permission system removed, all operations auto-allowed
       },
     })
 
@@ -882,7 +877,7 @@ export namespace SessionCompaction {
   const COMPACTION_BUFFER = 20_000
 
   export async function isOverflow(input: { tokens: MessageV2.Assistant["tokens"]; model: Provider.Model; context: AgentContext }) {
-    const config = await input.context.config.get()
+    const config = input.context.config
     if (config.compaction?.auto === false) return false
     const contextLimit = input.model.limit.context
     if (contextLimit === 0) return false
@@ -908,7 +903,7 @@ export namespace SessionCompaction {
   // calls. then erases output of previous tool calls. idea is to throw away old
   // tool calls that are no longer relevant.
   export async function prune(context: AgentContext, input: { sessionID: SessionID }) {
-    const config = await context.config.get()
+    const config = context.config
     if (config.compaction?.prune === false) return
     log.info("pruning")
     const msgs = await Session.messages(context, { sessionID: input.sessionID })

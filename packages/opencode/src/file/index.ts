@@ -164,7 +164,7 @@ export namespace FileTime {
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import z from "zod"
-import { Config } from "../config/config"
+
 // @ts-ignore
 import { createWrapper } from "@parcel/watcher/wrapper"
 import { lazy } from "@/util/lazy"
@@ -210,7 +210,7 @@ export namespace FileWatcher {
 
     private async init(context: AgentContext) {
       log.info("init")
-      const cfg = await context.config.get()
+      const cfg = context.config
       const backend = (() => {
         if (process.platform === "win32") return "windows"
         if (process.platform === "darwin") return "fs-events"

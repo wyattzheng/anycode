@@ -2,7 +2,7 @@ import { sqliteTable, text, integer, index, primaryKey } from "drizzle-orm/sqlit
 import { ProjectTable } from "../project"
 import type { MessageV2 } from "./message-v2"
 import type { Snapshot } from "../snapshot"
-import type { PermissionNext } from "../permission"
+
 import type { ProjectID } from "../project"
 import type { SessionID, MessageID, PartID } from "./schema"
 type WorkspaceID = string
@@ -31,7 +31,7 @@ export const SessionTable = sqliteTable(
     summary_files: integer(),
     summary_diffs: text({ mode: "json" }).$type<Snapshot.FileDiff[]>(),
     revert: text({ mode: "json" }).$type<{ messageID: MessageID; partID?: PartID; snapshot?: string; diff?: string }>(),
-    permission: text({ mode: "json" }).$type<PermissionNext.Ruleset>(),
+
     ...Timestamps,
     time_compacting: integer(),
     time_archived: integer(),
@@ -94,10 +94,4 @@ export const TodoTable = sqliteTable(
   ],
 )
 
-export const PermissionTable = sqliteTable("permission", {
-  project_id: text()
-    .primaryKey()
-    .references(() => ProjectTable.id, { onDelete: "cascade" }),
-  ...Timestamps,
-  data: text({ mode: "json" }).notNull().$type<PermissionNext.Ruleset>(),
-})
+

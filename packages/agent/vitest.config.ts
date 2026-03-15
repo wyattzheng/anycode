@@ -48,6 +48,7 @@ export default defineConfig({
             "@any-code/opencode/project/project.sql": path.join(opencodeSrc, "project/project.sql.ts"),
             "@any-code/opencode/util/installation": path.join(opencodeSrc, "util/installation.ts"),
             "@any-code/opencode/util/flag": path.join(opencodeSrc, "util/flag.ts"),
+            "@any-code/opencode/util/markdown": path.join(opencodeSrc, "util/markdown.ts"),
             // drizzle-orm/sql-js adapter — resolve from opencode's pnpm store
             "drizzle-orm/sql-js": path.resolve(__dirname, "../../node_modules/.pnpm/drizzle-orm@1.0.0-beta.16-ea816b6_@opentelemetry+api@1.9.0_@types+better-sqlite3@7.6.13_0f21266a0de314c39cfb891f27e2ae25/node_modules/drizzle-orm/sql-js/index.js"),
         },

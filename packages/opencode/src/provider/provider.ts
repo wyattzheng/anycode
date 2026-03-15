@@ -1,7 +1,6 @@
 import type { AgentContext } from "@/agent/context"
 import z from "zod"
 import fuzzysort from "fuzzysort"
-import { Config } from "../config/config"
 import { mapValues, mergeDeep, omit, pickBy, sortBy } from "remeda"
 import { NoSuchModelError, type Provider as SDK } from "ai"
 import { Log } from "../util/log"
@@ -373,7 +372,7 @@ export namespace Provider {
     }
 
     async getSmallModel(providerID: ProviderID) {
-      const cfg = await this.context.config.get()
+      const cfg = this.context.config
 
       if (cfg.small_model) {
         const parsed = parseModel(cfg.small_model)
@@ -402,7 +401,7 @@ export namespace Provider {
     }
 
     async defaultModel() {
-      const cfg = await this.context.config.get()
+      const cfg = this.context.config
       if (cfg.model) return parseModel(cfg.model)
 
       const providers = await this.list()
@@ -545,7 +544,7 @@ export namespace Provider {
 
     private async init(context: AgentContext) {
     using _ = log.time("state")
-    const config = await context.config.get()
+    const config = context.config
     const modelsDev = await ModelsDev.get(context)
     const database = mapValues(modelsDev, fromModelsDevProvider)
 

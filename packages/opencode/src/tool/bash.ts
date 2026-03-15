@@ -13,7 +13,7 @@ import { fileURLToPath } from "url"
 import { Flag } from "@/util/flag"
 import { Shell } from "@/util/shell"
 
-import { BashArity } from "@/permission"
+
 import { Truncate } from "./truncation"
 
 const MAX_METADATA_LENGTH = 30_000
@@ -130,7 +130,7 @@ export const BashTool = Tool.define("bash", async (initCtx?: Tool.InitContext) =
         // cd covered by above check
         if (command.length && command[0] !== "cd") {
           patterns.add(commandText)
-          always.add(BashArity.prefix(command).join(" ") + " *")
+          always.add(command.slice(0, 1).join(" ") + " *")
         }
       }
 

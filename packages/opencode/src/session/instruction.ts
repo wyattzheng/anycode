@@ -1,7 +1,7 @@
 import path from "path"
 import os from "os"
 import { Filesystem } from "../util/filesystem"
-import { Config } from "../config/config"
+
 import type { AgentContext } from "@/agent/context"
 import { Flag } from "@/util/flag"
 import { Log } from "../util/log"
@@ -74,7 +74,7 @@ export namespace InstructionPrompt {
     }
 
     async systemPaths() {
-      const config = await this.context.config.get()
+      const config = this.context.config
       const paths = new Set<string>()
 
       if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
@@ -126,7 +126,7 @@ export namespace InstructionPrompt {
         return injected
       }
 
-      const config = await this.context.config.get()
+      const config = this.context.config
       const paths = await this.systemPaths()
 
       const files = Array.from(paths).map(async (p) => {

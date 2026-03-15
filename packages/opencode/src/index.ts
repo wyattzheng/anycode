@@ -12,7 +12,7 @@ export { MessageV2 } from "./session/message-v2"
 export { Tool } from "./tool/tool"
 export { ToolRegistry } from "./tool/registry"
 export { Provider } from "./provider/provider"
-export { Config } from "./config/config"
+
 export { Bus } from "./bus"
 export { Log } from "./util/log"
 export { Database } from "./storage"

@@ -2,9 +2,9 @@ import type { AgentContext } from "@/agent/context"
 import path from "path"
 import os from "os"
 import z from "zod"
-import { Config } from "../config/config"
+
 import { NamedError } from "@/util/error"
-import { ConfigMarkdown } from "../config/markdown"
+import { ConfigMarkdown } from "../util/markdown"
 import { Log } from "../util/log"
 import { Filesystem } from "@/util/filesystem"
 import { Flag } from "@/util/flag"
@@ -13,7 +13,6 @@ import { Session } from "@/session"
 import { Glob } from "../util/glob"
 import { pathToFileURL } from "url"
 import type { Agent } from "@/agent/agent"
-import { PermissionNext } from "@/permission"
 
 // ── Discovery ───────────────────────────────────────────────────────────────
 
@@ -174,9 +173,7 @@ export namespace Skill {
     }
 
     async available(agent?: Agent.Info): Promise<Info[]> {
-      const list = await this.all()
-      if (!agent) return list
-      return list.filter((skill) => PermissionNext.evaluate("skill", skill.name, agent.permission).action !== "deny")
+      return this.all()
     }
   }
 
@@ -250,21 +247,10 @@ export namespace Skill {
       }
     }
 
-    // Scan .opencode/skill/ directories
-    for (const dir of await Config.directories(context)) {
-      const matches = await Glob.scan(context, OPENCODE_SKILL_PATTERN, {
-        cwd: dir,
-        absolute: true,
-        include: "file",
-        symlink: true,
-      })
-      for (const match of matches) {
-        await addSkill(match)
-      }
-    }
+
 
     // Scan additional skill paths from config
-    const config = await context.config.get()
+    const config = context.config
     for (const skillPath of config.skills?.paths ?? []) {
       const expanded = skillPath.startsWith("~/") ? path.join(os.homedir(), skillPath.slice(2)) : skillPath
       const resolved = path.isAbsolute(expanded) ? expanded : path.join(context.directory, expanded)

@@ -5,7 +5,7 @@ import { Filesystem } from "../util/filesystem"
 import { Log } from "../util/log"
 import { Flag } from "../util/flag"
 import z from "zod"
-import { Config } from "../config/config"
+
 import { Scheduler } from "../util/scheduler"
 
 export namespace Snapshot {
@@ -29,7 +29,7 @@ export namespace Snapshot {
   export async function cleanup(context?: AgentContext) {
     if (!context) return
     if (context.project.vcs !== "git") return
-    const cfg = await context.config.get()
+    const cfg = context.config
     if (cfg.snapshot === false) return
     const git = gitdir(context)
     const exists = await Filesystem.exists(context, git)
@@ -50,7 +50,7 @@ export namespace Snapshot {
 
   export async function track(context: AgentContext) {
     if (context.project.vcs !== "git") return
-    const cfg = await context.config.get()
+    const cfg = context.config
     if (cfg.snapshot === false) return
     const git = gitdir(context)
     if (!(await Filesystem.exists(context, git))) {
