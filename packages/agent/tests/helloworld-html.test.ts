@@ -118,12 +118,12 @@ describe("CodeAgent: create hello world HTML page", () => {
         const lastEvent = events[events.length - 1]
         expect(lastEvent.type).toBe("done")
 
-        // Should have tool_call_start and tool_call_done events for the "write" tool
-        const toolStarts = events.filter((e) => e.type === "tool_call_start")
+        // Should have tool.start and tool.done events for the "write" tool
+        const toolStarts = events.filter((e) => e.type === "tool.start")
         expect(toolStarts.length).toBeGreaterThan(0)
         expect(toolStarts[0].toolName).toBe("write")
 
-        const toolDones = events.filter((e) => e.type === "tool_call_done")
+        const toolDones = events.filter((e) => e.type === "tool.done")
         expect(toolDones.length).toBeGreaterThan(0)
 
         // ── Verify the file was written through the VFS ──
@@ -145,7 +145,7 @@ describe("CodeAgent: create hello world HTML page", () => {
             session.id,
             "创建一个 hello world 的 HTML 页面",
         )) {
-            if (event.type === "text_delta" && event.content) {
+            if (event.type === "text.delta" && event.content) {
                 fullText += event.content
             }
         }

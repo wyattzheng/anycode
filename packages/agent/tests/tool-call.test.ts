@@ -61,7 +61,7 @@ describe("CodeAgent tool calling", () => {
     // TODO: This test requires registering tools in the agent's tool registry.
     // Without registered tools, the AI SDK parses function_call SSE correctly but
     // opencode's processor can't execute unregistered tools, so no tool events are emitted.
-    it.skip("should emit tool_call_start and tool_call_done events", async () => {
+    it.skip("should emit tool.start and tool.done events", async () => {
         const session = await agent.createSession()
         const events: Array<{ type: string; toolName?: string; toolArgs?: any; toolOutput?: string }> = []
 
@@ -69,12 +69,12 @@ describe("CodeAgent tool calling", () => {
             events.push(event)
         }
 
-        // Should have tool_call_start event
-        const toolStarts = events.filter((e) => e.type === "tool_call_start")
+        // Should have tool.start event
+        const toolStarts = events.filter((e) => e.type === "tool.start")
         expect(toolStarts.length).toBeGreaterThan(0)
 
-        // Should have tool_call_done event
-        const toolDones = events.filter((e) => e.type === "tool_call_done")
+        // Should have tool.done event
+        const toolDones = events.filter((e) => e.type === "tool.done")
         expect(toolDones.length).toBeGreaterThan(0)
 
         // Should end with done

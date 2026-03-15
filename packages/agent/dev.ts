@@ -59,43 +59,97 @@ const HTML = /* html */ `<!DOCTYPE html>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --bg: #0d1117; --surface: #161b22; --border: #30363d;
-    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
-    --green: #3fb950; --red: #f85149; --mono: 'SF Mono', 'Fira Code', monospace;
+    --bg: #1e1e1e; --surface: #252526; --surface2: #2d2d2d; --border: #3e3e42;
+    --text: #cccccc; --text-bright: #e0e0e0; --muted: #808080; --accent: #0078d4;
+    --accent-soft: #264f78; --green: #4ec9b0; --green-bg: rgba(78,201,176,0.08);
+    --red: #f44747; --red-bg: rgba(244,71,71,0.08); --yellow: #dcdcaa;
+    --orange: #ce9178; --purple: #c586c0;
+    --mono: 'Cascadia Code', 'Fira Code', 'SF Mono', Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
   }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-    background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
-  header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex;
-    align-items: center; gap: 10px; background: var(--surface); }
-  header h1 { font-size: 15px; font-weight: 600; }
-  header .badge { font-size: 11px; background: var(--accent); color: #000; padding: 2px 8px;
-    border-radius: 10px; font-weight: 600; }
-  #messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-  .msg { max-width: 85%; padding: 10px 14px; border-radius: 12px; font-size: 14px;
-    line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
-  .msg.user { align-self: flex-end; background: #1f6feb; border-bottom-right-radius: 4px; }
-  .msg.assistant { align-self: flex-start; background: var(--surface); border: 1px solid var(--border);
-    border-bottom-left-radius: 4px; }
-  .msg.tool { align-self: flex-start; background: #1c2128; border-left: 3px solid var(--green);
-    font-family: var(--mono); font-size: 12px; color: var(--muted); }
-  .msg.error { align-self: flex-start; background: #2d1215; border-left: 3px solid var(--red);
-    color: var(--red); }
-  #input-bar { padding: 12px 16px; border-top: 1px solid var(--border); background: var(--surface);
+  body { font-family: var(--sans); background: var(--bg); color: var(--text);
+    height: 100vh; display: flex; flex-direction: column; font-size: 13px; }
+
+  /* ── Header ── */
+  header { padding: 8px 16px; border-bottom: 1px solid var(--border); display: flex;
+    align-items: center; gap: 10px; background: var(--surface); min-height: 36px; }
+  header h1 { font-size: 13px; font-weight: 600; color: var(--text-bright); }
+  .badge { font-size: 11px; background: var(--accent); color: #fff; padding: 1px 8px;
+    border-radius: 3px; font-weight: 500; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted);
+    margin-left: auto; transition: background .3s; }
+  .status-dot.busy { background: var(--accent); animation: pulse 1.5s infinite; }
+  .status-dot.idle { background: var(--green); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  /* ── Messages area ── */
+  #messages { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex;
+    flex-direction: column; gap: 2px; }
+
+  /* ── User message ── */
+  .msg-user { padding: 8px 0; margin-top: 12px; }
+  .msg-user-label { font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
+  .msg-user-text { color: var(--text-bright); line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+
+  /* ── Assistant response container ── */
+  .response { padding: 8px 0; border-left: 2px solid var(--border); padding-left: 14px; margin-left: 4px; }
+
+  /* ── Thinking block ── */
+  .thinking { margin: 6px 0; }
+  .thinking summary { cursor: pointer; font-size: 12px; color: var(--purple); user-select: none;
+    list-style: none; display: flex; align-items: center; gap: 6px; padding: 4px 0; }
+  .thinking summary::before { content: '▸'; transition: transform .15s; display: inline-block; }
+  .thinking[open] summary::before { transform: rotate(90deg); }
+  .thinking summary .dur { font-size: 10px; background: var(--surface2); color: var(--muted);
+    padding: 1px 6px; border-radius: 3px; margin-left: 4px; }
+  .thinking-content { font-size: 12px; color: var(--muted); line-height: 1.5;
+    padding: 6px 0 6px 20px; white-space: pre-wrap; word-break: break-word;
+    max-height: 200px; overflow-y: auto; border-left: 1px solid var(--border); margin-left: 2px; }
+
+  /* ── Text block ── */
+  .text-block { color: var(--text-bright); line-height: 1.6; white-space: pre-wrap;
+    word-break: break-word; padding: 2px 0; }
+
+  /* ── Tool card ── */
+  .tool-card { margin: 6px 0; padding: 6px 10px; background: var(--surface2); border-radius: 4px;
+    border: 1px solid var(--border); font-family: var(--mono); font-size: 12px; display: flex;
+    align-items: center; gap: 8px; }
+  .tool-icon { width: 16px; text-align: center; flex-shrink: 0; }
+  .tool-name { color: var(--yellow); font-weight: 500; }
+  .tool-args { color: var(--muted); margin-left: 4px; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; max-width: 300px; }
+  .tool-status { margin-left: auto; font-size: 11px; color: var(--muted); flex-shrink: 0; }
+  .tool-card.running { border-color: var(--accent-soft); }
+  .tool-card.done { border-color: rgba(78,201,176,0.3); }
+  .tool-card.error { border-color: rgba(244,71,71,0.3); background: var(--red-bg); }
+
+  /* ── Message footer (token usage) ── */
+  .msg-footer { margin: 8px 0; padding: 4px 0; font-size: 11px; color: var(--muted);
+    border-top: 1px solid var(--border); display: flex; gap: 12px; }
+  .msg-footer span { display: flex; align-items: center; gap: 3px; }
+
+  /* ── Error banner ── */
+  .error-banner { margin: 6px 0; padding: 6px 10px; background: var(--red-bg); border-radius: 4px;
+    border: 1px solid rgba(244,71,71,0.3); color: var(--red); font-size: 12px; }
+
+  /* ── Input bar ── */
+  #input-bar { padding: 10px 16px; border-top: 1px solid var(--border); background: var(--surface);
     display: flex; gap: 8px; }
-  #input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
-    padding: 10px 14px; color: var(--text); font-size: 14px; outline: none; resize: none;
-    font-family: inherit; min-height: 42px; max-height: 120px; }
+  #input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 8px 12px; color: var(--text-bright); font-size: 13px; outline: none; resize: none;
+    font-family: var(--sans); min-height: 36px; max-height: 120px; }
   #input:focus { border-color: var(--accent); }
-  #send { background: var(--accent); color: #000; border: none; border-radius: 8px;
-    padding: 10px 20px; font-weight: 600; font-size: 14px; cursor: pointer; transition: opacity .15s; }
+  #send { background: var(--accent); color: #fff; border: none; border-radius: 4px;
+    padding: 8px 16px; font-weight: 600; font-size: 13px; cursor: pointer; transition: opacity .15s; }
   #send:hover { opacity: .85; }
   #send:disabled { opacity: .4; cursor: not-allowed; }
 </style>
 </head>
 <body>
 <header>
-  <h1>🤖 CodeAgent Dev</h1>
+  <h1>🤖 CodeAgent</h1>
   <span class="badge">${PROVIDER} / ${MODEL}</span>
+  <div class="status-dot idle" id="status-dot" title="idle"></div>
 </header>
 <div id="messages"></div>
 <div id="input-bar">
@@ -107,26 +161,57 @@ const HTML = /* html */ `<!DOCTYPE html>
 const msgs = document.getElementById('messages')
 const inp = document.getElementById('input')
 const btn = document.getElementById('send')
+const statusDot = document.getElementById('status-dot')
 let sessionId = null
 let busy = false
 
-function addMsg(cls, text) {
-  const d = document.createElement('div')
-  d.className = 'msg ' + cls
-  d.textContent = text
-  msgs.appendChild(d)
-  msgs.scrollTop = msgs.scrollHeight
-  return d
+// ── DOM helpers ──
+function scrollBottom() { msgs.scrollTop = msgs.scrollHeight }
+
+function el(tag, cls, parent) {
+  const e = document.createElement(tag)
+  if (cls) e.className = cls
+  if (parent) parent.appendChild(e)
+  return e
 }
 
+// ── State for current response ──
+let responseContainer = null
+let currentTextEl = null
+let currentThinkingDetails = null
+let currentThinkingContent = null
+let toolCards = {}
+
+function startResponse() {
+  responseContainer = el('div', 'response', msgs)
+  currentTextEl = null
+  currentThinkingDetails = null
+  currentThinkingContent = null
+  toolCards = {}
+}
+
+function ensureTextBlock() {
+  if (!currentTextEl) {
+    currentTextEl = el('div', 'text-block', responseContainer)
+  }
+  return currentTextEl
+}
+
+function endTextBlock() { currentTextEl = null }
+
+// ── Send message ──
 async function send() {
   const text = inp.value.trim()
   if (!text || busy) return
   inp.value = ''
-  addMsg('user', text)
-  busy = true; btn.disabled = true
 
-  let assistantEl = null
+  // User message
+  const userDiv = el('div', 'msg-user', msgs)
+  el('div', 'msg-user-label', userDiv).textContent = 'You'
+  el('div', 'msg-user-text', userDiv).textContent = text
+
+  busy = true; btn.disabled = true
+  startResponse()
 
   try {
     const res = await fetch('/api/chat', {
@@ -146,23 +231,168 @@ async function send() {
       buf = lines.pop()
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue
-        const data = JSON.parse(line.slice(6))
-        if (data.sessionId) sessionId = data.sessionId
-        if (data.type === 'text_delta') {
-          if (!assistantEl) assistantEl = addMsg('assistant', '')
-          assistantEl.textContent += data.content ?? ''
-          msgs.scrollTop = msgs.scrollHeight
-        }
-        if (data.type === 'tool_call_start') addMsg('tool', '⚙ ' + data.toolName + ' …')
-        if (data.type === 'tool_call_done') addMsg('tool', '✓ ' + data.toolName + ' done')
-        if (data.type === 'error') addMsg('error', '⚠ ' + (data.error ?? 'unknown error'))
-        if (data.type === 'done') { /* finished */ }
+        try {
+          const data = JSON.parse(line.slice(6))
+          handleEvent(data)
+        } catch(e) { /* skip malformed */ }
       }
     }
   } catch (e) {
-    addMsg('error', '⚠ ' + e.message)
+    const errDiv = el('div', 'error-banner', responseContainer || msgs)
+    errDiv.textContent = '⚠ ' + e.message
   }
   busy = false; btn.disabled = false; inp.focus()
+}
+
+// ── Event handler ──
+function handleEvent(data) {
+  if (data.sessionId) { sessionId = data.sessionId; return }
+  if (!responseContainer) startResponse()
+
+  switch (data.type) {
+    case 'session.status': {
+      const s = data.status || 'idle'
+      statusDot.className = 'status-dot ' + s
+      statusDot.title = s
+      break
+    }
+
+    case 'message.start': {
+      // New assistant message — could reset UI state here if needed
+      break
+    }
+
+    case 'thinking.start': {
+      endTextBlock()
+      const details = el('details', 'thinking', responseContainer)
+      const summary = el('summary', '', details)
+      summary.innerHTML = '💭 Thinking <span class="dur">…</span>'
+      currentThinkingContent = el('div', 'thinking-content', details)
+      currentThinkingDetails = details
+      scrollBottom()
+      break
+    }
+
+    case 'thinking.delta': {
+      if (currentThinkingContent) {
+        currentThinkingContent.textContent += data.thinkingContent || ''
+        scrollBottom()
+      }
+      break
+    }
+
+    case 'thinking.end': {
+      if (currentThinkingDetails) {
+        const dur = data.thinkingDuration
+        const label = dur >= 1000 ? (dur / 1000).toFixed(1) + 's' : dur + 'ms'
+        const summary = currentThinkingDetails.querySelector('summary')
+        if (summary) summary.innerHTML = '💭 Thinking <span class="dur">' + label + '</span>'
+        currentThinkingDetails = null
+        currentThinkingContent = null
+      }
+      break
+    }
+
+    case 'text.delta': {
+      const block = ensureTextBlock()
+      block.textContent += data.content || ''
+      scrollBottom()
+      break
+    }
+
+    case 'tool.start': {
+      endTextBlock()
+      const card = el('div', 'tool-card running', responseContainer)
+      const argText = toolArgSummary(data.toolArgs)
+      card.innerHTML =
+        '<span class="tool-icon">⏳</span>' +
+        '<span class="tool-name">' + esc(data.toolName || '') + '</span>' +
+        '<span class="tool-args" title="' + argText + '">' + argText + '</span>' +
+        '<span class="tool-status">running…</span>'
+      if (data.toolCallId) toolCards[data.toolCallId] = card
+      scrollBottom()
+      break
+    }
+
+    case 'tool.done': {
+      const card = data.toolCallId && toolCards[data.toolCallId]
+      if (card) {
+        card.className = 'tool-card done'
+        const dur = data.toolDuration
+        const label = dur != null ? (dur >= 1000 ? (dur/1000).toFixed(1)+'s' : dur+'ms') : ''
+        const argText = esc(data.toolTitle || '') || toolArgSummary(data.toolArgs)
+        card.innerHTML =
+          '<span class="tool-icon">✓</span>' +
+          '<span class="tool-name">' + esc(data.toolName || '') + '</span>' +
+          '<span class="tool-args" title="' + argText + '">' + argText + '</span>' +
+          '<span class="tool-status">' + label + '</span>'
+      }
+      break
+    }
+
+    case 'tool.error': {
+      const card = data.toolCallId && toolCards[data.toolCallId]
+      if (card) {
+        card.className = 'tool-card error'
+        const dur = data.toolDuration
+        const label = dur != null ? (dur >= 1000 ? (dur/1000).toFixed(1)+'s' : dur+'ms') : ''
+        const errText = esc(data.error || 'error')
+        card.innerHTML =
+          '<span class="tool-icon">✗</span>' +
+          '<span class="tool-name">' + esc(data.toolName || '') + '</span>' +
+          '<span class="tool-args" title="' + errText + '">' + errText + '</span>' +
+          '<span class="tool-status">' + label + '</span>'
+      } else {
+        const errDiv = el('div', 'error-banner', responseContainer)
+        errDiv.textContent = '⚠ Tool error: ' + (data.error || 'unknown')
+      }
+      break
+    }
+
+    case 'message.done': {
+      endTextBlock()
+      if (data.usage) {
+        const footer = el('div', 'msg-footer', responseContainer)
+        const u = data.usage
+        const fmtK = (n) => n >= 1000 ? (n/1000).toFixed(1)+'k' : String(n)
+        footer.innerHTML =
+          '<span>↓ ' + fmtK(u.inputTokens) + '</span>' +
+          '<span>↑ ' + fmtK(u.outputTokens) + '</span>' +
+          (u.reasoningTokens ? '<span>🧠 ' + fmtK(u.reasoningTokens) + '</span>' : '') +
+          '<span>$' + u.cost.toFixed(4) + '</span>'
+      }
+      scrollBottom()
+      break
+    }
+
+    case 'error': {
+      const errDiv = el('div', 'error-banner', responseContainer || msgs)
+      errDiv.textContent = '⚠ ' + (data.error || 'unknown error')
+      scrollBottom()
+      break
+    }
+
+    case 'done': {
+      statusDot.className = 'status-dot idle'
+      statusDot.title = 'idle'
+      break
+    }
+  }
+}
+
+// Helpers
+function esc(s) {
+  const d = document.createElement('span')
+  d.textContent = s
+  return d.innerHTML
+}
+function toolArgSummary(args) {
+  if (!args) return ''
+  const keys = Object.keys(args)
+  if (keys.length === 0) return ''
+  const first = args[keys[0]]
+  const val = typeof first === 'string' ? first : JSON.stringify(first)
+  return esc(val.length > 60 ? val.slice(0, 57) + '…' : val)
 }
 
 inp.focus()

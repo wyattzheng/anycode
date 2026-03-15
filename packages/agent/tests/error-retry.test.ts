@@ -99,7 +99,7 @@ describe("CodeAgent: error retry", () => {
         expect(lastEvent.type).toBe("done")
 
         // Should have text content from the successful retry
-        const textDeltas = events.filter((e) => e.type === "text_delta")
+        const textDeltas = events.filter((e) => e.type === "text.delta")
         expect(textDeltas.length).toBeGreaterThan(0)
     }, 30_000) // Allow time for retry delay
 })

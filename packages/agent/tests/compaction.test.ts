@@ -120,7 +120,7 @@ describe("CodeAgent: context compaction", () => {
         // ── Collect all text deltas ───────────────────────────────────────
         let fullText = ""
         for (const event of events) {
-            if (event.type === "text_delta" && event.content) {
+            if (event.type === "text.delta" && event.content) {
                 fullText += event.content
             }
         }
@@ -138,7 +138,7 @@ describe("CodeAgent: context compaction", () => {
 
         // The text should contain content from multiple rounds,
         // indicating the agent didn't stop after the first response
-        const textEvents = events.filter((e) => e.type === "text_delta")
+        const textEvents = events.filter((e) => e.type === "text.delta")
         expect(textEvents.length).toBeGreaterThanOrEqual(2)
     }, 120_000)
 })

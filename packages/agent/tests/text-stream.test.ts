@@ -61,8 +61,8 @@ describe("CodeAgent text streaming", () => {
             events.push(event)
         }
 
-        // Should have at least one text_delta event
-        const textEvents = events.filter((e) => e.type === "text_delta")
+        // Should have at least one text.delta event
+        const textEvents = events.filter((e) => e.type === "text.delta")
         expect(textEvents.length).toBeGreaterThan(0)
 
         // Should end with a done event
@@ -75,7 +75,7 @@ describe("CodeAgent text streaming", () => {
         let fullText = ""
 
         for await (const event of agent.chat(session.id, "Say Hello World")) {
-            if (event.type === "text_delta" && event.content) {
+            if (event.type === "text.delta" && event.content) {
                 fullText += event.content
             }
         }

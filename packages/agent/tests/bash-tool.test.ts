@@ -5,7 +5,7 @@ import { testPaths, testNodeDeps } from "./_test-paths"
  * Verifies that the agent correctly processes bash tool call SSE events.
  * Note: tree-sitter WASM is not available in vitest, so the actual bash
  * execution errors. We verify the event flow:
- *   tool_call_start → error (graceful) → text response → done
+ *   tool.start → error (graceful) → text response → done
  *
  * This confirms the agent properly handles tool execution failures
  * and continues the conversation loop.
@@ -75,14 +75,14 @@ describe("CodeAgent: bash tool", () => {
         // Should end with done (conversation continued despite tool error)
         expect(events[events.length - 1].type).toBe("done")
 
-        // Should have a tool_call_start event for bash
-        const toolStarts = events.filter((e) => e.type === "tool_call_start")
+        // Should have a tool.start event for bash
+        const toolStarts = events.filter((e) => e.type === "tool.start")
         expect(toolStarts.length).toBeGreaterThan(0)
         expect(toolStarts[0].toolName).toBe("bash")
 
         // After the tool call, the conversation loop should continue
         // and the LLM should respond with text
-        const textDeltas = events.filter((e) => e.type === "text_delta")
+        const textDeltas = events.filter((e) => e.type === "text.delta")
         expect(textDeltas.length).toBeGreaterThan(0)
     })
 })

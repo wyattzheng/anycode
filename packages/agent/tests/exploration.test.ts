@@ -158,7 +158,7 @@ describe("CodeAgent: multi-tool exploration", () => {
         expect(lastEvent.type).toBe("done")
 
         // ── Verify tool calls ─────────────────────────────────────────────
-        const toolStarts = events.filter((e) => e.type === "tool_call_start")
+        const toolStarts = events.filter((e) => e.type === "tool.start")
         const toolNames = toolStarts.map((e) => e.toolName)
 
         // Should have called grep and read (in that order)
@@ -170,14 +170,14 @@ describe("CodeAgent: multi-tool exploration", () => {
 
         // ── Verify grep found the file ────────────────────────────────────
         const grepDone = events.find(
-            (e) => e.type === "tool_call_done" && e.toolName === "grep",
+            (e) => e.type === "tool.done" && e.toolName === "grep",
         )
         expect(grepDone).toBeDefined()
         expect(grepDone!.toolOutput).toContain("secret.ts")
 
         // ── Verify read got the content ───────────────────────────────────
         const readDone = events.find(
-            (e) => e.type === "tool_call_done" && e.toolName === "read",
+            (e) => e.type === "tool.done" && e.toolName === "read",
         )
         expect(readDone).toBeDefined()
         expect(readDone!.toolOutput).toContain(SECRET_PHRASE)
@@ -185,7 +185,7 @@ describe("CodeAgent: multi-tool exploration", () => {
         // ── Verify confirmation text ──────────────────────────────────────
         let fullText = ""
         for (const event of events) {
-            if (event.type === "text_delta" && event.content) {
+            if (event.type === "text.delta" && event.content) {
                 fullText += event.content
             }
         }
@@ -365,7 +365,7 @@ describe("CodeAgent: virtual-FS exploration", () => {
         console.log(events.map(e => `${e.type} ${e.toolName || ""}`)); expect(lastEvent.type).toBe("done")
 
         // ── Verify tool calls ─────────────────────────────────────────────
-        const toolStarts = events.filter((e) => e.type === "tool_call_start")
+        const toolStarts = events.filter((e) => e.type === "tool.start")
         const toolNames = toolStarts.map((e) => e.toolName)
 
         // Should have called read twice (directory then file)
@@ -373,7 +373,7 @@ describe("CodeAgent: virtual-FS exploration", () => {
 
         // ── Verify directory read listed the file ──────────────────────────
         const readDone = events.filter(
-            (e) => e.type === "tool_call_done" && e.toolName === "read",
+            (e) => e.type === "tool.done" && e.toolName === "read",
         )
         expect(readDone.length).toBe(2)
         // First read is directory listing → should contain "secret.ts"
@@ -386,7 +386,7 @@ describe("CodeAgent: virtual-FS exploration", () => {
         // ── Verify confirmation text ──────────────────────────────────────
         let fullText = ""
         for (const event of events) {
-            if (event.type === "text_delta" && event.content) {
+            if (event.type === "text.delta" && event.content) {
                 fullText += event.content
             }
         }

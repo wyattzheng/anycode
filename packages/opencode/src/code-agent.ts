@@ -177,27 +177,63 @@ export interface CodeAgentSession {
 }
 
 export type CodeAgentEventType =
-    | "text_delta"
-    | "tool_call_start"
-    | "tool_call_done"
-
-    | "error"
-    | "done"
+    // ── Lifecycle ──
+    | "session.status"      // session 状态变更 (idle/busy/compacting)
+    // ── Thinking ──
+    | "thinking.start"      // 思考开始
+    | "thinking.delta"      // 思考内容增量
+    | "thinking.end"        // 思考结束（含耗时）
+    // ── Text ──
+    | "text.delta"          // 文本输出增量
+    // ── Tool ──
+    | "tool.start"          // tool 调用开始（含 name + args）
+    | "tool.delta"          // tool 执行中间输出（可选）
+    | "tool.done"           // tool 完成（含 output + metadata）
+    | "tool.error"          // tool 失败
+    // ── Message ──
+    | "message.start"       // 新的 assistant message 开始
+    | "message.done"        // message 完成（含 usage / cost）
+    // ── Control ──
+    | "error"               // 全局错误
+    | "done"                // 整个 chat 结束
 
 export interface CodeAgentEvent {
     type: CodeAgentEventType
-    /** For text_delta events: incremental text */
+
+    /** text.delta: incremental text */
     content?: string
-    /** For tool events */
+
+    /** thinking.*: incremental thinking text */
+    thinkingContent?: string
+    /** thinking.end: duration in ms */
+    thinkingDuration?: number
+
+    /** tool.*: tool call ID for correlating start/done/error */
+    toolCallId?: string
+    /** tool.*: tool name */
     toolName?: string
+    /** tool.start: tool input arguments */
     toolArgs?: Record<string, unknown>
+    /** tool.done: tool output text */
     toolOutput?: string
-    /** For error events */
+    /** tool.done: tool title (human-readable summary) */
+    toolTitle?: string
+    /** tool.done: tool metadata */
+    toolMetadata?: Record<string, unknown>
+    /** tool.done/error: duration in ms */
+    toolDuration?: number
+
+    /** session.status: current status */
+    status?: string
+
+    /** error: error message */
     error?: string
-    /** Message metadata (on done events) */
+
+    /** message.done / done: token usage and cost */
     usage?: {
         inputTokens: number
         outputTokens: number
+        reasoningTokens: number
         cost: number
     }
 }
@@ -417,45 +453,117 @@ export class CodeAgent {
             const unsubs: (() => void)[] = []
 
             try {
+                // Track partID → part type for routing deltas
+                const partTypeMap = new Map<string, "reasoning" | "text">()
+
                 // Subscribe to all events on this instance's bus
                 const globalHandler = (payload: any) => {
                     if (!payload) return
                     const type = payload.type
                     const props = payload.properties
 
+                    // ── PartDelta: route to thinking.delta or text.delta ──
                     if (type === MessageV2.Event.PartDelta.type) {
                         if (props?.sessionID !== sessionId) return
-                        push({
-                            type: "text_delta",
-                            content: props.delta,
-                        })
+                        const partType = partTypeMap.get(props.partID)
+                        if (partType === "reasoning") {
+                            push({
+                                type: "thinking.delta",
+                                thinkingContent: props.delta,
+                            })
+                        } else {
+                            push({
+                                type: "text.delta",
+                                content: props.delta,
+                            })
+                        }
                     }
 
+                    // ── PartUpdated: reasoning / text / tool / step-finish ──
                     if (type === MessageV2.Event.PartUpdated.type) {
                         const part = props?.part
                         if (!part || part.sessionID !== sessionId) return
+
+                        // Reasoning parts
+                        if (part.type === "reasoning") {
+                            partTypeMap.set(part.id, "reasoning")
+                            if (!part.time?.end) {
+                                push({ type: "thinking.start" })
+                            } else {
+                                const duration = part.time.end - part.time.start
+                                push({
+                                    type: "thinking.end",
+                                    thinkingDuration: duration,
+                                })
+                                partTypeMap.delete(part.id)
+                            }
+                        }
+
+                        // Text parts — register for delta routing
+                        if (part.type === "text") {
+                            partTypeMap.set(part.id, "text")
+                        }
+
+                        // Tool parts
                         if (part.type === "tool" && part.state.status === "running") {
                             push({
-                                type: "tool_call_start",
+                                type: "tool.start",
+                                toolCallId: part.callID,
                                 toolName: part.tool,
                                 toolArgs: part.state.input as Record<string, unknown>,
                             })
                         }
                         if (part.type === "tool" && part.state.status === "completed") {
+                            const duration = part.state.time?.end && part.state.time?.start
+                                ? part.state.time.end - part.state.time.start
+                                : undefined
                             push({
-                                type: "tool_call_done",
+                                type: "tool.done",
+                                toolCallId: part.callID,
                                 toolName: part.tool,
                                 toolOutput: part.state.output,
+                                toolTitle: part.state.title,
+                                toolMetadata: part.state.metadata,
+                                toolDuration: duration,
                             })
                         }
                         if (part.type === "tool" && part.state.status === "error") {
+                            const duration = part.state.time?.end && part.state.time?.start
+                                ? part.state.time.end - part.state.time.start
+                                : undefined
                             push({
-                                type: "error",
+                                type: "tool.error",
+                                toolCallId: part.callID,
+                                toolName: part.tool,
                                 error: part.state.error,
+                                toolDuration: duration,
+                            })
+                        }
+
+                        // Step finish — token usage and cost
+                        if (part.type === "step-finish") {
+                            push({
+                                type: "message.done",
+                                usage: {
+                                    inputTokens: part.tokens.input,
+                                    outputTokens: part.tokens.output,
+                                    reasoningTokens: part.tokens.reasoning,
+                                    cost: part.cost,
+                                },
                             })
                         }
                     }
 
+                    // ── Session status ──
+                    if (type === SessionStatus.Event.Status.type) {
+                        if (props?.sessionID !== sessionId) return
+                        push({
+                            type: "session.status",
+                            status: props.status?.type ?? "idle",
+                        })
+                    }
+
+                    // ── Session error ──
                     if (type === Session.Event.Error.type) {
                         if (props?.sessionID !== sessionId) return
                         push({
