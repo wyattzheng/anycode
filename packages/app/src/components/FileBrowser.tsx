@@ -6,17 +6,22 @@ import "./FileBrowser.css";
 interface FileBrowserProps {
     topLevel: DirEntry[];
     requestLs: (path: string) => Promise<DirEntry[]>;
+    requestFile: (path: string) => Promise<string | null>;
 }
 
 function LazyTreeItem({
     entry,
     parentPath,
     requestLs,
+    onFileClick,
+    selectedFile,
     depth = 0,
 }: {
     entry: DirEntry;
     parentPath: string;
     requestLs: (path: string) => Promise<DirEntry[]>;
+    onFileClick: (path: string) => void;
+    selectedFile: string | null;
     depth?: number;
 }) {
     const [expanded, setExpanded] = useState(false);
@@ -41,10 +46,12 @@ function LazyTreeItem({
     };
 
     if (entry.type === "file") {
+        const isSelected = selectedFile === fullPath;
         return (
             <div
-                className="file-tree-item file"
+                className={`file-tree-item file${isSelected ? " selected" : ""}`}
                 style={{ paddingLeft: `${12 + depth * 16}px` }}
+                onClick={() => onFileClick(fullPath)}
             >
                 <span className="file-icon"><FileDocIcon /></span>
                 <span className="file-name">{entry.name}</span>
@@ -70,6 +77,8 @@ function LazyTreeItem({
                     entry={child}
                     parentPath={fullPath}
                     requestLs={requestLs}
+                    onFileClick={onFileClick}
+                    selectedFile={selectedFile}
                     depth={depth + 1}
                 />
             ))}
@@ -77,10 +86,14 @@ function LazyTreeItem({
     );
 }
 
-export function FileBrowser({ topLevel, requestLs }: FileBrowserProps) {
+export function FileBrowser({ topLevel, requestLs, requestFile }: FileBrowserProps) {
     const [sidebarHeight, setSidebarHeight] = useState(200);
     const containerRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+    const [selectedFile, setSelectedFile] = useState<string | null>(null);
+    const [fileContent, setFileContent] = useState<string | null>(null);
+    const [fileLoading, setFileLoading] = useState(false);
 
     const onDragMove = useCallback((clientY: number) => {
         if (!dragRef.current || !containerRef.current) return;
@@ -112,15 +125,42 @@ export function FileBrowser({ topLevel, requestLs }: FileBrowserProps) {
         window.addEventListener("touchend", onUp);
     };
 
+    const handleFileClick = async (filePath: string) => {
+        setSelectedFile(filePath);
+        setFileContent(null);
+        setFileLoading(true);
+        const content = await requestFile(filePath);
+        setFileContent(content);
+        setFileLoading(false);
+    };
+
     const isEmpty = topLevel.length === 0;
 
     return (
         <div className="file-browser" ref={containerRef}>
             <div className="file-browser-content">
-                <div className="file-empty">
-                    <FileDocIcon size={28} />
-                    <p>选择文件查看内容</p>
-                </div>
+                {selectedFile ? (
+                    <>
+                        <div className="file-content-header">
+                            <FileDocIcon />
+                            <span className="file-content-path">{selectedFile}</span>
+                        </div>
+                        <div className="file-content-body">
+                            {fileLoading ? (
+                                <div className="file-content-loading">加载中…</div>
+                            ) : fileContent !== null ? (
+                                <pre className="file-content-code">{fileContent}</pre>
+                            ) : (
+                                <div className="file-content-error">无法读取文件</div>
+                            )}
+                        </div>
+                    </>
+                ) : (
+                    <div className="file-empty">
+                        <FileDocIcon size={28} />
+                        <p>选择文件查看内容</p>
+                    </div>
+                )}
             </div>
             <div
                 className="resize-handle"
@@ -143,6 +183,8 @@ export function FileBrowser({ topLevel, requestLs }: FileBrowserProps) {
                                 entry={entry}
                                 parentPath=""
                                 requestLs={requestLs}
+                                onFileClick={handleFileClick}
+                                selectedFile={selectedFile}
                             />
                         ))
                     )}

@@ -18,7 +18,8 @@ export interface GitChange {
 /** WebSocket message: server → client */
 export type WsMessage =
     | { type: "state"; directory: string; changes: GitChange[]; topLevel: DirEntry[] }
-    | { type: "ls"; path: string; entries: DirEntry[] };
+    | { type: "ls"; path: string; entries: DirEntry[] }
+    | { type: "fileContent"; path: string; content: string | null; error?: string };
 
 const API_BASE = "";
 
@@ -33,11 +34,41 @@ export function App() {
 
     // ls request-response handlers
     const lsCallbacks = useRef<Map<string, (entries: DirEntry[]) => void>>(new Map());
+    // readFile request-response handlers
+    const readFileCallbacks = useRef<Map<string, (content: string | null) => void>>(new Map());
 
-    // Create session on mount
+    // Restore or create session on mount
     useEffect(() => {
         (async () => {
             try {
+                // 1. Try to restore session from sessionStorage
+                const savedId = sessionStorage.getItem("anycode-session-id");
+                if (savedId) {
+                    const res = await fetch(`${API_BASE}/api/sessions/${savedId}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        setSessionId(data.id);
+                        if (data.directory) setDirectory(data.directory);
+                        return;
+                    }
+                    // Session expired — clear stale id
+                    sessionStorage.removeItem("anycode-session-id");
+                }
+
+                // 2. Check for existing sessions with a workspace
+                const listRes = await fetch(`${API_BASE}/api/sessions`);
+                if (listRes.ok) {
+                    const sessions: { id: string; directory: string }[] = await listRes.json();
+                    const active = sessions.find((s) => s.directory);
+                    if (active) {
+                        setSessionId(active.id);
+                        setDirectory(active.directory);
+                        sessionStorage.setItem("anycode-session-id", active.id);
+                        return;
+                    }
+                }
+
+                // 3. No existing session — create new
                 const res = await fetch(`${API_BASE}/api/sessions`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -45,6 +76,7 @@ export function App() {
                 });
                 const data = await res.json();
                 setSessionId(data.id);
+                sessionStorage.setItem("anycode-session-id", data.id);
                 if (data.directory) setDirectory(data.directory);
             } catch (e: any) {
                 setError(e.message);
@@ -76,6 +108,14 @@ export function App() {
                     if (cb) {
                         cb(msg.entries);
                         lsCallbacks.current.delete(msg.path);
+                    }
+                }
+
+                if (msg.type === "fileContent") {
+                    const cb = readFileCallbacks.current.get(msg.path);
+                    if (cb) {
+                        cb(msg.content);
+                        readFileCallbacks.current.delete(msg.path);
                     }
                 }
             } catch { /* ignore */ }
@@ -124,6 +164,25 @@ export function App() {
         });
     };
 
+    /** Request file content by relative path */
+    const requestFile = (filePath: string): Promise<string | null> => {
+        return new Promise((resolve) => {
+            const ws = wsRef.current;
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                resolve(null);
+                return;
+            }
+            readFileCallbacks.current.set(filePath, resolve);
+            ws.send(JSON.stringify({ type: "readFile", path: filePath }));
+            setTimeout(() => {
+                if (readFileCallbacks.current.has(filePath)) {
+                    readFileCallbacks.current.delete(filePath);
+                    resolve(null);
+                }
+            }, 5000);
+        });
+    };
+
     if (error) {
         return (
             <div className="app" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -161,7 +220,7 @@ export function App() {
     // Directory set — full UI
     return (
         <div className="app">
-            <MainView activeTab={activeTab} topLevel={topLevel} changes={changes} requestLs={requestLs} />
+            <MainView activeTab={activeTab} topLevel={topLevel} changes={changes} requestLs={requestLs} requestFile={requestFile} />
             <ConversationOverlay sessionId={sessionId} />
             <TabBar
                 activeTab={activeTab}

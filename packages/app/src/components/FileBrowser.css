@@ -15,6 +15,8 @@
 .file-browser-content {
     flex: 1;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
 }
 
 .panel-header {
@@ -105,6 +107,67 @@
     color: var(--color-text-dim);
     white-space: pre-wrap;
     word-break: break-all;
+}
+
+/* File content header — sticky bar showing file path */
+.file-content-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.file-content-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text-dim);
+    font-weight: 400;
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
+/* File content body — scrollable area */
+.file-content-body {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.file-content-code {
+    margin: 0;
+    padding: 12px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--color-text-dim);
+    white-space: pre-wrap;
+    word-break: break-all;
+    tab-size: 4;
+}
+
+.file-content-loading,
+.file-content-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    font-size: 12px;
+    color: var(--color-text-dim);
+    opacity: 0.5;
+}
+
+/* Selected file highlight in tree */
+.file-tree-item.selected {
+    background: var(--color-surface-hover);
+    color: var(--color-text);
 }
 
 .file-empty {

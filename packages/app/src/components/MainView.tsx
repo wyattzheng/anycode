@@ -9,12 +9,13 @@ interface MainViewProps {
     topLevel: DirEntry[];
     changes: GitChange[];
     requestLs: (path: string) => Promise<DirEntry[]>;
+    requestFile: (path: string) => Promise<string | null>;
 }
 
-export function MainView({ activeTab, topLevel, changes, requestLs }: MainViewProps) {
+export function MainView({ activeTab, topLevel, changes, requestLs, requestFile }: MainViewProps) {
     return (
         <div className="main-view">
-            {activeTab === "files" && <FileBrowser topLevel={topLevel} requestLs={requestLs} />}
+            {activeTab === "files" && <FileBrowser topLevel={topLevel} requestLs={requestLs} requestFile={requestFile} />}
             {activeTab === "changes" && <ChangesView changes={changes} />}
             {activeTab === "preview" && <PreviewTab />}
 

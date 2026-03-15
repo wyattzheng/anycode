@@ -656,6 +656,20 @@ export async function startServer() {
           const entries = await listDir(target)
           ws.send(JSON.stringify({ type: "ls", path: msg.path || "", entries }))
         }
+
+        if (msg.type === "readFile") {
+          const session = getSession(sessionId)!
+          const dir = session.directory
+          if (!dir) return
+          const target = path.resolve(dir, msg.path || "")
+          if (!target.startsWith(path.resolve(dir))) return
+          try {
+            const content = await fsPromises.readFile(target, "utf-8")
+            ws.send(JSON.stringify({ type: "fileContent", path: msg.path || "", content }))
+          } catch {
+            ws.send(JSON.stringify({ type: "fileContent", path: msg.path || "", content: null, error: "读取失败" }))
+          }
+        }
       } catch { /* ignore malformed */ }
     })
 
