@@ -35,7 +35,6 @@ export class EnvService {
 // This wrapper delegates to the EnvService instance on context.
 // Once all call sites are updated, this namespace can be removed.
 
-import { getState } from "../agent/context"
 
 const STATE_KEY = Symbol("env")
 
@@ -46,18 +45,18 @@ export namespace Env {
   }
 
   export function get(context: AgentContext, key: string) {
-    return state(context).get(key)
+    return context.env.get(key)
   }
 
   export function all(context: AgentContext) {
-    return state(context).all()
+    return context.env.all()
   }
 
   export function set(context: AgentContext, key: string, value: string) {
-    state(context).set(key, value)
+    context.env.set(key, value)
   }
 
   export function remove(context: AgentContext, key: string) {
-    state(context).remove(key)
+    context.env.remove(key)
   }
 }

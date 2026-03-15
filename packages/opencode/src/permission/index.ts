@@ -1,4 +1,3 @@
-import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
@@ -70,17 +69,13 @@ export namespace Permission {
     readonly approved = new Map<SessionID, Map<string, boolean>>()
   }
 
-  const STATE_KEY = Symbol("permission")
-  function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => new PermissionService())
-  }
 
   export function pending(context: AgentContext) {
-    return state(context).pending
+    return context.permission.pending
   }
 
   export function list(context: AgentContext) {
-    const { pending } = state(context)
+    const { pending } = context.permission
     const result: Info[] = []
     for (const session of pending.values()) {
       for (const item of session.values()) {
@@ -99,7 +94,7 @@ export namespace Permission {
     messageID: Info["messageID"]
     metadata: Info["metadata"]
   }) {
-    const { pending, approved } = state(context)
+    const { pending, approved } = context.permission
     log.info("asking", {
       sessionID: input.sessionID,
       messageID: input.messageID,
@@ -150,7 +145,7 @@ export namespace Permission {
 
   export function respond(context: AgentContext, input: { sessionID: Info["sessionID"]; permissionID: Info["id"]; response: Response }) {
     log.info("response", input)
-    const { pending, approved } = state(context)
+    const { pending, approved } = context.permission
     const session = pending.get(input.sessionID)
     const match = session?.get(input.permissionID)
     if (!session || !match) return

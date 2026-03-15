@@ -1,4 +1,3 @@
-import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
@@ -95,17 +94,13 @@ export namespace Question {
     readonly pending = new Map<QuestionID, PendingEntry>()
   }
 
-  const STATE_KEY = Symbol("question")
-  function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => new QuestionService())
-  }
 
   export async function ask(context: AgentContext, input: {
     sessionID: SessionID
     questions: Info[]
     tool?: { messageID: MessageID; callID: string }
   }): Promise<Answer[]> {
-    const s = await state(context)
+    const s = await context.question
     const id = QuestionID.ascending()
 
     log.info("asking", { id, questions: input.questions.length })
@@ -127,7 +122,7 @@ export namespace Question {
   }
 
   export async function reply(context: AgentContext, input: { requestID: QuestionID; answers: Answer[] }): Promise<void> {
-    const s = await state(context)
+    const s = await context.question
     const existing = s.pending.get(input.requestID)
     if (!existing) {
       log.warn("reply for unknown request", { requestID: input.requestID })
@@ -147,7 +142,7 @@ export namespace Question {
   }
 
   export async function reject(context: AgentContext, requestID: QuestionID): Promise<void> {
-    const s = await state(context)
+    const s = await context.question
     const existing = s.pending.get(requestID)
     if (!existing) {
       log.warn("reject for unknown request", { requestID })
@@ -172,6 +167,6 @@ export namespace Question {
   }
 
   export async function list(context: AgentContext) {
-    return Array.from(state(context).pending.values(), (x) => x.info)
+    return Array.from(context.question.pending.values(), (x) => x.info)
   }
 }

@@ -1,4 +1,3 @@
-import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { BusEvent } from "@/bus/bus-event"
 import z from "zod"
@@ -343,10 +342,6 @@ export namespace File {
     }
   }
 
-  const STATE_KEY = Symbol("file")
-  function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => new FileService(context))._promise
-  }
   async function initFile(context: AgentContext) {
     type Entry = { files: string[]; dirs: string[] }
     let cache: Entry = { files: [], dirs: [] }
@@ -425,7 +420,7 @@ export namespace File {
   }
 
   export function init(context: AgentContext) {
-    state(context)
+    context.file._promise
   }
 
   export async function status(context: AgentContext) {
@@ -632,7 +627,7 @@ export namespace File {
     const kind = input.type ?? (input.dirs === false ? "file" : "all")
     log.info("search", { query, kind })
 
-    const result = await state(context).then((x) => x.files())
+    const result = await context.file._promise.then((x) => x.files())
 
     const hidden = (item: string) => {
       const normalized = item.replaceAll("\\", "/").replace(/\/+$/, "")

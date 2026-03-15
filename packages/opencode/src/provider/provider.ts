@@ -1,4 +1,3 @@
-import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import z from "zod"
 import os from "os"
@@ -817,10 +816,6 @@ export namespace Provider {
     }
   }
 
-  const STATE_KEY = Symbol("provider")
-  function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => new ProviderService(context))._promise
-  }
   async function initProvider(context: AgentContext) {
     using _ = log.time("state")
     const config = await context.config.get()
@@ -1062,7 +1057,7 @@ export namespace Provider {
   }
 
   export async function list(context: AgentContext) {
-    return state(context).then((state) => state.providers)
+    return context.provider._promise.then((state) => state.providers)
   }
 
   async function getSDK(context: AgentContext, model: Model) {
@@ -1070,7 +1065,7 @@ export namespace Provider {
       using _ = log.time("getSDK", {
         providerID: model.providerID,
       })
-      const s = await state(context)
+      const s = await context.provider._promise
       const provider = s.providers[model.providerID]
       const options = { ...provider.options }
 
@@ -1199,11 +1194,11 @@ export namespace Provider {
   }
 
   export async function getProvider(context: AgentContext, providerID: ProviderID) {
-    return state(context).then((s) => s.providers[providerID])
+    return context.provider._promise.then((s) => s.providers[providerID])
   }
 
   export async function getModel(context: AgentContext, providerID: ProviderID, modelID: ModelID) {
-    const s = await state(context)
+    const s = await context.provider._promise
     const provider = s.providers[providerID]
     if (!provider) {
       const availableProviders = Object.keys(s.providers)
@@ -1223,7 +1218,7 @@ export namespace Provider {
   }
 
   export async function getLanguage(context: AgentContext, model: Model): Promise<LanguageModelV2> {
-    const s = await state(context)
+    const s = await context.provider._promise
     const key = `${model.providerID}/${model.id}`
     if (s.models.has(key)) return s.models.get(key)!
 
@@ -1250,7 +1245,7 @@ export namespace Provider {
   }
 
   export async function closest(context: AgentContext, providerID: ProviderID, query: string[]) {
-    const s = await state(context)
+    const s = await context.provider._promise
     const provider = s.providers[providerID]
     if (!provider) return undefined
     for (const item of query) {
@@ -1272,7 +1267,7 @@ export namespace Provider {
       return getModel(context, parsed.providerID, parsed.modelID)
     }
 
-    const provider = await state(context).then((state) => state.providers[providerID])
+    const provider = await context.provider._promise.then((state) => state.providers[providerID])
     if (provider) {
       let priority = [
         "claude-haiku-4-5",

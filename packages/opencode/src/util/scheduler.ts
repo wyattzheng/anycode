@@ -50,7 +50,6 @@ export namespace SchedulerService {
 // ── Backward-compatible namespace wrapper ──────────────────────────
 // Handles both "instance" and "global" scoped tasks.
 
-const STATE_KEY = Symbol("scheduler")
 const shared = new SchedulerService()
 
 export namespace Scheduler {
@@ -68,7 +67,7 @@ export namespace Scheduler {
 
   export function register(context: AgentContext, task: Task) {
     const scope = task.scope ?? "instance"
-    const svc = scope === "global" ? shared : state(context)
+    const svc = scope === "global" ? shared : context.scheduler
 
     // For global tasks, skip if already registered
     if (scope === "global" && svc === shared) {

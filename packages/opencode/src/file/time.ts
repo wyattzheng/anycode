@@ -1,4 +1,3 @@
-import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { Log } from "../util/log"
 import { Flag } from "../util/flag"
@@ -68,10 +67,8 @@ export class FileTimeService {
 }
 
 // ── Backward-compatible namespace wrapper ──────────────────────────
-// Uses context.fileTime (set by CodeAgent) if available, otherwise falls back to getState.
 // This ensures all code paths share the same FileTimeService instance.
 
-const STATE_KEY = Symbol("file.time")
 
 export namespace FileTime {
   function svc(context: AgentContext) {

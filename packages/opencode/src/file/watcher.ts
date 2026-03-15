@@ -1,4 +1,3 @@
-import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
@@ -131,6 +130,6 @@ export namespace FileWatcher {
     if (Flag.OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER) {
       return
     }
-    state(context)
+    context.fileWatcher._promise
   }
 }

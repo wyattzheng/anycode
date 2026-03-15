@@ -1,4 +1,3 @@
-import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { EventEmitter } from "events"
 import z from "zod"
@@ -86,10 +85,9 @@ export const InstanceDisposed = BusEvent.define(
   }),
 )
 
-const STATE_KEY = Symbol("bus")
 
 function getBus(context: AgentContext): BusService {
-  return getState(context, STATE_KEY, () => new BusService())
+  return context.bus
 }
 
 export namespace Bus {

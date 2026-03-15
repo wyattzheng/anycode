@@ -1,4 +1,3 @@
-import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
@@ -47,9 +46,7 @@ export namespace Vcs {
     unsub: (() => void) | undefined = undefined
   }
 
-  const STATE_KEY = Symbol("vcs")
-  function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => {
+  function initVcs(context: AgentContext) {
       const result = {
         current: undefined as string | undefined,
         unsub: undefined as (() => void) | undefined,

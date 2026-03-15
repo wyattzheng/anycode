@@ -1,4 +1,3 @@
-import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { Log } from "../util/log"
 import path from "path"
@@ -97,10 +96,6 @@ export namespace Config {
     }
   }
 
-  const STATE_KEY = Symbol("config")
-  export function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => new ConfigService(context))._promise
-  }
   async function initConfig(context: AgentContext) {
     // Short-circuit: if config was injected via Instance context (e.g. from CodeAgent options),
     // skip all filesystem-based config loading.
@@ -280,7 +275,7 @@ export namespace Config {
   }
 
   export async function waitForDependencies(context: AgentContext) {
-    const deps = await state(context).then((x) => x.deps)
+    const deps = await context.config._promise.then((x) => x.deps)
     await Promise.all(deps)
   }
 
@@ -1343,7 +1338,7 @@ export namespace Config {
   )
 
   export async function get(context: AgentContext) {
-    return state(context).then((x) => x.config)
+    return context.config._promise.then((x) => x.config)
   }
 
   export async function getGlobal(context: AgentContext) {
@@ -1461,6 +1456,6 @@ export namespace Config {
   }
 
   export async function directories(context: AgentContext) {
-    return state(context).then((x) => x.directories)
+    return context.config._promise.then((x) => x.directories)
   }
 }

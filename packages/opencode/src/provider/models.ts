@@ -1,4 +1,3 @@
-import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { Log } from "../util/log"
 import path from "path"
@@ -102,10 +101,6 @@ export namespace ModelsDev {
     }
   }
 
-  const STATE_KEY = Symbol("models.dev")
-  function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => new ModelsDevService(context))._promise
-  }
   async function initModels(context: AgentContext) {
       let data: Record<string, unknown> | undefined
       try {
@@ -123,7 +118,7 @@ export namespace ModelsDev {
     }
 
   export async function get(context: AgentContext) {
-    const s = await state(context)
+    const s = await context.modelsDev._promise
     return s.data as Record<string, Provider>
   }
 

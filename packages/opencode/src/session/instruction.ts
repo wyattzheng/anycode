@@ -2,7 +2,6 @@ import path from "path"
 import os from "os"
 import { Filesystem } from "../util/filesystem"
 import { Config } from "../config/config"
-import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { Flag } from "@/util/flag"
 import { Log } from "../util/log"
@@ -50,19 +49,15 @@ export namespace InstructionPrompt {
     readonly claims = new Map<string, Set<string>>()
   }
 
-  const STATE_KEY = Symbol("instruction")
-  function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => new InstructionService())
-  }
 
   function isClaimed(context: AgentContext, messageID: string, filepath: string) {
-    const claimed = state(context).claims.get(messageID)
+    const claimed = context.instruction.claims.get(messageID)
     if (!claimed) return false
     return claimed.has(filepath)
   }
 
   function claim(context: AgentContext, messageID: string, filepath: string) {
-    const current = state(context)
+    const current = context.instruction
     let claimed = current.claims.get(messageID)
     if (!claimed) {
       claimed = new Set()
@@ -72,7 +67,7 @@ export namespace InstructionPrompt {
   }
 
   export function clear(context: AgentContext, messageID: string) {
-    state(context).claims.delete(messageID)
+    context.instruction.claims.delete(messageID)
   }
 
   export async function systemPaths(context: AgentContext) {

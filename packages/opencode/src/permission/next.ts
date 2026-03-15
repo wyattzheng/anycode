@@ -1,4 +1,3 @@
-import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
@@ -127,13 +126,9 @@ export namespace PermissionNext {
     }
   }
 
-  const STATE_KEY = Symbol("permission.next")
-  function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => new PermissionNextService(context))
-  }
 
   export async function ask(context: import("../agent/context").AgentContext, input: Omit<z.infer<typeof Request>, "id"> & { id?: z.infer<typeof Request>["id"]; ruleset: z.infer<typeof Ruleset> }) {
-    const s = await state(context)
+    const s = await context.permissionNext
     const { ruleset, ...request } = input
     for (const pattern of request.patterns ?? []) {
       const rule = evaluate(request.permission, pattern, ruleset, s.approved)
@@ -160,7 +155,7 @@ export namespace PermissionNext {
   }
 
   export async function reply(context: import("../agent/context").AgentContext, input: { requestID: z.infer<typeof PermissionID.zod>; reply: z.infer<typeof Reply>; message?: string }) {
-    const s = await state(context)
+    const s = await context.permissionNext
     const existing = s.pending.get(input.requestID)
     if (!existing) return
     s.pending.delete(input.requestID)
@@ -272,7 +267,7 @@ export namespace PermissionNext {
   }
 
   export async function list(context: import("../agent/context").AgentContext) {
-    const s = await state(context)
+    const s = await context.permissionNext
     return Array.from(s.pending.values(), (x) => x.info)
   }
 }
