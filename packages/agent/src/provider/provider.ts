@@ -242,7 +242,7 @@ export namespace Provider {
       },
       capabilities: {
         temperature: model.temperature,
-        reasoning: model.reasoning,
+        reasoning: true,
         attachment: model.attachment,
         toolcall: model.tool_call,
         input: {
@@ -609,7 +609,7 @@ export namespace Provider {
           providerID: ProviderID.make(providerID),
           capabilities: {
             temperature: model.temperature ?? existingModel?.capabilities.temperature ?? false,
-            reasoning: model.reasoning ?? existingModel?.capabilities.reasoning ?? false,
+            reasoning: true,
             attachment: model.attachment ?? existingModel?.capabilities.attachment ?? false,
             toolcall: model.tool_call ?? existingModel?.capabilities.toolcall ?? true,
             input: {
