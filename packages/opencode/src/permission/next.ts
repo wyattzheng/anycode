@@ -115,6 +115,7 @@ export namespace PermissionNext {
 
   /**
    * PermissionNextService — manages pending permission requests and approved rules.
+   * All logic is now in instance methods.
    */
   export class PermissionNextService {
     readonly pending = new Map<PermissionID, PendingEntry>()
@@ -130,12 +131,90 @@ export namespace PermissionNext {
       this.context = context
     }
 
-    ask(input: Omit<z.infer<typeof Request>, "id"> & { id?: z.infer<typeof Request>["id"]; ruleset: z.infer<typeof Ruleset> }) {
-      return _ask(this.context, input)
+    async ask(input: Omit<z.infer<typeof Request>, "id"> & { id?: z.infer<typeof Request>["id"]; ruleset: z.infer<typeof Ruleset> }) {
+      const { ruleset, ...request } = input
+      for (const pattern of request.patterns ?? []) {
+        const rule = evaluate(request.permission, pattern, ruleset, this.approved)
+        log.info("evaluated", { permission: request.permission, pattern, action: rule })
+        if (rule.action === "deny")
+          throw new DeniedError(ruleset.filter((r) => Wildcard.match(request.permission, r.permission)))
+        if (rule.action === "ask") {
+          const id = input.id ?? PermissionID.ascending()
+          return new Promise<void>((resolve, reject) => {
+            const info: z.infer<typeof Request> = {
+              ...request,
+              id,
+            }
+            this.pending.set(id, {
+              info,
+              resolve,
+              reject,
+            })
+            Bus.publish(this.context, Event.Asked, info)
+          })
+        }
+        if (rule.action === "allow") continue
+      }
     }
 
-    reply(input: { requestID: z.infer<typeof PermissionID.zod>; reply: z.infer<typeof Reply>; message?: string }) {
-      return _reply(this.context, input)
+    async reply(input: { requestID: z.infer<typeof PermissionID.zod>; reply: z.infer<typeof Reply>; message?: string }) {
+      const existing = this.pending.get(input.requestID)
+      if (!existing) return
+      this.pending.delete(input.requestID)
+      Bus.publish(this.context, Event.Replied, {
+        sessionID: existing.info.sessionID,
+        requestID: existing.info.id,
+        reply: input.reply,
+      })
+      if (input.reply === "reject") {
+        existing.reject(input.message ? new CorrectedError(input.message) : new RejectedError())
+        // Reject all other pending permissions for this session
+        const sessionID = existing.info.sessionID
+        for (const [id, pending] of this.pending) {
+          if (pending.info.sessionID === sessionID) {
+            this.pending.delete(id)
+            Bus.publish(this.context, Event.Replied, {
+              sessionID: pending.info.sessionID,
+              requestID: pending.info.id,
+              reply: "reject",
+            })
+            pending.reject(new RejectedError())
+          }
+        }
+        return
+      }
+      if (input.reply === "once") {
+        existing.resolve()
+        return
+      }
+      if (input.reply === "always") {
+        for (const pattern of existing.info.always) {
+          this.approved.push({
+            permission: existing.info.permission,
+            pattern,
+            action: "allow",
+          })
+        }
+
+        existing.resolve()
+
+        const sessionID = existing.info.sessionID
+        for (const [id, pending] of this.pending) {
+          if (pending.info.sessionID !== sessionID) continue
+          const ok = pending.info.patterns.every(
+            (pattern) => evaluate(pending.info.permission, pattern, this.approved).action === "allow",
+          )
+          if (!ok) continue
+          this.pending.delete(id)
+          Bus.publish(this.context, Event.Replied, {
+            sessionID: pending.info.sessionID,
+            requestID: pending.info.id,
+            reply: "always",
+          })
+          pending.resolve()
+        }
+        return
+      }
     }
 
     list() {
@@ -143,100 +222,7 @@ export namespace PermissionNext {
     }
   }
 
-
-  async function _ask(context: import("../agent/context").AgentContext, input: Omit<z.infer<typeof Request>, "id"> & { id?: z.infer<typeof Request>["id"]; ruleset: z.infer<typeof Ruleset> }) {
-    const s = await context.permissionNext
-    const { ruleset, ...request } = input
-    for (const pattern of request.patterns ?? []) {
-      const rule = evaluate(request.permission, pattern, ruleset, s.approved)
-      log.info("evaluated", { permission: request.permission, pattern, action: rule })
-      if (rule.action === "deny")
-        throw new DeniedError(ruleset.filter((r) => Wildcard.match(request.permission, r.permission)))
-      if (rule.action === "ask") {
-        const id = input.id ?? PermissionID.ascending()
-        return new Promise<void>((resolve, reject) => {
-          const info: z.infer<typeof Request> = {
-            ...request,
-            id,
-          }
-          s.pending.set(id, {
-            info,
-            resolve,
-            reject,
-          })
-          Bus.publish(context, Event.Asked, info)
-        })
-      }
-      if (rule.action === "allow") continue
-    }
-  }
-
-  async function _reply(context: import("../agent/context").AgentContext, input: { requestID: z.infer<typeof PermissionID.zod>; reply: z.infer<typeof Reply>; message?: string }) {
-    const s = await context.permissionNext
-    const existing = s.pending.get(input.requestID)
-    if (!existing) return
-    s.pending.delete(input.requestID)
-    Bus.publish(context, Event.Replied, {
-      sessionID: existing.info.sessionID,
-      requestID: existing.info.id,
-      reply: input.reply,
-    })
-    if (input.reply === "reject") {
-      existing.reject(input.message ? new CorrectedError(input.message) : new RejectedError())
-      // Reject all other pending permissions for this session
-      const sessionID = existing.info.sessionID
-      for (const [id, pending] of s.pending) {
-        if (pending.info.sessionID === sessionID) {
-          s.pending.delete(id)
-          Bus.publish(context, Event.Replied, {
-            sessionID: pending.info.sessionID,
-            requestID: pending.info.id,
-            reply: "reject",
-          })
-          pending.reject(new RejectedError())
-        }
-      }
-      return
-    }
-    if (input.reply === "once") {
-      existing.resolve()
-      return
-    }
-    if (input.reply === "always") {
-      for (const pattern of existing.info.always) {
-        s.approved.push({
-          permission: existing.info.permission,
-          pattern,
-          action: "allow",
-        })
-      }
-
-      existing.resolve()
-
-      const sessionID = existing.info.sessionID
-      for (const [id, pending] of s.pending) {
-        if (pending.info.sessionID !== sessionID) continue
-        const ok = pending.info.patterns.every(
-          (pattern) => evaluate(pending.info.permission, pattern, s.approved).action === "allow",
-        )
-        if (!ok) continue
-        s.pending.delete(id)
-        Bus.publish(context, Event.Replied, {
-          sessionID: pending.info.sessionID,
-          requestID: pending.info.id,
-          reply: "always",
-        })
-        pending.resolve()
-      }
-
-      // TODO: we don't save the permission ruleset to disk yet until there's
-      // UI to manage it
-      // db().insert(PermissionTable).values({ projectID: context.project.id, data: s.approved })
-      //   .onConflictDoUpdate({ target: PermissionTable.projectID, set: { data: s.approved } }).run()
-      return
-    }
-  }
-
+  /** Pure function — evaluates permission rules without context */
   export function evaluate(permission: string, pattern: string, ...rulesets: Ruleset[]): Rule {
     const merged = merge(...rulesets)
     log.info("evaluate", { permission, pattern, ruleset: merged })
@@ -248,6 +234,7 @@ export namespace PermissionNext {
 
   const EDIT_TOOLS = ["edit", "write", "patch", "multiedit"]
 
+  /** Pure function — determines which tools are disabled by rules */
   export function disabled(tools: string[], ruleset: Ruleset): Set<string> {
     const result = new Set<string>()
     for (const tool of tools) {
@@ -281,10 +268,5 @@ export namespace PermissionNext {
         `The user has specified a rule which prevents you from using this specific tool call. Here are some of the relevant rules ${JSON.stringify(ruleset)}`,
       )
     }
-  }
-
-  export async function list(context: import("../agent/context").AgentContext) {
-    const s = await context.permissionNext
-    return Array.from(s.pending.values(), (x) => x.info)
   }
 }

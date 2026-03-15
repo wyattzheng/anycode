@@ -44,12 +44,12 @@ async function resolveRelative(context: AgentContext, instruction: string): Prom
 export namespace InstructionPrompt {
   /**
    * InstructionService — tracks claimed instruction files per session.
+   * All logic is now in instance methods.
    */
   export class InstructionService {
     readonly claims = new Map<string, Set<string>>()
     private context!: AgentContext
 
-    /** Must be called after construction to bind context */
     bind(context: AgentContext) {
       this.context = context
     }
@@ -58,124 +58,135 @@ export namespace InstructionPrompt {
       this.claims.delete(messageID)
     }
 
-    systemPaths() {
-      return _systemPaths(this.context)
+    private isClaimed(messageID: string, filepath: string) {
+      const claimed = this.claims.get(messageID)
+      if (!claimed) return false
+      return claimed.has(filepath)
     }
 
-    system() {
-      return _system(this.context)
+    private claim(messageID: string, filepath: string) {
+      let claimed = this.claims.get(messageID)
+      if (!claimed) {
+        claimed = new Set()
+        this.claims.set(messageID, claimed)
+      }
+      claimed.add(filepath)
     }
 
-    find(dir: string) {
-      return _find(this.context, dir)
-    }
+    async systemPaths() {
+      const config = await this.context.config.get()
+      const paths = new Set<string>()
 
-    resolve(messages: MessageV2.WithParts[], filepath: string, messageID: string) {
-      return _resolve(this.context, messages, filepath, messageID)
-    }
-  }
+      if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
+        for (const file of FILES) {
+          const matches = await Filesystem.findUp(this.context, file, this.context.directory, this.context.worktree)
+          if (matches.length > 0) {
+            matches.forEach((p) => {
+              paths.add(path.resolve(p))
+            })
+            break
+          }
+        }
+      }
 
-
-  function isClaimed(context: AgentContext, messageID: string, filepath: string) {
-    const claimed = context.instruction.claims.get(messageID)
-    if (!claimed) return false
-    return claimed.has(filepath)
-  }
-
-  function claim(context: AgentContext, messageID: string, filepath: string) {
-    const current = context.instruction
-    let claimed = current.claims.get(messageID)
-    if (!claimed) {
-      claimed = new Set()
-      current.claims.set(messageID, claimed)
-    }
-    claimed.add(filepath)
-  }
-
-  function _clear(context: AgentContext, messageID: string) {
-    context.instruction.claims.delete(messageID)
-  }
-
-  async function _systemPaths(context: AgentContext) {
-    const config = await context.config.get()
-    const paths = new Set<string>()
-
-    if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
-      for (const file of FILES) {
-        const matches = await Filesystem.findUp(context, file, context.directory, context.worktree)
-        if (matches.length > 0) {
-          matches.forEach((p) => {
-            paths.add(path.resolve(p))
-          })
+      for (const file of globalFiles(this.context)) {
+        if (await Filesystem.exists(this.context, file)) {
+          paths.add(path.resolve(file))
           break
         }
       }
-    }
 
-    for (const file of globalFiles(context)) {
-      if (await Filesystem.exists(context, file)) {
-        paths.add(path.resolve(file))
-        break
-      }
-    }
-
-    if (config.instructions) {
-      for (let instruction of config.instructions) {
-        if (instruction.startsWith("https://") || instruction.startsWith("http://")) continue
-        if (instruction.startsWith("~/")) {
-          instruction = path.join(os.homedir(), instruction.slice(2))
-        }
-        const matches = path.isAbsolute(instruction)
-          ? await Glob.scan(context, path.basename(instruction), {
-              cwd: path.dirname(instruction),
-              absolute: true,
-              include: "file",
-            }).catch(() => [])
-          : await resolveRelative(context, instruction)
-        matches.forEach((p) => {
-          paths.add(path.resolve(p))
-        })
-      }
-    }
-
-    return paths
-  }
-
-  async function _system(context: AgentContext) {
-    // Short-circuit: if instructions were injected via AgentContext context,
-    // skip all filesystem-based instruction loading.
-    const injected = context.instructions
-    if (injected) {
-      return injected
-    }
-
-    const config = await context.config.get()
-    const paths = await _systemPaths(context)
-
-    const files = Array.from(paths).map(async (p) => {
-      const content = await Filesystem.readText(context, p).catch(() => "")
-      return content ? "Instructions from: " + p + "\n" + content : ""
-    })
-
-    const urls: string[] = []
-    if (config.instructions) {
-      for (const instruction of config.instructions) {
-        if (instruction.startsWith("https://") || instruction.startsWith("http://")) {
-          urls.push(instruction)
+      if (config.instructions) {
+        for (let instruction of config.instructions) {
+          if (instruction.startsWith("https://") || instruction.startsWith("http://")) continue
+          if (instruction.startsWith("~/")) {
+            instruction = path.join(os.homedir(), instruction.slice(2))
+          }
+          const matches = path.isAbsolute(instruction)
+            ? await Glob.scan(this.context, path.basename(instruction), {
+                cwd: path.dirname(instruction),
+                absolute: true,
+                include: "file",
+              }).catch(() => [])
+            : await resolveRelative(this.context, instruction)
+          matches.forEach((p) => {
+            paths.add(path.resolve(p))
+          })
         }
       }
-    }
-    const fetches = urls.map((url) =>
-      fetch(url, { signal: AbortSignal.timeout(5000) })
-        .then((res) => (res.ok ? res.text() : ""))
-        .catch(() => "")
-        .then((x) => (x ? "Instructions from: " + url + "\n" + x : "")),
-    )
 
-    return Promise.all([...files, ...fetches]).then((result) => result.filter(Boolean))
+      return paths
+    }
+
+    async system() {
+      // Short-circuit: if instructions were injected via AgentContext,
+      // skip all filesystem-based instruction loading.
+      const injected = this.context.instructions
+      if (injected) {
+        return injected
+      }
+
+      const config = await this.context.config.get()
+      const paths = await this.systemPaths()
+
+      const files = Array.from(paths).map(async (p) => {
+        const content = await Filesystem.readText(this.context, p).catch(() => "")
+        return content ? "Instructions from: " + p + "\n" + content : ""
+      })
+
+      const urls: string[] = []
+      if (config.instructions) {
+        for (const instruction of config.instructions) {
+          if (instruction.startsWith("https://") || instruction.startsWith("http://")) {
+            urls.push(instruction)
+          }
+        }
+      }
+      const fetches = urls.map((url) =>
+        fetch(url, { signal: AbortSignal.timeout(5000) })
+          .then((res) => (res.ok ? res.text() : ""))
+          .catch(() => "")
+          .then((x) => (x ? "Instructions from: " + url + "\n" + x : "")),
+      )
+
+      return Promise.all([...files, ...fetches]).then((result) => result.filter(Boolean))
+    }
+
+    async find(dir: string) {
+      for (const file of FILES) {
+        const filepath = path.resolve(path.join(dir, file))
+        if (await Filesystem.exists(this.context, filepath)) return filepath
+      }
+    }
+
+    async resolve(messages: MessageV2.WithParts[], filepath: string, messageID: string) {
+      const system = await this.systemPaths()
+      const already = loaded(messages)
+      const results: { filepath: string; content: string }[] = []
+
+      const target = path.resolve(filepath)
+      let current = path.dirname(target)
+      const root = path.resolve(this.context.directory)
+
+      while (current.startsWith(root) && current !== root) {
+        const found = await this.find(current)
+
+        if (found && found !== target && !system.has(found) && !already.has(found) && !this.isClaimed(messageID, found)) {
+          this.claim(messageID, found)
+          const content = await Filesystem.readText(this.context, found).catch(() => undefined)
+          if (content) {
+            results.push({ filepath: found, content: "Instructions from: " + found + "\n" + content })
+          }
+        }
+        current = path.dirname(current)
+      }
+
+      return results
+    }
   }
 
-  export function loaded(messages: MessageV2.WithParts[]) { // stays exported — used by read tool directly
+  /** Pure function — scans messages for loaded instruction paths */
+  export function loaded(messages: MessageV2.WithParts[]) {
     const paths = new Set<string>()
     for (const msg of messages) {
       for (const part of msg.parts) {
@@ -190,37 +201,5 @@ export namespace InstructionPrompt {
       }
     }
     return paths
-  }
-
-  async function _find(context: AgentContext, dir: string) {
-    for (const file of FILES) {
-      const filepath = path.resolve(path.join(dir, file))
-      if (await Filesystem.exists(context, filepath)) return filepath
-    }
-  }
-
-  async function _resolve(context: AgentContext, messages: MessageV2.WithParts[], filepath: string, messageID: string) {
-    const system = await _systemPaths(context)
-    const already = loaded(messages)
-    const results: { filepath: string; content: string }[] = []
-
-    const target = path.resolve(filepath)
-    let current = path.dirname(target)
-    const root = path.resolve(context.directory)
-
-    while (current.startsWith(root) && current !== root) {
-      const found = await _find(context, current)
-
-      if (found && found !== target && !system.has(found) && !already.has(found) && !isClaimed(context, messageID, found)) {
-        claim(context, messageID, found)
-        const content = await Filesystem.readText(context, found).catch(() => undefined)
-        if (content) {
-          results.push({ filepath: found, content: "Instructions from: " + found + "\n" + content })
-        }
-      }
-      current = path.dirname(current)
-    }
-
-    return results
   }
 }

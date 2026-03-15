@@ -47,16 +47,16 @@ export namespace FileWatcher {
 
   /**
    * FileWatcherService — manages parcel watcher subscriptions.
+   * All logic is now in the constructor (self-initializing).
    */
   export class FileWatcherService {
-    readonly _promise: ReturnType<typeof initWatcher>
+    readonly _promise: Promise<{ subs?: ParcelWatcher.AsyncSubscription[] }>
 
     constructor(context: AgentContext) {
-      this._promise = initWatcher(context)
+      this._promise = this.init(context)
     }
-  }
 
-    async function initWatcher(context: AgentContext) {
+    private async init(context: AgentContext) {
       log.info("init")
       const cfg = await context.config.get()
       const backend = (() => {
@@ -120,5 +120,6 @@ export namespace FileWatcher {
       }
 
       return { subs }
+    }
   }
 }
