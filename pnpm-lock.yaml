@@ -6,7 +6,11 @@ settings:
 
 importers:
 
-  .: {}
+  .:
+    devDependencies:
+      concurrently:
+        specifier: ^9.1.0
+        version: 9.2.1
 
   packages/agent:
     dependencies:
@@ -223,9 +227,6 @@ importers:
       '@types/node':
         specifier: ^25.5.0
         version: 25.5.0
-      concurrently:
-        specifier: ^9.1.0
-        version: 9.2.1
       sql.js:
         specifier: ^1.12.0
         version: 1.14.1
