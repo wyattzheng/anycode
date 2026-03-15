@@ -16,7 +16,7 @@ import { describe, it, expect, beforeAll } from "vitest"
 import { CodeAgent } from "../src/index"
 import { InMemoryFS } from "./fixtures/in-memory-fs"
 import { InMemorySearchProvider } from "./fixtures/search-memory"
-import { Skill } from "@any-code/opencode/skill/skill"
+import { Skill } from "@any-code/opencode/skill"
 import { SqlJsStorage } from "../src/storage-sqljs"
 
 describe("Skill: auto-loading from designated directories", () => {
