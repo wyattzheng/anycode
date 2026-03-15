@@ -6,9 +6,6 @@
     "build:agent": "pnpm --filter agent build",
     "build:server": "pnpm --filter server build",
     "build": "pnpm -r build",
-    "start": "pnpm --filter @any-code/agent build && pnpm --filter app build && pnpm --filter any-code-server build && concurrently \"pnpm --filter any-code-server start\" \"pnpm --filter app preview --port 5173\""
-  },
-  "devDependencies": {
-    "concurrently": "^9.1.0"
+    "start": "pnpm --filter @any-code/agent build && pnpm --filter app build && pnpm --filter any-code-server build && pnpm --filter any-code-server start"
   }
 }

@@ -195,19 +195,172 @@ async function handleChat(req: http.IncomingMessage, res: http.ServerResponse) {
   res.end()
 }
 
+// ── Stats ──────────────────────────────────────────────────────────────────
+
+const startedAt = Date.now()
+let messageCount = 0
+let lastMessageAt: number | null = null
+let lastError: string | null = null
+
+// ── Admin UI ───────────────────────────────────────────────────────────────
+
+function adminHTML() {
+  return /* html */ `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AnyCode Server Admin</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{--bg:#1a1b26;--surface:#24283b;--border:#3b4261;--text:#a9b1d6;
+    --bright:#c0caf5;--accent:#7aa2f7;--green:#9ece6a;--red:#f7768e;--yellow:#e0af68;
+    --mono:'JetBrains Mono','Fira Code','SF Mono',monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+  body{font-family:var(--sans);background:var(--bg);color:var(--text);
+    min-height:100vh;display:flex;justify-content:center;padding:32px 16px}
+  .container{width:100%;max-width:480px}
+  h1{font-size:18px;color:var(--bright);margin-bottom:20px;display:flex;align-items:center;gap:8px}
+  h1 .dot{width:10px;height:10px;border-radius:50%;background:var(--green);
+    animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+    padding:16px;margin-bottom:12px}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;
+    color:var(--accent);margin-bottom:12px;font-weight:600}
+  .row{display:flex;justify-content:space-between;align-items:center;
+    padding:6px 0;border-bottom:1px solid rgba(59,66,97,0.4);font-size:13px}
+  .row:last-child{border-bottom:none}
+  .label{color:var(--text)}
+  .value{color:var(--bright);font-family:var(--mono);font-size:12px}
+  .value.green{color:var(--green)}
+  .value.yellow{color:var(--yellow)}
+  .value.red{color:var(--red)}
+  .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;
+    font-family:var(--mono);background:rgba(122,162,247,0.1);color:var(--accent)}
+  .footer{text-align:center;margin-top:20px;font-size:11px;color:rgba(169,177,214,0.4)}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1><span class="dot"></span> AnyCode Server</h1>
+  <div class="card">
+    <h2>⚙ Configuration</h2>
+    <div class="row"><span class="label">Provider</span><span class="value">${PROVIDER}</span></div>
+    <div class="row"><span class="label">Model</span><span class="value">${MODEL}</span></div>
+    <div class="row"><span class="label">Port</span><span class="value">${PORT}</span></div>
+    <div class="row"><span class="label">Project</span><span class="value" style="font-size:10px;max-width:250px;overflow:hidden;text-overflow:ellipsis">${PROJECT_DIR}</span></div>
+  </div>
+  <div class="card" id="status-card">
+    <h2>📊 Status</h2>
+    <div class="row"><span class="label">Uptime</span><span class="value green" id="uptime">—</span></div>
+    <div class="row"><span class="label">Messages</span><span class="value" id="msg-count">0</span></div>
+    <div class="row"><span class="label">Session</span><span class="value" id="session">—</span></div>
+    <div class="row"><span class="label">Last message</span><span class="value" id="last-msg">—</span></div>
+    <div class="row"><span class="label">Last error</span><span class="value red" id="last-err">—</span></div>
+  </div>
+  <div class="footer">any-code-server v0.0.1</div>
+</div>
+<script>
+async function refresh(){
+  try{
+    const r=await fetch('/api/status');const d=await r.json()
+    document.getElementById('uptime').textContent=d.uptime
+    document.getElementById('msg-count').textContent=d.messageCount
+    document.getElementById('session').textContent=d.sessionId||'none'
+    document.getElementById('last-msg').textContent=d.lastMessageAt||'—'
+    document.getElementById('last-err').textContent=d.lastError||'—'
+  }catch(e){}
+}
+refresh();setInterval(refresh,2000)
+</script>
+</body></html>`
+}
+
+// ── Static file server for app dist ────────────────────────────────────────
+
+const MIME_TYPES: Record<string, string> = {
+  ".html": "text/html", ".css": "text/css", ".js": "application/javascript",
+  ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg",
+  ".svg": "image/svg+xml", ".ico": "image/x-icon", ".woff2": "font/woff2",
+  ".woff": "font/woff", ".ttf": "font/ttf",
+}
+
+const APP_DIST = path.resolve(__dirname, "../../app/dist")
+
+function serveStatic(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+  const url = req.url || "/"
+  // Try exact file
+  const filePath = path.join(APP_DIST, url)
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    const ext = path.extname(filePath)
+    res.writeHead(200, { "Content-Type": MIME_TYPES[ext] || "application/octet-stream" })
+    fs.createReadStream(filePath).pipe(res)
+    return true
+  }
+  return false
+}
+
+function serveAppIndex(res: http.ServerResponse): boolean {
+  const indexPath = path.join(APP_DIST, "index.html")
+  if (fs.existsSync(indexPath)) {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
+    fs.createReadStream(indexPath).pipe(res)
+    return true
+  }
+  return false
+}
+
+// ── HTTP Server ────────────────────────────────────────────────────────────
+
 const server = http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
   res.setHeader("Access-Control-Allow-Headers", "Content-Type")
   if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return }
 
+  // ── API routes ──
   if (req.method === "POST" && req.url === "/api/chat") {
+    messageCount++
+    lastMessageAt = Date.now()
     handleChat(req, res).catch((err) => {
+      lastError = err.message
       console.error(err)
       if (!res.headersSent) res.writeHead(500)
       res.end(JSON.stringify({ error: err.message }))
     })
     return
+  }
+
+  if (req.method === "GET" && req.url === "/api/status") {
+    const uptimeMs = Date.now() - startedAt
+    const h = Math.floor(uptimeMs / 3600000)
+    const m = Math.floor((uptimeMs % 3600000) / 60000)
+    const s = Math.floor((uptimeMs % 60000) / 1000)
+    const uptime = h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`
+    res.writeHead(200, { "Content-Type": "application/json" })
+    res.end(JSON.stringify({
+      uptime,
+      messageCount,
+      sessionId: currentSessionId,
+      lastMessageAt: lastMessageAt ? new Date(lastMessageAt).toLocaleTimeString() : null,
+      lastError,
+    }))
+    return
+  }
+
+  // ── Admin UI ──
+  if (req.method === "GET" && req.url === "/admin") {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
+    res.end(adminHTML())
+    return
+  }
+
+  // ── Static files from app/dist ──
+  if (req.method === "GET") {
+    if (serveStatic(req, res)) return
+    // SPA fallback: serve index.html for any non-file route
+    if (serveAppIndex(res)) return
   }
 
   res.writeHead(404, { "Content-Type": "application/json" })
@@ -219,10 +372,17 @@ const server = http.createServer((req, res) => {
 export async function startServer() {
   console.log("🚀  Starting any-code-server…")
   await initAgent()
+  const appDistExists = fs.existsSync(APP_DIST)
   server.listen(PORT, () => {
     console.log(`🌐  http://localhost:${PORT}`)
     console.log(`📂  Project: ${PROJECT_DIR}`)
     console.log(`🤖  Provider: ${PROVIDER} / ${MODEL}`)
+    console.log(`🖥  Admin: http://localhost:${PORT}/admin`)
+    if (appDistExists) {
+      console.log(`📱  App: http://localhost:${PORT}`)
+    } else {
+      console.log(`⚠  App dist not found at ${APP_DIST} — run 'pnpm --filter app build' first`)
+    }
   })
 }
 
