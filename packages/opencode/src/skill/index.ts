@@ -13,7 +13,7 @@ import { Session } from "@/session"
 import { Glob } from "../util/glob"
 import { pathToFileURL } from "url"
 import type { Agent } from "@/agent/agent"
-import { PermissionNext } from "@/permission/next"
+import { PermissionNext } from "@/permission"
 
 // ── Discovery ───────────────────────────────────────────────────────────────
 

@@ -25,14 +25,14 @@
 
 import path from "path"
 import type { AgentContext } from "./context"
-import type { Project } from "../project/project"
+import type { Project } from "../project"
 import type { VFS } from "../util/vfs"
 import type { SearchProvider } from "../util/search"
 import { NodeGitProvider, type GitProvider } from "../util/git"
 import { EnvService } from "../util/env"
 import { BusService } from "../bus"
 import { SchedulerService } from "../util/scheduler"
-import { FileTimeService } from "../file/time"
+import { FileTimeService } from "../file"
 import { Database } from "../storage"
 import { ToolRegistry } from "../tool/registry"
 import { Tool } from "../tool/tool"
@@ -41,22 +41,22 @@ import { SessionPrompt } from "../session/session"
 import { Bus } from "../bus"
 import { GlobalBus } from "../bus/global"
 import { MessageV2 } from "../session/message-v2"
-import { PermissionNext } from "../permission/next"
+import { PermissionNext } from "../permission"
 import { Permission } from "../permission"
 import { Truncate } from "../tool/truncation"
 import { Snapshot } from "../snapshot"
-import { FileWatcher } from "../file/watcher"
+import { FileWatcher } from "../file"
 import { File } from "../file"
 import { Config } from "../config/config"
 import { Question } from "../session/question"
 import { SessionStatus } from "../session"
 import { InstructionPrompt } from "../session/instruction"
-import { Command } from "./command"
+
 import { Agent } from "../agent/agent"
 import { Provider } from "../provider/provider"
 import { ModelsDev } from "../provider/models"
 import { Skill } from "../skill"
-import { Vcs } from "../project/project"
+import { Vcs } from "../project"
 import z from "zod"
 import { SessionRevert } from "../session/revert"
 import { NamedError } from "../util/error"
@@ -348,7 +348,7 @@ export class CodeAgent {
         ctx.sessionPrompt = new SessionPrompt.SessionPromptService()
         ctx.permission = new Permission.PermissionService()
         ctx.permissionNext = new PermissionNext.PermissionNextService(ctx)
-        ctx.command = new Command.CommandService(ctx)
+
         ctx.agents = new Agent.AgentService(ctx)
         ctx.provider = new Provider.ProviderService(ctx)
         ctx.modelsDev = new ModelsDev.ModelsDevService(ctx)

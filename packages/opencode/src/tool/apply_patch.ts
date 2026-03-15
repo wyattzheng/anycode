@@ -3,7 +3,7 @@ import * as path from "path"
 
 import { Tool } from "./tool"
 import { Bus } from "../bus"
-import { FileWatcher } from "../file/watcher"
+import { FileWatcher } from "../file"
 import { Patch } from "./patch"
 import { createTwoFilesPatch, diffLines } from "diff"
 import { assertExternalDirectory } from "./external-directory"

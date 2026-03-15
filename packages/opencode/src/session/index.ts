@@ -18,14 +18,14 @@ import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
 
 import { fn } from "@/util/fn"
-import { Command } from "../agent/command"
+
 import { Snapshot } from "@/snapshot"
-import { ProjectID } from "../project/schema"
+import { ProjectID } from "../project"
 import { SessionID, MessageID, PartID } from "./schema"
 
 import type { Provider } from "@/provider/provider"
 import { ModelID, ProviderID } from "@/provider/schema"
-import { PermissionNext } from "@/permission/next"
+import { PermissionNext } from "@/permission"
 import type { LanguageModelV2Usage } from "@ai-sdk/provider"
 import { iife } from "@/util/iife"
 
@@ -767,26 +767,7 @@ export namespace Session {
     }
   }
 
-  export const initialize = fn(
-    z.object({
-      sessionID: SessionID.zod,
-      modelID: ModelID.zod,
-      providerID: ProviderID.zod,
-      messageID: MessageID.zod,
-    }).passthrough(),
-    async (rawInput) => {
-      const input = rawInput as typeof rawInput & { context: import("../agent/context").AgentContext }
-      const { SessionPrompt } = await import("./session")
-      await SessionPrompt.command({
-        sessionID: input.sessionID,
-        messageID: input.messageID,
-        model: input.providerID + "/" + input.modelID,
-        command: Command.Default.INIT,
-        arguments: "",
-        context: input.context,
-      })
-    },
-  )
+
 }
 
 // Merged from session/status.ts

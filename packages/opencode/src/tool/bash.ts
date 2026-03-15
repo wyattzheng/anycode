@@ -13,7 +13,7 @@ import { fileURLToPath } from "url"
 import { Flag } from "@/util/flag"
 import { Shell } from "@/util/shell"
 
-import { BashArity } from "@/permission/arity"
+import { BashArity } from "@/permission"
 import { Truncate } from "./truncation"
 
 const MAX_METADATA_LENGTH = 30_000

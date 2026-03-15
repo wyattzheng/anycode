@@ -1,27 +1,27 @@
-import { Project } from "../project/project"
+import { Project } from "../project"
 import { VFS } from "../util/vfs"
 import { SearchProvider } from "../util/search"
 import type { GitProvider } from "../util/git"
 import type { EnvService } from "../util/env"
 import type { BusService } from "../bus"
 import type { SchedulerService } from "../util/scheduler"
-import type { FileTimeService } from "../file/time"
+import type { FileTimeService } from "../file"
 import type { Config } from "../config/config"
 import type { Question } from "../session/question"
 import type { SessionStatus } from "../session"
 import type { InstructionPrompt } from "../session/instruction"
 import type { SessionPrompt } from "../session/session"
 import type { Permission } from "../permission"
-import type { PermissionNext } from "../permission/next"
-import type { Command } from "./command"
+import type { PermissionNext } from "../permission"
+
 import type { Agent } from "../agent/agent"
 import type { Provider } from "../provider/provider"
 import type { ModelsDev } from "../provider/models"
 import type { ToolRegistry } from "../tool/registry"
 import type { Skill } from "../skill"
-import type { FileWatcher } from "../file/watcher"
+import type { FileWatcher } from "../file"
 import type { File } from "../file"
-import type { Vcs } from "../project/project"
+import type { Vcs } from "../project"
 
 export interface InstancePaths {
     data: string
@@ -72,7 +72,7 @@ export interface AgentContext {
     sessionPrompt: SessionPrompt.SessionPromptService
     permission: Permission.PermissionService
     permissionNext: PermissionNext.PermissionNextService
-    command: Command.CommandService
+
     agents: Agent.AgentService
     provider: Provider.ProviderService
     modelsDev: ModelsDev.ModelsDevService

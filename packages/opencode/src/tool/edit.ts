@@ -10,7 +10,7 @@ import { LSP } from "../util/lsp"
 import { createTwoFilesPatch, diffLines } from "diff"
 import DESCRIPTION from "./edit.txt"
 import { File } from "../file"
-import { FileWatcher } from "../file/watcher"
+import { FileWatcher } from "../file"
 import { Bus } from "../bus"
 
 import { Snapshot } from "@/snapshot"
