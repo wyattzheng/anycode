@@ -1,0 +1,61 @@
+import type { AgentContext } from "@/agent/context"
+import type { Provider } from "@/provider/provider"
+import type { Agent } from "@/agent/agent"
+import { Skill } from "@/skill"
+
+import PROMPT_ANTHROPIC from "./anthropic.txt"
+import PROMPT_ANTHROPIC_WITHOUT_TODO from "./qwen.txt"
+import PROMPT_BEAST from "./beast.txt"
+import PROMPT_GEMINI from "./gemini.txt"
+import PROMPT_CODEX from "./codex_header.txt"
+import PROMPT_TRINITY from "./trinity.txt"
+
+export namespace SystemPrompt {
+  export function instructions() {
+    return PROMPT_CODEX.trim()
+  }
+
+  export function provider(model: Provider.Model) {
+    if (model.api.id.includes("gpt-5")) return [PROMPT_CODEX]
+    if (model.api.id.includes("gpt-") || model.api.id.includes("o1") || model.api.id.includes("o3"))
+      return [PROMPT_BEAST]
+    if (model.api.id.includes("gemini-")) return [PROMPT_GEMINI]
+    if (model.api.id.includes("claude")) return [PROMPT_ANTHROPIC]
+    if (model.api.id.toLowerCase().includes("trinity")) return [PROMPT_TRINITY]
+    return [PROMPT_ANTHROPIC_WITHOUT_TODO]
+  }
+
+  export async function environment(model: Provider.Model, context: AgentContext) {
+    const project = context.project
+    return [
+      [
+        `You are powered by the model named ${model.api.id}. The exact model ID is ${model.providerID}/${model.api.id}`,
+        `Here is some useful information about the environment you are running in:`,
+        `<env>`,
+        `  Working directory: ${context.directory}`,
+        `  Workspace root folder: ${context.worktree}`,
+        `  Is directory a git repo: ${project.vcs === "git" ? "yes" : "no"}`,
+        `  Platform: ${process.platform}`,
+        `  Today's date: ${new Date().toDateString()}`,
+        `</env>`,
+        `<directories>`,
+        `  ${
+          project.vcs === "git" && false
+            ? await context.search?.tree({ cwd: context.directory, limit: 50 })
+            : ""
+        }`,
+        `</directories>`,
+      ].join("\n"),
+    ]
+  }
+
+  export async function skills(context: AgentContext, agent: Agent.Info) {
+    const list = await context.skill.available(agent)
+
+    return [
+      "Skills provide specialized instructions and workflows for specific tasks.",
+      "Use the skill tool to load a skill when a task matches its description.",
+      Skill.fmt(list, { verbose: true }),
+    ].join("\n")
+  }
+}

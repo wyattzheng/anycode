@@ -62,11 +62,11 @@ import { NamedError } from "../util/error"
 import { defer } from "../util/defer"
 import { ulid } from "ulid"
 import { PartID, MessageID as MsgID, SessionID } from "../session/schema"
-import { SystemPrompt } from "../session"
+import { SystemPrompt } from "./prompt"
 import { SessionSummary } from "../session/summary"
 import { ContextCompaction } from "./memory/compaction"
 import { LLMRunner } from "./llm-runner"
-import MAX_STEPS from "../session/prompt/max-steps.txt"
+import MAX_STEPS from "./prompt/max-steps.txt"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
