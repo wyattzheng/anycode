@@ -3,7 +3,7 @@ import { pathToFileURL } from "url"
 import z from "zod"
 import { Tool } from "./tool"
 import { Skill } from "../skill"
-import { iife } from "@/util/iife"
+import { iife } from "@/util/fn"
 
 export const SkillTool = Tool.define("skill", async (ctx) => {
   const list = await ctx?.agentContext?.skill.available(ctx?.agent) ?? []

@@ -10,7 +10,7 @@ import { ModelsDev } from "./models"
 import { Auth } from "@/util/auth"
 
 import { Flag } from "@/util/flag"
-import { iife } from "@/util/iife"
+import { iife } from "@/util/fn"
 import path from "path"
 import { Filesystem } from "@/util/filesystem"
 

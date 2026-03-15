@@ -1,6 +1,6 @@
 import { APICallError } from "ai"
 import { STATUS_CODES } from "http"
-import { iife } from "@/util/iife"
+import { iife } from "@/util/fn"
 import type { ProviderID } from "./schema"
 
 export namespace ProviderError {

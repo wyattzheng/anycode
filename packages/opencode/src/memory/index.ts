@@ -10,7 +10,7 @@ import type { Provider } from "@/provider/provider"
 import type { LanguageModelV2Usage } from "@ai-sdk/provider"
 
 import { fn } from "@/util/fn"
-import { iife } from "@/util/iife"
+import { iife } from "@/util/fn"
 import { NotFoundError } from "@/storage"
 
 export namespace Memory {

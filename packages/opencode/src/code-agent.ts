@@ -58,7 +58,7 @@ import { Skill } from "./skill"
 import z from "zod"
 
 import { NamedError } from "./util/error"
-import { defer } from "./util/defer"
+import { defer } from "./util/fn"
 import { ulid } from "ulid"
 import { PartID, MessageID as MsgID, SessionID } from "@/session/schema"
 import { SystemPrompt } from "./prompt"

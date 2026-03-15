@@ -21,7 +21,7 @@ import { type AgentContext } from "@/context"
 import PROMPT_PLAN from "@/prompt/plan.txt"
 import BUILD_SWITCH from "@/prompt/build-switch.txt"
 import MAX_STEPS from "@/prompt/max-steps.txt"
-import { defer } from "@/util/defer"
+import { defer } from "@/util/fn"
 import { ToolRegistry } from "@/tool/registry"
 // MCP module removed (agent mode)
 import { LSP } from "@/util/lsp"
@@ -39,7 +39,7 @@ import { Tool } from "@/tool/tool"
 
 import { SessionStatus } from "."
 import { LLMRunner, LLM } from "@/llm-runner"
-import { iife } from "@/util/iife"
+import { iife } from "@/util/fn"
 import { Truncate } from "@/tool/truncation"
 import { decodeDataUrl } from "@/util/data-url"
 
@@ -48,7 +48,7 @@ import { decodeDataUrl } from "@/util/data-url"
 import { Question } from "@/tool/question-service"
 import { Installation } from "@/util/installation"
 import { BusEvent } from "@/bus"
-import { Token } from "@/util/token"
+import { Token } from "@/util/fn"
 import { Auth } from "@/util/auth"
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false

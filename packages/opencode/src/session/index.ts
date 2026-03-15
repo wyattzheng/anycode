@@ -28,7 +28,7 @@ import type { Provider } from "@/provider/provider"
 import { ModelID, ProviderID } from "@/provider/schema"
 
 import type { LanguageModelV2Usage } from "@ai-sdk/provider"
-import { iife } from "@/util/iife"
+import { iife } from "@/util/fn"
 
 type WorkspaceID = string
 

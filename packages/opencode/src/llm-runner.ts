@@ -14,7 +14,7 @@ import { Session } from "@/session"
 import { PartID, SessionID } from "@/session/schema"
 import { ContextCompaction } from "@/memory/compaction"
 import { NamedError } from "@/util/error"
-import { iife } from "@/util/iife"
+import { iife } from "@/util/fn"
 
 
 import { Bus } from "@/bus"

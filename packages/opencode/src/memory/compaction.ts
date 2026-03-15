@@ -7,7 +7,7 @@ import { ProviderTransform } from "@/provider/transform"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus"
 import { Log } from "@/util/log"
-import { Token } from "@/util/token"
+import { Token } from "@/util/fn"
 import { LLMRunner } from "@/llm-runner"
 import { Memory } from "@/memory"
 

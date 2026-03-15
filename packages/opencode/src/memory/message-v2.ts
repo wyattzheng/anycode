@@ -12,7 +12,7 @@ import { ProviderTransform } from "@/provider/transform"
 import { STATUS_CODES } from "http"
 import { Storage } from "@/storage"
 import { ProviderError } from "@/provider/error"
-import { iife } from "@/util/iife"
+import { iife } from "@/util/fn"
 interface SystemError extends Error { code?: string; errno?: number; syscall?: string; path?: string }
 import type { Provider } from "@/provider/provider"
 import { ModelID, ProviderID } from "@/provider/schema"
