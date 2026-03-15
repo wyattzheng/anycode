@@ -15,8 +15,7 @@
  * })
  *
  * await agent.init()
- * const session = await agent.createSession()
- * const stream = agent.chat(session.id, "Build a React todo app")
+ * const stream = agent.chat("Build a React todo app")
  * for await (const event of stream) {
  *   console.log(event)
  * }
@@ -281,7 +280,7 @@ export class CodeAgent {
     }
 
     /**
-     * Initialize the agent - must be called before createSession or chat.
+     * Initialize the agent - must be called before chat.
      * Boots up opencode subsystems: database, config, plugins, tool registry,
      * and constructs all service instances.
      */
@@ -411,12 +410,11 @@ export class CodeAgent {
     }
 
     /**
-     * Create a new chat session
+     * Create a new session (internal).
      */
-    async createSession(title?: string): Promise<CodeAgentSession> {
+    private async ensureSession(): Promise<CodeAgentSession> {
         this.assertInitialized()
-
-        const session = await Session.create(this.agentContext, { title })
+        const session = await Session.create(this.agentContext)
         return {
             id: session.id,
             title: session.title,
@@ -426,13 +424,19 @@ export class CodeAgent {
 
     /**
      * Send a message to the agent and receive streaming responses.
-     * Subscribe to Bus events for real-time updates.
+     * If sessionId is omitted, a new session is created automatically.
      */
     async *chat(
-        sessionId: string,
         message: string,
+        sessionId?: string,
     ): AsyncGenerator<CodeAgentEvent> {
         this.assertInitialized()
+
+        // Auto-create session if not provided
+        if (!sessionId) {
+            const session = await this.ensureSession()
+            sessionId = session.id
+        }
 
         // Set up event stream
         const events: CodeAgentEvent[] = []

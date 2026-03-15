@@ -170,12 +170,7 @@ async function initAgent() {
 async function handleChat(req: http.IncomingMessage, res: http.ServerResponse) {
   let body = ""
   for await (const chunk of req) body += chunk
-  const { message, sessionId } = JSON.parse(body)
-
-  if (!currentSessionId) {
-    const session = await agent.createSession()
-    currentSessionId = session.id
-  }
+  const { message } = JSON.parse(body)
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -183,10 +178,16 @@ async function handleChat(req: http.IncomingMessage, res: http.ServerResponse) {
     Connection: "keep-alive",
   })
 
-  res.write(`data: ${JSON.stringify({ sessionId: currentSessionId })}\n\n`)
-
   try {
-    for await (const event of agent.chat(currentSessionId, message)) {
+    for await (const event of agent.chat(message, currentSessionId ?? undefined)) {
+      // Capture session ID from first session.status event
+      if (!currentSessionId && event.type === "session.status") {
+        const sessions = agent.getSessions({ limit: 1 })
+        if (sessions.length > 0) {
+          currentSessionId = sessions[0].id
+          res.write(`data: ${JSON.stringify({ sessionId: currentSessionId })}\n\n`)
+        }
+      }
       res.write(`data: ${JSON.stringify(event)}\n\n`)
     }
   } catch (err: any) {
