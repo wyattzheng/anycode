@@ -1,8 +1,30 @@
 import { useState, useRef, useCallback } from "react";
+import type { GitChange } from "../App";
 import { FileDocIcon, DiffIcon } from "./Icons";
 import "./ChangesView.css";
 
-export function ChangesView() {
+interface ChangesViewProps {
+    changes: GitChange[];
+}
+
+function statusClass(status: string): string {
+    switch (status) {
+        case "A": case "?": return "added";
+        case "M": return "modified";
+        case "D": return "deleted";
+        case "R": return "renamed";
+        default: return "modified";
+    }
+}
+
+function statusLabel(status: string): string {
+    switch (status) {
+        case "?": return "U";
+        default: return status;
+    }
+}
+
+export function ChangesView({ changes }: ChangesViewProps) {
     const [listHeight, setListHeight] = useState(200);
     const containerRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -37,12 +59,14 @@ export function ChangesView() {
         window.addEventListener("touchend", onUp);
     };
 
+    const isEmpty = changes.length === 0;
+
     return (
         <div className="changes-view" ref={containerRef}>
             <div className="changes-diff">
                 <div className="diff-empty">
                     <DiffIcon size={28} />
-                    <p>选择文件查看变更</p>
+                    <p>{isEmpty ? "没有未提交的变更" : "选择文件查看变更"}</p>
                 </div>
             </div>
             <div
@@ -54,21 +78,19 @@ export function ChangesView() {
             </div>
             <div className="changes-list" style={{ height: listHeight }}>
                 <div className="change-items">
-                    <div className="change-item added">
-                        <FileDocIcon />
-                        <span>src/App.tsx</span>
-                        <span className="change-badge">A</span>
-                    </div>
-                    <div className="change-item modified">
-                        <FileDocIcon />
-                        <span>src/main.tsx</span>
-                        <span className="change-badge">M</span>
-                    </div>
-                    <div className="change-item deleted">
-                        <FileDocIcon />
-                        <span>src/old.ts</span>
-                        <span className="change-badge">D</span>
-                    </div>
+                    {isEmpty ? (
+                        <div className="changes-empty">
+                            <p>工作区干净 ✨</p>
+                        </div>
+                    ) : (
+                        changes.map((change) => (
+                            <div key={change.file} className={`change-item ${statusClass(change.status)}`}>
+                                <FileDocIcon />
+                                <span>{change.file}</span>
+                                <span className="change-badge">{statusLabel(change.status)}</span>
+                            </div>
+                        ))
+                    )}
                 </div>
             </div>
         </div>

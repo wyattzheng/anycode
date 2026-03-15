@@ -18,8 +18,10 @@ import { fileURLToPath } from "url"
 import path from "path"
 import os from "os"
 import fs from "fs"
+import fsPromises from "fs/promises"
 import { execFile, spawn as cpSpawn } from "child_process"
 import { CodeAgent } from "@any-code/agent"
+import { WebSocketServer, WebSocket as WS } from "ws"
 import { SqlJsStorage } from "./storage-sqljs"
 import { NodeFS } from "./vfs-node"
 import { NodeSearchProvider } from "./search-node"
@@ -192,9 +194,22 @@ async function createSession(directory: string = ""): Promise<SessionEntry> {
   agent.bus.subscribe(SetDirectory.Event, (event) => {
     const dir = event.properties.directory
     entry.directory = dir
-    // Also update the agent's internal context (options, project, containsPath)
     try { agent.setWorkingDirectory(dir) } catch { /* already set */ }
     console.log(`📂  Session ${id} directory set to: ${dir}`)
+    // Push state to all connected WebSocket clients
+    pushState(id)
+  })
+
+  // Debounced push after agent goes idle (tool round finished)
+  let pushTimer: ReturnType<typeof setTimeout> | null = null
+  agent.bus.subscribeAll((payload: any) => {
+    if (!payload || !entry.directory) return
+    const type = payload.type
+    // Push after file edits or when session becomes idle
+    if (type === "file.edited" || (type === "session.status.changed" && payload.properties?.status?.type === "idle")) {
+      if (pushTimer) clearTimeout(pushTimer)
+      pushTimer = setTimeout(() => pushState(id), 300)
+    }
   })
 
   console.log(`✅  Session ${id} created (directory: ${directory || "(none)"})`)
@@ -205,48 +220,27 @@ function getSession(id: string): SessionEntry | undefined {
   return sessions.get(id)
 }
 
-// ── File Tree & Git Changes helpers ────────────────────────────────────────
+// ── File System & Git helpers ──────────────────────────────────────────────
 
-interface FileTreeNode {
+interface DirEntry {
   name: string
   type: "file" | "dir"
-  children?: FileTreeNode[]
 }
 
-const FILE_TREE_LIMIT = 500
-const IGNORE_DIRS = new Set([".git", "node_modules", ".next", "dist", ".opencode", ".any-code", "__pycache__", ".venv"])
+const IGNORE = new Set([".git", "node_modules", ".next", "dist", ".opencode", ".any-code", "__pycache__", ".venv", ".DS_Store"])
 
-async function getFileTree(dir: string): Promise<FileTreeNode[]> {
+/** List one level of a directory — for lazy tree loading */
+async function listDir(dir: string): Promise<DirEntry[]> {
   if (!dir) return []
   try {
     const entries = await fsPromises.readdir(dir, { withFileTypes: true })
-    const result: FileTreeNode[] = []
-    let count = 0
-
-    // Sort: dirs first, then files, alphabetical
-    const sorted = entries
-      .filter(e => !e.name.startsWith(".") || e.name === ".gitignore")
-      .sort((a, b) => {
-        const aDir = a.isDirectory() ? 0 : 1
-        const bDir = b.isDirectory() ? 0 : 1
-        if (aDir !== bDir) return aDir - bDir
-        return a.name.localeCompare(b.name)
+    return entries
+      .filter((e: fs.Dirent) => (!e.name.startsWith(".") || e.name === ".gitignore") && !IGNORE.has(e.name))
+      .sort((a: fs.Dirent, b: fs.Dirent) => {
+        const ad = a.isDirectory() ? 0 : 1, bd = b.isDirectory() ? 0 : 1
+        return ad !== bd ? ad - bd : a.name.localeCompare(b.name)
       })
-
-    for (const entry of sorted) {
-      if (count >= FILE_TREE_LIMIT) break
-      if (IGNORE_DIRS.has(entry.name)) continue
-
-      if (entry.isDirectory()) {
-        const children = await getFileTree(path.join(dir, entry.name))
-        result.push({ name: entry.name, type: "dir", children })
-        count += 1 + (children?.length ?? 0)
-      } else if (entry.isFile()) {
-        result.push({ name: entry.name, type: "file" })
-        count++
-      }
-    }
-    return result
+      .map((e: fs.Dirent) => ({ name: e.name, type: e.isDirectory() ? "dir" as const : "file" as const }))
   } catch {
     return []
   }
@@ -254,7 +248,7 @@ async function getFileTree(dir: string): Promise<FileTreeNode[]> {
 
 interface GitChange {
   file: string
-  status: string  // "M" | "A" | "D" | "R" | "?" | etc.
+  status: string
 }
 
 const gitProvider = new NodeGitProvider()
@@ -270,10 +264,8 @@ async function getGitChanges(dir: string): Promise<GitChange[]> {
       .split("\n")
       .filter((line: string) => line.trim())
       .map((line: string) => {
-        // porcelain format: XY filename
         const xy = line.slice(0, 2)
         const file = line.slice(3)
-        // Pick the most relevant status char
         let status = xy.trim().charAt(0) || "?"
         if (xy[0] === "?" || xy[1] === "?") status = "?"
         return { file, status }
@@ -281,6 +273,44 @@ async function getGitChanges(dir: string): Promise<GitChange[]> {
   } catch {
     return []
   }
+}
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+
+// Track WebSocket clients per session
+const sessionClients = new Map<string, Set<WS>>()
+
+function getSessionClients(sessionId: string): Set<WS> {
+  let set = sessionClients.get(sessionId)
+  if (!set) {
+    set = new Set()
+    sessionClients.set(sessionId, set)
+  }
+  return set
+}
+
+function broadcast(sessionId: string, data: Record<string, unknown>) {
+  const clients = sessionClients.get(sessionId)
+  if (!clients) return
+  const json = JSON.stringify(data)
+  for (const ws of clients) {
+    if (ws.readyState === WS.OPEN) ws.send(json)
+  }
+}
+
+/** Push current state (directory + changes) to all clients of a session */
+async function pushState(sessionId: string) {
+  const session = getSession(sessionId)
+  if (!session) return
+  const dir = session.directory
+  const changes = dir ? await getGitChanges(dir) : []
+  const topLevel = dir ? await listDir(dir) : []
+  broadcast(sessionId, {
+    type: "state",
+    directory: dir,
+    changes,
+    topLevel,  // first-level entries only
+  })
 }
 
 // ── HTTP Server ────────────────────────────────────────────────────────────
@@ -447,7 +477,7 @@ function serveAppIndex(res: http.ServerResponse): boolean {
 
 // ── HTTP Server ────────────────────────────────────────────────────────────
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
   res.setHeader("Access-Control-Allow-Headers", "Content-Type")
@@ -498,15 +528,9 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ error: "Session not found" }))
       return
     }
-    // Enrich with file tree + git changes when directory is set
-    const dir = session.directory
-    const [fileTree, changes] = dir
-      ? await Promise.all([getFileTree(dir), getGitChanges(dir)])
-      : [[], []]
     res.writeHead(200, { "Content-Type": "application/json" })
     res.end(JSON.stringify({
-      id: session.id, directory: dir, createdAt: session.createdAt,
-      fileTree, changes,
+      id: session.id, directory: session.directory, createdAt: session.createdAt,
     }))
     return
   }
@@ -564,6 +588,48 @@ const server = http.createServer((req, res) => {
 export async function startServer() {
   console.log("🚀  Starting any-code-server…")
   const appDistExists = fs.existsSync(APP_DIST)
+
+  // ── WebSocket server on same HTTP server ──
+  const wss = new WebSocketServer({ server })
+  wss.on("connection", (ws, req) => {
+    const url = new URL(req.url || "/", `http://localhost:${PORT}`)
+    const sessionId = url.searchParams.get("sessionId")
+    if (!sessionId || !getSession(sessionId)) {
+      ws.close(4001, "Invalid session")
+      return
+    }
+
+    const clients = getSessionClients(sessionId)
+    clients.add(ws)
+    console.log(`🔌  WS client connected to session ${sessionId} (${clients.size} total)`)
+
+    // Push current state immediately on connect
+    pushState(sessionId)
+
+    // Handle client messages (e.g. ls requests)
+    ws.on("message", async (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString())
+        if (msg.type === "ls") {
+          // Lazy load: list one directory level
+          const session = getSession(sessionId)!
+          const dir = session.directory
+          if (!dir) return
+          const target = path.resolve(dir, msg.path || "")
+          // Security: must be under project directory
+          if (!target.startsWith(path.resolve(dir))) return
+          const entries = await listDir(target)
+          ws.send(JSON.stringify({ type: "ls", path: msg.path || "", entries }))
+        }
+      } catch { /* ignore malformed */ }
+    })
+
+    ws.on("close", () => {
+      clients.delete(ws)
+      if (clients.size === 0) sessionClients.delete(sessionId)
+    })
+  })
+
   server.listen(PORT, () => {
     console.log(`🌐  http://localhost:${PORT}`)
     console.log(`🤖  Provider: ${PROVIDER} / ${MODEL}`)
@@ -574,6 +640,7 @@ export async function startServer() {
       console.log(`⚠  App dist not found at ${APP_DIST} — run 'pnpm --filter app build' first`)
     }
     console.log(`📋  Sessions: POST /api/sessions to create`)
+    console.log(`🔌  WebSocket: ws://localhost:${PORT}?sessionId=xxx`)
   })
 }
 

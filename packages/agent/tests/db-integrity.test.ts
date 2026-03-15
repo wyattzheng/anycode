@@ -189,10 +189,8 @@ describe("Cross-agent DB recovery: close agent → reopen → verify data", () =
         const agent1 = makeAgent()
         await agent1.init()
 
-        for await (const _ of agent1.chat("init continue session")) {}
-        const sessionId = agent1.sessionId!
-
         for await (const _ of agent1.chat("Create continue-1.html")) {}
+        const sessionId = agent1.sessionId!
 
         const { Session } = await import("../src/index")
         const msgs1 = await Session.messages(agent1.agentContext, { sessionID: sessionId })
@@ -205,8 +203,8 @@ describe("Cross-agent DB recovery: close agent → reopen → verify data", () =
         const agent2 = makeAgent()
         await agent2.init()
 
-        // Chat on the same session
-        for await (const _ of agent2.chat("Now create continue-2.html")) {}
+        // Chat on the same session (pass sessionId explicitly)
+        for await (const _ of agent2.chat("Now create continue-2.html", sessionId)) {}
 
         const msgs2 = await Session.messages(agent2.agentContext, { sessionID: sessionId })
 

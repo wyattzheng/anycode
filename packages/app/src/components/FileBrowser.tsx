@@ -1,10 +1,47 @@
 import { useState, useRef, useCallback } from "react";
+import type { FileTreeNode } from "../App";
 import { FolderOpenIcon, FileDocIcon, ChevronIcon } from "./Icons";
 import "./FileBrowser.css";
 
-export function FileBrowser() {
+interface FileBrowserProps {
+    fileTree: FileTreeNode[];
+}
+
+function TreeItem({ node, depth = 0 }: { node: FileTreeNode; depth?: number }) {
+    const [expanded, setExpanded] = useState(depth < 2);
+
+    if (node.type === "dir") {
+        return (
+            <>
+                <div
+                    className="file-tree-item folder"
+                    style={{ paddingLeft: `${12 + depth * 16}px` }}
+                    onClick={() => setExpanded(!expanded)}
+                >
+                    <span className={`chevron ${expanded ? "expanded" : ""}`}><ChevronIcon /></span>
+                    <span className="file-icon"><FolderOpenIcon /></span>
+                    <span className="file-name">{node.name}/</span>
+                </div>
+                {expanded && node.children?.map((child) => (
+                    <TreeItem key={child.name} node={child} depth={depth + 1} />
+                ))}
+            </>
+        );
+    }
+
+    return (
+        <div
+            className="file-tree-item file"
+            style={{ paddingLeft: `${12 + depth * 16}px` }}
+        >
+            <span className="file-icon"><FileDocIcon /></span>
+            <span className="file-name">{node.name}</span>
+        </div>
+    );
+}
+
+export function FileBrowser({ fileTree }: FileBrowserProps) {
     const [sidebarHeight, setSidebarHeight] = useState(200);
-    const [srcExpanded, setSrcExpanded] = useState(true);
     const containerRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
@@ -38,6 +75,7 @@ export function FileBrowser() {
         window.addEventListener("touchend", onUp);
     };
 
+    const isEmpty = fileTree.length === 0;
 
     return (
         <div className="file-browser" ref={containerRef}>
@@ -56,27 +94,15 @@ export function FileBrowser() {
             </div>
             <div className="file-browser-sidebar" style={{ height: sidebarHeight }}>
                 <div className="file-tree">
-                    <div className="file-tree-item folder" onClick={() => setSrcExpanded(!srcExpanded)}>
-                        <span className={`chevron ${srcExpanded ? "expanded" : ""}`}><ChevronIcon /></span>
-                        <span className="file-icon"><FolderOpenIcon /></span>
-                        <span className="file-name">src/</span>
-                    </div>
-                    {srcExpanded && (
-                        <>
-                            <div className="file-tree-item file indent">
-                                <span className="file-icon"><FileDocIcon /></span>
-                                <span className="file-name">main.tsx</span>
-                            </div>
-                            <div className="file-tree-item file indent">
-                                <span className="file-icon"><FileDocIcon /></span>
-                                <span className="file-name">App.tsx</span>
-                            </div>
-                        </>
+                    {isEmpty ? (
+                        <div className="file-tree-empty">
+                            <p>加载中…</p>
+                        </div>
+                    ) : (
+                        fileTree.map((node) => (
+                            <TreeItem key={node.name} node={node} />
+                        ))
                     )}
-                    <div className="file-tree-item file">
-                        <span className="file-icon"><FileDocIcon /></span>
-                        <span className="file-name">package.json</span>
-                    </div>
                 </div>
             </div>
         </div>

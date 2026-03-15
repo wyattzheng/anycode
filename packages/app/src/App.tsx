@@ -1,9 +1,20 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { TabBar } from "./components/TabBar";
 import { MainView } from "./components/MainView";
 import { ConversationOverlay } from "./components/ConversationOverlay";
 
 export type TabId = "files" | "changes" | string;
+
+export interface FileTreeNode {
+    name: string;
+    type: "file" | "dir";
+    children?: FileTreeNode[];
+}
+
+export interface GitChange {
+    file: string;
+    status: string;
+}
 
 const API_BASE = "";
 
@@ -11,6 +22,8 @@ export function App() {
     const [activeTab, setActiveTab] = useState<TabId>("files");
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [directory, setDirectory] = useState<string>("");
+    const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
+    const [changes, setChanges] = useState<GitChange[]>([]);
     const [error, setError] = useState<string | null>(null);
 
     // Create session on mount
@@ -31,20 +44,22 @@ export function App() {
         })();
     }, []);
 
-    // Poll session directory status
+    // Poll session status continuously (directory, file tree, changes)
     useEffect(() => {
-        if (!sessionId || directory) return;
-        const timer = setInterval(async () => {
+        if (!sessionId) return;
+        const poll = async () => {
             try {
                 const res = await fetch(`${API_BASE}/api/sessions/${sessionId}`);
                 const data = await res.json();
-                if (data.directory) {
-                    setDirectory(data.directory);
-                }
+                if (data.directory) setDirectory(data.directory);
+                if (data.fileTree) setFileTree(data.fileTree);
+                if (data.changes) setChanges(data.changes);
             } catch { /* ignore */ }
-        }, 2000);
+        };
+        poll(); // immediate first poll
+        const timer = setInterval(poll, 3000);
         return () => clearInterval(timer);
-    }, [sessionId, directory]);
+    }, [sessionId]);
 
     if (error) {
         return (
@@ -83,7 +98,7 @@ export function App() {
     // Directory set — full UI
     return (
         <div className="app">
-            <MainView activeTab={activeTab} />
+            <MainView activeTab={activeTab} fileTree={fileTree} changes={changes} />
             <ConversationOverlay sessionId={sessionId} />
             <TabBar
                 activeTab={activeTab}

@@ -128,7 +128,7 @@ describe("CodeAgent: set_working_directory via mock conversation", () => {
         fs.mkdirSync(dataPath, { recursive: true })
 
         agent = new CodeAgent({
-            directory: tmpDir,
+            directory: "",
             fs: new StubFS() as any,
             search: new StubSearch() as any,
             storage: new StubStorage() as any,
@@ -187,11 +187,7 @@ describe("CodeAgent: set_working_directory via mock conversation", () => {
 
         for await (const event of agent.chat(`请把工作目录设置为 ${TARGET_DIR}`)) {
             events.push(event)
-            if ((event as any).toolName || event.type.startsWith("tool")) {
-                console.log("EVENT:", event.type, (event as any).toolName, (event as any).toolOutput?.substring?.(0, 100))
-            }
         }
-        console.log("All event types:", events.map(e => e.type).join(", "))
 
         // Should end with done
         expect(events.length).toBeGreaterThan(0)
