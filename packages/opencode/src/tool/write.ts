@@ -40,7 +40,7 @@ export const WriteTool = Tool.define("write", {
     })
 
     await ctx.fs.write(filepath, params.content)
-    await Bus.publish(undefined, File.Event.Edited, {
+    await Bus.publish(ctx, File.Event.Edited, {
       file: filepath,
     })
 

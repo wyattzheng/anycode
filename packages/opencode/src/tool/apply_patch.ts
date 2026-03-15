@@ -219,7 +219,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
       }
 
       if (edited) {
-        await Bus.publish(undefined, File.Event.Edited, {
+        await Bus.publish(ctx, File.Event.Edited, {
           file: edited,
         })
       }

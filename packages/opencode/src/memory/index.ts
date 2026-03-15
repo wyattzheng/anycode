@@ -4,7 +4,7 @@ import { Decimal } from "decimal.js"
 import z from "zod"
 import { type ProviderMetadata } from "ai"
 
-import { SessionID, MessageID, PartID } from "../session/schema"
+
 import { MessageV2 } from "./message-v2"
 import type { Provider } from "../provider/provider"
 import type { LanguageModelV2Usage } from "@ai-sdk/provider"
@@ -22,7 +22,7 @@ export namespace Memory {
       ["id"],
       { data },
     )
-    Bus.publish(undefined, MessageV2.Event.Updated, {
+    Bus.publish(context, MessageV2.Event.Updated, {
       info: msg,
     })
     return msg
@@ -33,7 +33,7 @@ export namespace Memory {
     context.db.remove("message",
       { op: "and", conditions: [{ op: "eq", field: "id", value: input.messageID }, { op: "eq", field: "session_id", value: input.sessionID }] },
     )
-    Bus.publish(undefined, MessageV2.Event.Removed, {
+    Bus.publish(context, MessageV2.Event.Removed, {
       sessionID: input.sessionID,
       messageID: input.messageID,
     })
@@ -43,7 +43,7 @@ export namespace Memory {
     context.db.remove("part",
       { op: "and", conditions: [{ op: "eq", field: "id", value: input.partID }, { op: "eq", field: "session_id", value: input.sessionID }] },
     )
-    Bus.publish(undefined, MessageV2.Event.PartRemoved, {
+    Bus.publish(context, MessageV2.Event.PartRemoved, {
       sessionID: input.sessionID,
       messageID: input.messageID,
       partID: input.partID,
@@ -58,24 +58,15 @@ export namespace Memory {
       ["id"],
       { data },
     )
-    Bus.publish(undefined, MessageV2.Event.PartUpdated, {
+    Bus.publish(context, MessageV2.Event.PartUpdated, {
       part: structuredClone(part),
     })
     return part
   }
 
-  export const updatePartDelta = fn(
-    z.object({
-      sessionID: SessionID.zod,
-      messageID: MessageID.zod,
-      partID: PartID.zod,
-      field: z.string(),
-      delta: z.string(),
-    }),
-    async (input) => {
-      Bus.publish(undefined, MessageV2.Event.PartDelta, input)
-    },
-  )
+  export async function updatePartDelta(context: AgentContext, input: any) {
+    Bus.publish(context, MessageV2.Event.PartDelta, input)
+  }
 
   export async function messages(context: AgentContext, input: { sessionID: any; limit?: number }) {
     const result = [] as MessageV2.WithParts[]

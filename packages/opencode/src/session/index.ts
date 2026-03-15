@@ -284,7 +284,7 @@ export namespace Session {
       )
       if (!row) throw new NotFoundError({ message: `Session not found: ${sessionID}` })
       const info = fromRow(row)
-      Bus.publish(undefined, Event.Updated, { info })
+      Bus.publish(context, Event.Updated, { info })
     }
   }
 
@@ -347,7 +347,7 @@ export namespace Session {
     )
     if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
     const info = fromRow(row)
-    Bus.publish(undefined, Event.Updated, { info })
+    Bus.publish(context, Event.Updated, { info })
     return info
   }
 
@@ -358,7 +358,7 @@ export namespace Session {
     )
     if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
     const info = fromRow(row)
-    Bus.publish(undefined, Event.Updated, { info })
+    Bus.publish(context, Event.Updated, { info })
     return info
   }
 
@@ -375,7 +375,7 @@ export namespace Session {
     )
     if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
     const info = fromRow(row)
-    Bus.publish(undefined, Event.Updated, { info })
+    Bus.publish(context, Event.Updated, { info })
     return info
   }
 
@@ -389,7 +389,7 @@ export namespace Session {
     )
     if (!row) throw new NotFoundError({ message: `Session not found: ${sessionID}` })
     const info = fromRow(row)
-    Bus.publish(undefined, Event.Updated, { info })
+    Bus.publish(context, Event.Updated, { info })
     return info
   }
 
@@ -405,7 +405,7 @@ export namespace Session {
     )
     if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
     const info = fromRow(row)
-    Bus.publish(undefined, Event.Updated, { info })
+    Bus.publish(context, Event.Updated, { info })
     return info
   }
 

@@ -4,16 +4,7 @@ import z from "zod"
 import type { ZodType } from "zod"
 import { Log } from "../util/log"
 
-// ── GlobalBus (process-level singleton) ─────────────────────────────
 
-export const GlobalBus = new EventEmitter<{
-  event: [
-    {
-      directory?: string
-      payload: any
-    },
-  ]
-}>()
 
 // ── BusEvent ────────────────────────────────────────────────────────
 
@@ -63,7 +54,6 @@ export namespace BusEvent {
  * BusService — per-instance event bus built on EventEmitter.
  *
  * Each CodeAgent instance gets its own BusService.
- * Events are also forwarded to the process-level GlobalBus.
  */
 export class BusService extends EventEmitter {
   private log = Log.create({ service: "bus" })
@@ -88,11 +78,6 @@ export class BusService extends EventEmitter {
     for (const listener of wildcardListeners) {
       pending.push(listener(payload))
     }
-    // Forward to global bus
-    GlobalBus.emit("event", {
-      directory: undefined as string | undefined,
-      payload,
-    })
     return Promise.all(pending)
   }
 
@@ -153,19 +138,11 @@ export namespace Bus {
   )
 
   export async function publish<Definition extends BusEvent.Definition>(
-    context: AgentContext | undefined,
+    context: AgentContext,
     def: Definition,
     properties: z.output<Definition["properties"]>,
   ) {
-    if (context) {
-      return getBus(context).publish(def, properties)
-    }
-    // No context — just emit to GlobalBus directly
-    const payload = { type: def.type, properties }
-    GlobalBus.emit("event", {
-      directory: undefined,
-      payload,
-    })
+    return getBus(context).publish(def, properties)
   }
 
   export function subscribe<Definition extends BusEvent.Definition>(

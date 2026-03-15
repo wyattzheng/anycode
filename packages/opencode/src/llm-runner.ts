@@ -416,7 +416,7 @@ export namespace LLMRunner {
                     const part = reasoningMap[value.id]
                     part.text += value.text
                     if (value.providerMetadata) part.metadata = value.providerMetadata
-                    await Session.updatePartDelta({
+                    await Session.updatePartDelta(input.context, {
                       sessionID: part.sessionID,
                       messageID: part.messageID,
                       partID: part.id,
@@ -607,7 +607,7 @@ export namespace LLMRunner {
                   if (currentText) {
                     currentText.text += value.text
                     if (value.providerMetadata) currentText.metadata = value.providerMetadata
-                    await Session.updatePartDelta({
+                    await Session.updatePartDelta(input.context, {
                       sessionID: currentText.sessionID,
                       messageID: currentText.messageID,
                       partID: currentText.id,

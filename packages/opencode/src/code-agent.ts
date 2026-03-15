@@ -39,7 +39,7 @@ import { Tool } from "./tool/tool"
 import { Session } from "./session"
 import { SessionPrompt } from "./session/session"
 import { Bus } from "./bus"
-import { GlobalBus } from "./bus"
+
 import { MessageV2 } from "./memory/message-v2"
 
 import { Truncate } from "./tool/truncation"
@@ -417,10 +417,8 @@ export class CodeAgent {
             const unsubs: (() => void)[] = []
 
             try {
-                // Use GlobalBus to receive ALL events (scoped Bus.subscribe
-                // misses events published with undefined context)
-                const globalHandler = (evt: { directory?: string; payload: any }) => {
-                    const payload = evt.payload
+                // Subscribe to all events on this instance's bus
+                const globalHandler = (payload: any) => {
                     if (!payload) return
                     const type = payload.type
                     const props = payload.properties
@@ -466,8 +464,7 @@ export class CodeAgent {
                         })
                     }
                 }
-                GlobalBus.on("event", globalHandler)
-                unsubs.push(() => GlobalBus.off("event", globalHandler))
+                unsubs.push(this.bus.subscribeAll(globalHandler))
 
 
                 const providerID = this.options.provider.id

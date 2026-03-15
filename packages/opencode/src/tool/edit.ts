@@ -69,7 +69,7 @@ export const EditTool = Tool.define("edit", {
           },
         })
         await ctx.fs.write(filePath, params.newString)
-        await Bus.publish(undefined, File.Event.Edited, {
+        await Bus.publish(ctx, File.Event.Edited, {
           file: filePath,
         })
 
@@ -103,7 +103,7 @@ export const EditTool = Tool.define("edit", {
       })
 
       await ctx.fs.write(filePath, contentNew)
-      await Bus.publish(undefined, File.Event.Edited, {
+      await Bus.publish(ctx, File.Event.Edited, {
         file: filePath,
       })
 

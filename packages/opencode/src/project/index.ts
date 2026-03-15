@@ -12,10 +12,8 @@ import * as path from "../util/path"
 import { Log } from "../util/log"
 import { Flag } from "../util/flag"
 import { fn } from "../util/fn"
-import { BusEvent } from "../bus"
-import { Bus } from "../bus"
 import { iife } from "../util/fn"
-import { GlobalBus } from "../bus"
+import { BusEvent } from "../bus"
 import { Glob } from "../util/glob"
 import { which } from "../util/which"
 
@@ -392,7 +390,7 @@ export namespace Project {
         { project_id: data.id },
       )
     }
-    GlobalBus.emit("event", { payload: { type: Event.Updated.type, properties: result } })
+    context.bus.publish(Event.Updated, result)
     return { project: result, sandbox: data.sandbox }
   }
 
@@ -445,7 +443,7 @@ export namespace Project {
     )
     if (!result) throw new Error(`Project not found: ${input.projectID}`)
     const data = fromRow(result)
-    GlobalBus.emit("event", { payload: { type: Event.Updated.type, properties: data } })
+    context.bus.publish(Event.Updated, data)
     return data
   }
 
@@ -469,7 +467,7 @@ export namespace Project {
     const result = context.db.update("project", { op: "eq", field: "id", value: id }, { sandboxes, time_updated: Date.now() })
     if (!result) throw new Error(`Project not found: ${id}`)
     const data = fromRow(result)
-    GlobalBus.emit("event", { payload: { type: Event.Updated.type, properties: data } })
+    context.bus.publish(Event.Updated, data)
     return data
   }
 
@@ -480,7 +478,7 @@ export namespace Project {
     const result = context.db.update("project", { op: "eq", field: "id", value: id }, { sandboxes, time_updated: Date.now() })
     if (!result) throw new Error(`Project not found: ${id}`)
     const data = fromRow(result)
-    GlobalBus.emit("event", { payload: { type: Event.Updated.type, properties: data } })
+    context.bus.publish(Event.Updated, data)
     return data
   }
 }
