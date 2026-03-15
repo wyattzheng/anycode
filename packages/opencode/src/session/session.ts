@@ -236,7 +236,7 @@ export namespace SessionPrompt {
     return parts
   }
 
-  function start(context: AgentContext, sessionID: SessionID) {
+  export function start(context: AgentContext, sessionID: SessionID) {
     const s = context.sessionPrompt.sessions
     if (s[sessionID]) return
     const controller = new AbortController()
@@ -247,7 +247,7 @@ export namespace SessionPrompt {
     return controller.signal
   }
 
-  function resume(context: AgentContext, sessionID: SessionID) {
+  export function resume(context: AgentContext, sessionID: SessionID) {
     const s = context.sessionPrompt.sessions
     if (!s[sessionID]) return
 
@@ -720,7 +720,7 @@ export namespace SessionPrompt {
     throw new Error("Impossible")
   }
 
-  async function lastModel(context: AgentContext, sessionID: SessionID) {
+  export async function lastModel(context: AgentContext, sessionID: SessionID) {
     for await (const item of MessageV2.stream(context, sessionID)) {
       if (item.info.role === "user" && item.info.model) return item.info.model
     }
@@ -839,7 +839,7 @@ export namespace SessionPrompt {
     })
   }
 
-  async function createUserMessage(context: AgentContext, input: PromptInput) {
+  export async function createUserMessage(context: AgentContext, input: PromptInput) {
     const agent = await context.agents.get(input.agent ?? (await context.agents.defaultAgent()))
 
     const model = input.model ?? agent.model ?? (await lastModel(context, input.sessionID))
@@ -1129,7 +1129,7 @@ export namespace SessionPrompt {
     }
   }
 
-  async function insertReminders(input: { context: AgentContext; messages: MessageV2.WithParts[]; agent: Agent.Info; session: Session.Info }) {
+  export async function insertReminders(input: { context: AgentContext; messages: MessageV2.WithParts[]; agent: Agent.Info; session: Session.Info }) {
     const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
     if (!userMessage) return input.messages
 
@@ -1437,7 +1437,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     return result
   }
 
-  async function ensureTitle(input: {
+  export async function ensureTitle(input: {
     session: Session.Info
     history: MessageV2.WithParts[]
     providerID: ProviderID

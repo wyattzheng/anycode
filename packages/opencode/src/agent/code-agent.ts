@@ -58,6 +58,16 @@ import { ModelsDev } from "../provider/models"
 import { Skill } from "../skill/skill"
 import { Vcs } from "../project/project"
 import z from "zod"
+import { SessionRevert } from "../session/revert"
+import { NamedError } from "../util/error"
+import { defer } from "../util/defer"
+import { ulid } from "ulid"
+import { PartID, MessageID as MsgID, SessionID } from "../session/schema"
+import { SystemPrompt } from "../session"
+import { TaskTool } from "../tool/task"
+import { SessionSummary } from "../session/summary"
+import { SessionCompaction, SessionProcessor } from "../session/session"
+import MAX_STEPS from "../session/prompt/max-steps.txt"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -556,7 +566,7 @@ export class CodeAgent {
                     const providerID = this.options.provider.id
                     const modelID = this.options.provider.model
 
-                    await SessionPrompt.prompt({
+                    await this.runPrompt({
                         sessionID: sessionId as any,
                         model: {
                             providerID: providerID as any,
@@ -650,6 +660,335 @@ export class CodeAgent {
      */
     get config(): Readonly<CodeAgentOptions> {
         return this.options
+    }
+
+
+    // ── Core Loop ──────────────────────────────────────────────────
+
+    /**
+     * Entry point — create user message and enter the agent loop.
+     */
+    async runPrompt(input: SessionPrompt.PromptInput): Promise<MessageV2.WithParts | void> {
+        const context = this.agentContext
+        const session = await Session.get(context, input.sessionID)
+        await SessionRevert.cleanup(context, session)
+
+        const message = await SessionPrompt.createUserMessage(context, input)
+        await Session.touch(context, input.sessionID)
+
+        const permissions: PermissionNext.Ruleset = []
+        for (const [tool, enabled] of Object.entries(input.tools ?? {})) {
+            permissions.push({ permission: tool, action: enabled ? "allow" : "deny", pattern: "*" })
+        }
+        if (permissions.length > 0) {
+            session.permission = permissions
+            await Session.setPermission(context, { sessionID: session.id, permission: permissions })
+        }
+        if (input.noReply === true) return message
+        return this.runLoop(input.sessionID)
+    }
+
+    /**
+     * Main agent loop — iterates through reasoning, tool calls, subtasks, and compaction.
+     */
+    async runLoop(sessionID: SessionID, opts?: { resume?: boolean }): Promise<MessageV2.WithParts> {
+        const context = this.agentContext
+        const abort = opts?.resume
+            ? SessionPrompt.resume(context, sessionID)
+            : SessionPrompt.start(context, sessionID)
+        if (!abort) {
+            return new Promise<MessageV2.WithParts>((resolve, reject) => {
+                context.sessionPrompt.sessions[sessionID].callbacks.push({ resolve, reject })
+            })
+        }
+
+        using _ = defer(() => SessionPrompt.cancel(context, sessionID))
+
+        let structuredOutput: unknown | undefined
+        let step = 0
+        const session = await Session.get(context, sessionID)
+
+        while (true) {
+            context.sessionStatus.set(sessionID, { type: "busy" })
+            if (abort.aborted) break
+
+            let msgs = await MessageV2.filterCompacted(MessageV2.stream(context, sessionID))
+
+            // Find latest user/assistant messages and pending tasks
+            let lastUser: MessageV2.User | undefined
+            let lastAssistant: MessageV2.Assistant | undefined
+            let lastFinished: MessageV2.Assistant | undefined
+            let tasks: (MessageV2.CompactionPart | MessageV2.SubtaskPart)[] = []
+            for (let i = msgs.length - 1; i >= 0; i--) {
+                const msg = msgs[i]
+                if (!lastUser && msg.info.role === "user") lastUser = msg.info as MessageV2.User
+                if (!lastAssistant && msg.info.role === "assistant") lastAssistant = msg.info as MessageV2.Assistant
+                if (!lastFinished && msg.info.role === "assistant" && msg.info.finish)
+                    lastFinished = msg.info as MessageV2.Assistant
+                if (lastUser && lastFinished) break
+                const task = msg.parts.filter((part) => part.type === "compaction" || part.type === "subtask")
+                if (task && !lastFinished) tasks.push(...task)
+            }
+            if (!lastUser) throw new Error("No user message found")
+            if (lastAssistant?.finish && !["tool-calls", "unknown"].includes(lastAssistant.finish) && lastUser.id < lastAssistant.id) break
+
+            step++
+            if (step === 1) {
+                SessionPrompt.ensureTitle({ session, modelID: lastUser.model.modelID, providerID: lastUser.model.providerID, history: msgs, context })
+            }
+
+            const model = await context.provider.getModel(lastUser.model.providerID, lastUser.model.modelID).catch((e) => {
+                if (Provider.ModelNotFoundError.isInstance(e)) {
+                    const hint = e.data.suggestions?.length ? ` Did you mean: ${e.data.suggestions.join(", ")}?` : ""
+                    Bus.publish(context, Session.Event.Error, {
+                        sessionID,
+                        error: new NamedError.Unknown({ message: `Model not found: ${e.data.providerID}/${e.data.modelID}.${hint}` }).toObject(),
+                    })
+                }
+                throw e
+            })
+            const task = tasks.pop()
+
+            // ── Subtask ──
+            if (task?.type === "subtask") {
+                await this.handleSubtask({ context, sessionID, session, lastUser, task, model, msgs, abort })
+                continue
+            }
+
+            // ── Compaction ──
+            if (task?.type === "compaction") {
+                const result = await SessionCompaction.process(context, {
+                    messages: msgs, parentID: lastUser.id, abort, sessionID,
+                    auto: task.auto, overflow: task.overflow, context,
+                })
+                if (result === "stop") break
+                continue
+            }
+
+            // ── Overflow → auto compact ──
+            if (lastFinished && lastFinished.summary !== true && (await SessionCompaction.isOverflow({ tokens: lastFinished.tokens, model, context }))) {
+                await SessionCompaction.create(context, { sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
+                continue
+            }
+
+            // ── Reasoning + tool execution ──
+            const result = await this.processStep({
+                context, session, sessionID, abort, model, lastUser, lastFinished, step, msgs,
+                onStructuredOutput: (v: unknown) => { structuredOutput = v },
+            })
+
+            if (structuredOutput !== undefined) break
+            if (result === "stop") break
+            if (result === "compact") {
+                await SessionCompaction.create(context, { sessionID, agent: lastUser.agent, model: lastUser.model, auto: true, overflow: true })
+            }
+        }
+
+        // Finalize
+        SessionCompaction.prune(context, { sessionID })
+        for await (const item of MessageV2.stream(context, sessionID)) {
+            if (item.info.role === "user") continue
+            const queued = context.sessionPrompt.sessions[sessionID]?.callbacks ?? []
+            for (const q of queued) q.resolve(item)
+            return item
+        }
+        throw new Error("Impossible")
+    }
+
+    /**
+     * A single step: resolve tools → call LLM → stream reasoning + tool results.
+     */
+    private async processStep(input: {
+        context: AgentContext
+        session: Session.Info
+        sessionID: SessionID
+        abort: AbortSignal
+        model: Provider.Model
+        lastUser: MessageV2.User
+        lastFinished: MessageV2.Assistant | undefined
+        step: number
+        msgs: MessageV2.WithParts[]
+        onStructuredOutput: (v: unknown) => void
+    }): Promise<"stop" | "compact" | "continue"> {
+        const { context, session, sessionID, abort, model, lastUser, lastFinished, step } = input
+        const agent = await context.agents.get(lastUser.agent)
+        const maxSteps = agent.steps ?? Infinity
+        const isLastStep = step >= maxSteps
+
+        const msgs = await SessionPrompt.insertReminders({ context, messages: input.msgs, agent, session })
+
+        const processor = SessionProcessor.create({
+            assistantMessage: (await Session.updateMessage(context, {
+                id: MsgID.ascending(), parentID: lastUser.id, role: "assistant",
+                mode: agent.name, agent: agent.name, variant: lastUser.variant,
+                path: { cwd: context.directory, root: context.worktree },
+                cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+                modelID: model.id, providerID: model.providerID,
+                time: { created: Date.now() }, sessionID,
+            })) as MessageV2.Assistant,
+            sessionID, model, abort, context,
+        })
+        using _ = defer(() => context.instruction.clear(processor.message.id))
+
+        const lastUserMsg = msgs.findLast((m) => m.info.role === "user")
+        const bypassAgentCheck = lastUserMsg?.parts.some((p) => p.type === "agent") ?? false
+
+        const tools = await SessionPrompt.resolveTools({
+            agent, session, model, tools: lastUser.tools,
+            processor, bypassAgentCheck, messages: msgs, agentContext: context,
+        })
+
+        if (lastUser.format?.type === "json_schema") {
+            tools["StructuredOutput"] = SessionPrompt.createStructuredOutputTool({
+                schema: lastUser.format.schema,
+                onSuccess: input.onStructuredOutput,
+            })
+        }
+
+        if (step === 1) {
+            SessionSummary.summarize(context, { sessionID, messageID: lastUser.id })
+        }
+
+        // Ephemerally wrap queued user messages
+        if (step > 1 && lastFinished) {
+            for (const msg of msgs) {
+                if (msg.info.role !== "user" || msg.info.id <= lastFinished.id) continue
+                for (const part of msg.parts) {
+                    if (part.type !== "text" || part.ignored || part.synthetic) continue
+                    if (!part.text.trim()) continue
+                    part.text = [
+                        "<system-reminder>",
+                        "The user sent the following message:",
+                        part.text, "",
+                        "Please address this message and continue with your tasks.",
+                        "</system-reminder>",
+                    ].join("\n")
+                }
+            }
+        }
+
+        // Build system prompt
+        const skills = await SystemPrompt.skills(context, agent)
+        const system = [
+            ...(await SystemPrompt.environment(model, context)),
+            ...(skills ? [skills] : []),
+            ...(await context.instruction.system()),
+        ]
+        const format = lastUser.format ?? { type: "text" }
+        if (format.type === "json_schema") {
+            system.push("IMPORTANT: The user has requested structured output. You MUST use the StructuredOutput tool to provide your final response. Do NOT respond with plain text - you MUST call the StructuredOutput tool with your answer formatted according to the schema.")
+        }
+
+        // LLM streaming + tool execution
+        const result = await processor.process({
+            user: lastUser, agent, abort, sessionID, system, context,
+            messages: [
+                ...MessageV2.toModelMessages(msgs, model),
+                ...(isLastStep ? [{ role: "assistant" as const, content: MAX_STEPS }] : []),
+            ],
+            tools, model,
+            toolChoice: format.type === "json_schema" ? "required" : undefined,
+        })
+
+        if (input.onStructuredOutput && processor.message.structured !== undefined) {
+            processor.message.finish = processor.message.finish ?? "stop"
+            await Session.updateMessage(context, processor.message)
+            return "stop"
+        }
+
+        const modelFinished = processor.message.finish && !["tool-calls", "unknown"].includes(processor.message.finish)
+        if (modelFinished && !processor.message.error && format.type === "json_schema") {
+            processor.message.error = new MessageV2.StructuredOutputError({
+                message: "Model did not produce structured output", retries: 0,
+            }).toObject()
+            await Session.updateMessage(context, processor.message)
+            return "stop"
+        }
+
+        return result as any
+    }
+
+    /**
+     * Execute a pending subtask (task tool).
+     */
+    private async handleSubtask(input: {
+        context: AgentContext
+        sessionID: SessionID
+        session: Session.Info
+        lastUser: MessageV2.User
+        task: MessageV2.SubtaskPart
+        model: Provider.Model
+        msgs: MessageV2.WithParts[]
+        abort: AbortSignal
+    }): Promise<void> {
+        const { context, sessionID, session, lastUser, task, model, msgs, abort } = input
+        const taskTool = await TaskTool.init()
+        const taskModel = task.model ? await context.provider.getModel(task.model.providerID, task.model.modelID) : model
+
+        const assistantMessage = (await Session.updateMessage(context, {
+            id: MsgID.ascending(), role: "assistant", parentID: lastUser.id, sessionID,
+            mode: task.agent, agent: task.agent, variant: lastUser.variant,
+            path: { cwd: context.directory, root: context.worktree },
+            cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            modelID: taskModel.id, providerID: taskModel.providerID,
+            time: { created: Date.now() },
+        })) as MessageV2.Assistant
+
+        let part = (await Session.updatePart(context, {
+            id: PartID.ascending(), messageID: assistantMessage.id, sessionID: assistantMessage.sessionID,
+            type: "tool", callID: ulid(), tool: TaskTool.id,
+            state: {
+                status: "running",
+                input: { prompt: task.prompt, description: task.description, subagent_type: task.agent, command: task.command },
+                time: { start: Date.now() },
+            },
+        })) as MessageV2.ToolPart
+
+        const taskArgs = { prompt: task.prompt, description: task.description, subagent_type: task.agent, command: task.command }
+        let executionError: Error | undefined
+        const taskAgent = await context.agents.get(task.agent)
+        const taskCtx: Tool.Context = {
+            ...context, agent: task.agent, messageID: assistantMessage.id, sessionID, abort,
+            callID: part.callID, extra: { bypassAgentCheck: true }, messages: msgs,
+            async metadata(mi) {
+                part = (await Session.updatePart(context, { ...part, type: "tool", state: { ...part.state, ...mi } } satisfies MessageV2.ToolPart)) as MessageV2.ToolPart
+            },
+            async ask(req) {
+                await context.permissionNext.ask({ ...req, sessionID, ruleset: PermissionNext.merge(taskAgent.permission, session.permission ?? []) })
+            },
+        }
+
+        const result = await taskTool.execute(taskArgs, taskCtx).catch((error) => { executionError = error; return undefined })
+        const attachments = result?.attachments?.map((a) => ({ ...a, id: PartID.ascending(), sessionID, messageID: assistantMessage.id }))
+
+        assistantMessage.finish = "tool-calls"
+        assistantMessage.time.completed = Date.now()
+        await Session.updateMessage(context, assistantMessage)
+
+        if (result && part.state.status === "running") {
+            await Session.updatePart(context, { ...part, state: {
+                status: "completed", input: part.state.input, title: result.title, metadata: result.metadata,
+                output: result.output, attachments, time: { ...part.state.time, end: Date.now() },
+            }} satisfies MessageV2.ToolPart)
+        }
+        if (!result) {
+            await Session.updatePart(context, { ...part, state: {
+                status: "error",
+                error: executionError ? `Tool execution failed: ${executionError.message}` : "Tool execution failed",
+                time: { start: part.state.status === "running" ? part.state.time.start : Date.now(), end: Date.now() },
+                metadata: "metadata" in part.state ? part.state.metadata : undefined,
+                input: part.state.input,
+            }} satisfies MessageV2.ToolPart)
+        }
+
+        if (task.command) {
+            const summaryUserMsg = { id: MsgID.ascending(), sessionID, role: "user" as const, time: { created: Date.now() }, agent: lastUser.agent, model: lastUser.model }
+            await Session.updateMessage(context, summaryUserMsg)
+            await Session.updatePart(context, {
+                id: PartID.ascending(), messageID: summaryUserMsg.id, sessionID,
+                type: "text", text: "Summarize the task tool output above and continue with your task.", synthetic: true,
+            } satisfies MessageV2.TextPart)
+        }
     }
 
     // ── Private helpers ────────────────────────────────────────────────────
