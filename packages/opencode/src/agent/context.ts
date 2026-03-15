@@ -2,6 +2,10 @@ import { Project } from "../project/project"
 import { VFS } from "../util/vfs"
 import { SearchProvider } from "../util/search"
 import type { GitProvider } from "../util/git"
+import type { EnvService } from "../util/env"
+import type { BusService } from "../bus"
+import type { SchedulerService } from "../util/scheduler"
+import type { FileTimeService } from "../file/time"
 
 export interface InstancePaths {
     data: string
@@ -38,6 +42,16 @@ export interface AgentContext {
     db: any
     /** Per-instance module state. Modules use getState() with a unique key for lazy init. */
     state: Map<any, any>
+
+    // ── Service instances ──────────────────────────────────────────
+    /** Environment variable service */
+    env: EnvService
+    /** Event bus service */
+    bus: BusService
+    /** Task scheduler service */
+    scheduler: SchedulerService
+    /** File read-time tracking + write locks */
+    fileTime: FileTimeService
 }
 
 /**
