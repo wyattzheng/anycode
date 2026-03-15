@@ -195,13 +195,6 @@ async function handleChat(req: http.IncomingMessage, res: http.ServerResponse) {
   res.end()
 }
 
-// ── Stats ──────────────────────────────────────────────────────────────────
-
-const startedAt = Date.now()
-let messageCount = 0
-let lastMessageAt: number | null = null
-let lastError: string | null = null
-
 // ── Admin UI ───────────────────────────────────────────────────────────────
 
 function adminHTML() {
@@ -218,27 +211,34 @@ function adminHTML() {
     --mono:'JetBrains Mono','Fira Code','SF Mono',monospace;
     --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
   body{font-family:var(--sans);background:var(--bg);color:var(--text);
-    min-height:100vh;display:flex;justify-content:center;padding:32px 16px}
-  .container{width:100%;max-width:480px}
-  h1{font-size:18px;color:var(--bright);margin-bottom:20px;display:flex;align-items:center;gap:8px}
+    min-height:100vh;display:flex;justify-content:center;padding:24px 16px}
+  .container{width:100%;max-width:520px}
+  h1{font-size:18px;color:var(--bright);margin-bottom:16px;display:flex;align-items:center;gap:8px}
   h1 .dot{width:10px;height:10px;border-radius:50%;background:var(--green);
     animation:pulse 2s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;
-    padding:16px;margin-bottom:12px}
-  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;
-    color:var(--accent);margin-bottom:12px;font-weight:600}
+    padding:14px;margin-bottom:10px}
+  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:1px;
+    color:var(--accent);margin-bottom:10px;font-weight:600}
   .row{display:flex;justify-content:space-between;align-items:center;
-    padding:6px 0;border-bottom:1px solid rgba(59,66,97,0.4);font-size:13px}
+    padding:5px 0;border-bottom:1px solid rgba(59,66,97,0.3);font-size:12px}
   .row:last-child{border-bottom:none}
   .label{color:var(--text)}
-  .value{color:var(--bright);font-family:var(--mono);font-size:12px}
-  .value.green{color:var(--green)}
-  .value.yellow{color:var(--yellow)}
-  .value.red{color:var(--red)}
-  .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;
-    font-family:var(--mono);background:rgba(122,162,247,0.1);color:var(--accent)}
-  .footer{text-align:center;margin-top:20px;font-size:11px;color:rgba(169,177,214,0.4)}
+  .value{color:var(--bright);font-family:var(--mono);font-size:11px}
+  .value.green{color:var(--green)} .value.yellow{color:var(--yellow)} .value.red{color:var(--red)}
+  .sessions{max-height:200px;overflow-y:auto}
+  .session-item{padding:6px 8px;border-bottom:1px solid rgba(59,66,97,0.3);font-size:11px;
+    display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+  .session-item:hover{background:rgba(122,162,247,0.08)}
+  .session-title{color:var(--bright);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .session-status{font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px}
+  .session-status.idle{background:rgba(158,206,106,0.15);color:var(--green)}
+  .session-status.busy{background:rgba(122,162,247,0.15);color:var(--accent);animation:pulse 1.5s infinite}
+  .errors{max-height:120px;overflow-y:auto}
+  .error-item{padding:4px 0;border-bottom:1px solid rgba(59,66,97,0.2);font-size:10px;color:var(--red)}
+  .error-time{color:var(--text);font-family:var(--mono);margin-right:6px}
+  .footer{text-align:center;margin-top:16px;font-size:10px;color:rgba(169,177,214,0.3)}
 </style>
 </head>
 <body>
@@ -249,27 +249,51 @@ function adminHTML() {
     <div class="row"><span class="label">Provider</span><span class="value">${PROVIDER}</span></div>
     <div class="row"><span class="label">Model</span><span class="value">${MODEL}</span></div>
     <div class="row"><span class="label">Port</span><span class="value">${PORT}</span></div>
-    <div class="row"><span class="label">Project</span><span class="value" style="font-size:10px;max-width:250px;overflow:hidden;text-overflow:ellipsis">${PROJECT_DIR}</span></div>
+    <div class="row"><span class="label">Project</span><span class="value" style="font-size:9px;max-width:280px;overflow:hidden;text-overflow:ellipsis">${PROJECT_DIR}</span></div>
   </div>
-  <div class="card" id="status-card">
-    <h2>📊 Status</h2>
+  <div class="card">
+    <h2>📊 Runtime Stats</h2>
     <div class="row"><span class="label">Uptime</span><span class="value green" id="uptime">—</span></div>
     <div class="row"><span class="label">Messages</span><span class="value" id="msg-count">0</span></div>
-    <div class="row"><span class="label">Session</span><span class="value" id="session">—</span></div>
-    <div class="row"><span class="label">Last message</span><span class="value" id="last-msg">—</span></div>
-    <div class="row"><span class="label">Last error</span><span class="value red" id="last-err">—</span></div>
+    <div class="row"><span class="label">Tokens (in/out/reason)</span><span class="value" id="tokens">—</span></div>
+    <div class="row"><span class="label">Total Cost</span><span class="value yellow" id="cost">$0</span></div>
+    <div class="row"><span class="label">Active Session</span><span class="value" id="session">—</span></div>
+  </div>
+  <div class="card">
+    <h2>🗂 Sessions</h2>
+    <div class="sessions" id="sessions"><div style="color:var(--text);font-size:11px;padding:8px 0">Loading...</div></div>
+  </div>
+  <div class="card" id="errors-card" style="display:none">
+    <h2>⚠ Recent Errors</h2>
+    <div class="errors" id="errors"></div>
   </div>
   <div class="footer">any-code-server v0.0.1</div>
 </div>
 <script>
+function fmtK(n){return n>=1000?(n/1000).toFixed(1)+'k':String(n)}
+function fmtDur(ms){
+  const h=Math.floor(ms/3600000),m=Math.floor((ms%3600000)/60000),s=Math.floor((ms%60000)/1000)
+  return h>0?h+'h '+m+'m '+s+'s':m>0?m+'m '+s+'s':s+'s'
+}
 async function refresh(){
   try{
     const r=await fetch('/api/status');const d=await r.json()
-    document.getElementById('uptime').textContent=d.uptime
-    document.getElementById('msg-count').textContent=d.messageCount
-    document.getElementById('session').textContent=d.sessionId||'none'
-    document.getElementById('last-msg').textContent=d.lastMessageAt||'—'
-    document.getElementById('last-err').textContent=d.lastError||'—'
+    document.getElementById('uptime').textContent=fmtDur(d.stats.uptimeMs)
+    document.getElementById('msg-count').textContent=d.stats.totalMessages
+    const t=d.stats.totalTokens
+    document.getElementById('tokens').textContent=fmtK(t.input)+' / '+fmtK(t.output)+' / '+fmtK(t.reasoning)
+    document.getElementById('cost').textContent='$'+d.stats.totalCost.toFixed(4)
+    document.getElementById('session').textContent=d.currentSessionId||'none'
+    // Sessions
+    const sl=document.getElementById('sessions')
+    if(d.sessions.length===0){sl.innerHTML='<div style="color:var(--text);font-size:11px;padding:8px 0">No sessions yet</div>'}
+    else{sl.innerHTML=d.sessions.map(s=>'<div class="session-item"><span class="session-title">'+s.title+'</span><span class="session-status '+s.status+'">'+s.status+'</span></div>').join('')}
+    // Errors
+    const ec=document.getElementById('errors-card'),el=document.getElementById('errors')
+    if(d.stats.errors.length>0){
+      ec.style.display='block'
+      el.innerHTML=d.stats.errors.map(e=>'<div class="error-item"><span class="error-time">'+new Date(e.time).toLocaleTimeString()+'</span>'+e.message.slice(0,80)+'</div>').join('')
+    }else{ec.style.display='none'}
   }catch(e){}
 }
 refresh();setInterval(refresh,2000)
@@ -290,7 +314,6 @@ const APP_DIST = path.resolve(__dirname, "../../app/dist")
 
 function serveStatic(req: http.IncomingMessage, res: http.ServerResponse): boolean {
   const url = req.url || "/"
-  // Try exact file
   const filePath = path.join(APP_DIST, url)
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     const ext = path.extname(filePath)
@@ -321,10 +344,7 @@ const server = http.createServer((req, res) => {
 
   // ── API routes ──
   if (req.method === "POST" && req.url === "/api/chat") {
-    messageCount++
-    lastMessageAt = Date.now()
     handleChat(req, res).catch((err) => {
-      lastError = err.message
       console.error(err)
       if (!res.headersSent) res.writeHead(500)
       res.end(JSON.stringify({ error: err.message }))
@@ -333,19 +353,34 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === "GET" && req.url === "/api/status") {
-    const uptimeMs = Date.now() - startedAt
-    const h = Math.floor(uptimeMs / 3600000)
-    const m = Math.floor((uptimeMs % 3600000) / 60000)
-    const s = Math.floor((uptimeMs % 60000) / 1000)
-    const uptime = h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`
+    const stats = agent.getStats()
+    const sessions = agent.getSessions({ limit: 20 })
     res.writeHead(200, { "Content-Type": "application/json" })
     res.end(JSON.stringify({
-      uptime,
-      messageCount,
-      sessionId: currentSessionId,
-      lastMessageAt: lastMessageAt ? new Date(lastMessageAt).toLocaleTimeString() : null,
-      lastError,
+      stats,
+      currentSessionId,
+      sessions,
+      activeStatuses: agent.getActiveStatuses(),
     }))
+    return
+  }
+
+  if (req.method === "GET" && req.url?.startsWith("/api/sessions/") && req.url.endsWith("/messages")) {
+    const sessionId = req.url.slice("/api/sessions/".length, -"/messages".length)
+    agent.getSessionMessages(sessionId, { limit: 30 }).then((messages) => {
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(JSON.stringify(messages))
+    }).catch((err) => {
+      res.writeHead(500, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ error: err.message }))
+    })
+    return
+  }
+
+  if (req.method === "GET" && req.url === "/api/sessions") {
+    const sessions = agent.getSessions({ limit: 50 })
+    res.writeHead(200, { "Content-Type": "application/json" })
+    res.end(JSON.stringify(sessions))
     return
   }
 
@@ -359,7 +394,6 @@ const server = http.createServer((req, res) => {
   // ── Static files from app/dist ──
   if (req.method === "GET") {
     if (serveStatic(req, res)) return
-    // SPA fallback: serve index.html for any non-file route
     if (serveAppIndex(res)) return
   }
 
@@ -387,3 +421,4 @@ export async function startServer() {
 }
 
 export { CodeAgent, SqlJsStorage, NodeFS, NodeSearchProvider }
+

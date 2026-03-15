@@ -618,6 +618,7 @@ export class CodeAgent {
             while (!done || events.length > 0) {
                 if (events.length > 0) {
                     const event = events.shift()!
+                    this.recordEvent(event)
                     yield event
                     if (event.type === "done") return
                 } else {
@@ -676,6 +677,118 @@ export class CodeAgent {
         return this.options
     }
 
+    // ── In-memory Stats ────────────────────────────────────────────
+
+    private _stats = {
+        startedAt: Date.now(),
+        totalMessages: 0,
+        totalTokens: { input: 0, output: 0, reasoning: 0 },
+        totalCost: 0,
+        errors: [] as { time: number; message: string }[],
+    }
+
+    /** Record stats from a chat event (called internally) */
+    private recordEvent(event: CodeAgentEvent) {
+        if (event.type === "message.done" && event.usage) {
+            this._stats.totalMessages++
+            this._stats.totalTokens.input += event.usage.inputTokens
+            this._stats.totalTokens.output += event.usage.outputTokens
+            this._stats.totalTokens.reasoning += event.usage.reasoningTokens
+            this._stats.totalCost += event.usage.cost
+        }
+        if (event.type === "error" && event.error) {
+            this._stats.errors.push({ time: Date.now(), message: event.error })
+            // Keep last 20 errors
+            if (this._stats.errors.length > 20) this._stats.errors.shift()
+        }
+    }
+
+    // ── Debug APIs ─────────────────────────────────────────────────
+
+    /**
+     * Get runtime stats (uptime, tokens, cost, errors).
+     */
+    getStats() {
+        const uptimeMs = Date.now() - this._stats.startedAt
+        return {
+            uptimeMs,
+            totalMessages: this._stats.totalMessages,
+            totalTokens: { ...this._stats.totalTokens },
+            totalCost: this._stats.totalCost,
+            errors: [...this._stats.errors],
+        }
+    }
+
+    /**
+     * List all sessions (most recent first).
+     */
+    getSessions(opts?: { limit?: number }) {
+        this.assertInitialized()
+        const sessions: Array<{
+            id: string; title: string; status: string
+            createdAt: number; updatedAt: number
+        }> = []
+        for (const s of Session.list(this.agentContext, { limit: opts?.limit ?? 50 })) {
+            const status = this.agentContext.sessionStatus.get(s.id as any)
+            sessions.push({
+                id: s.id,
+                title: s.title,
+                status: status.type,
+                createdAt: s.time.created,
+                updatedAt: s.time.updated,
+            })
+        }
+        return sessions
+    }
+
+    /**
+     * Get messages for a session (simplified for admin display).
+     */
+    async getSessionMessages(sessionId: string, opts?: { limit?: number }) {
+        this.assertInitialized()
+        const limit = opts?.limit ?? 50
+        const messages: Array<{
+            id: string; role: string; createdAt: number
+            text?: string; parts?: Array<{ type: string; tool?: string; content?: string }>
+        }> = []
+
+        const pageResult = await MessageV2.page(this.agentContext, {
+            sessionID: sessionId as any,
+            limit,
+        })
+
+        for (const msg of pageResult.items) {
+            const simplified: typeof messages[0] = {
+                id: msg.info.id,
+                role: msg.info.role,
+                createdAt: msg.info.time.created,
+            }
+
+            if (msg.info.role === "user") {
+                const textParts = msg.parts
+                    .filter((p: any) => p.type === "text")
+                    .map((p: any) => p.text || p.content || "")
+                simplified.text = textParts.join("\n")
+            } else {
+                simplified.parts = msg.parts.map((p: any) => {
+                    if (p.type === "text") return { type: "text", content: (p.content || "").slice(0, 200) }
+                    if (p.type === "tool") return { type: "tool", tool: p.tool, content: p.state?.title || p.state?.status }
+                    if (p.type === "reasoning") return { type: "thinking", content: (p.content || "").slice(0, 100) }
+                    return { type: p.type }
+                })
+            }
+            messages.push(simplified)
+        }
+        return messages
+    }
+
+    /**
+     * Get all active (non-idle) session statuses.
+     */
+    getActiveStatuses() {
+        this.assertInitialized()
+        return this.agentContext.sessionStatus.list()
+    }
 
     // ── Core Loop ──────────────────────────────────────────────────
 
