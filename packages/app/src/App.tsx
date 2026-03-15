@@ -72,6 +72,8 @@ export function App() {
     }, []);
 
     // Poll state (directory, topLevel, changes) via HTTP
+    // TODO: 目前只轮询根目录（topLevel），已展开的子目录不会自动刷新。
+    //       未来可以让客户端上报已展开路径，服务端批量返回，或使用版本号对比局部刷新。
     const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
     useEffect(() => {
         if (!sessionId) return;
