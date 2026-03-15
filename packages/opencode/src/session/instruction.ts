@@ -2,7 +2,8 @@ import path from "path"
 import os from "os"
 import { Filesystem } from "../util/filesystem"
 import { Config } from "../config/config"
-import { createScopedState, AgentContext } from "@/agent/context"
+import { getState } from "@/agent/context"
+import type { AgentContext } from "@/agent/context"
 import { Flag } from "@/util/flag"
 import { Log } from "../util/log"
 import { Glob } from "../util/glob"
@@ -42,11 +43,12 @@ async function resolveRelative(context: AgentContext, instruction: string): Prom
 }
 
 export namespace InstructionPrompt {
-  const state = createScopedState(() => {
-    return {
+  const STATE_KEY = Symbol("instruction")
+  function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => ({
       claims: new Map<string, Set<string>>(),
-    }
-  })
+    }))
+  }
 
   function isClaimed(context: AgentContext, messageID: string, filepath: string) {
     const claimed = state(context).claims.get(messageID)

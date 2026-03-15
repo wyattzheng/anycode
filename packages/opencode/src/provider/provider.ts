@@ -1,4 +1,4 @@
-import { createScopedState } from "@/agent/context"
+import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import z from "zod"
 import os from "os"
@@ -807,7 +807,11 @@ export namespace Provider {
     }
   }
 
-  const state = createScopedState(async (context: AgentContext) => {
+  const STATE_KEY = Symbol("provider")
+  function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => initProvider(context))
+  }
+  async function initProvider(context: AgentContext) {
     using _ = log.time("state")
     const config = await Config.get(context)
     const modelsDev = await ModelsDev.get(context)
@@ -1045,7 +1049,7 @@ export namespace Provider {
       modelLoaders,
       varsLoaders,
     }
-  })
+  }
 
   export async function list(context: AgentContext) {
     return state(context).then((state) => state.providers)

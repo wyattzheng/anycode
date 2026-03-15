@@ -1,4 +1,4 @@
-import { createScopedState } from "@/agent/context"
+import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { Log } from "../util/log"
 import { Flag } from "../util/flag"
@@ -10,18 +10,18 @@ export namespace FileTime {
   // All tools that overwrite existing files should run their
   // assert/read/write/update sequence inside withLock(filepath, ...)
   // so concurrent writes to the same file are serialized.
-  export const state = createScopedState(() => {
-    const read: {
-      [sessionID: string]: {
-        [path: string]: Date | undefined
-      }
-    } = {}
-    const locks = new Map<string, Promise<void>>()
-    return {
-      read,
-      locks,
-    }
-  })
+  const STATE_KEY = Symbol("file.time")
+  export function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => {
+      const read: {
+        [sessionID: string]: {
+          [path: string]: Date | undefined
+        }
+      } = {}
+      const locks = new Map<string, Promise<void>>()
+      return { read, locks }
+    })
+  }
 
   export function read(context: AgentContext, sessionID: string, file: string) {
     log.info("read", { sessionID, file })

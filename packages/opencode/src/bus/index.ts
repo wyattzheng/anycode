@@ -1,4 +1,4 @@
-import { createScopedState } from "@/agent/context"
+import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import z from "zod"
 import { Log } from "../util/log"
@@ -16,28 +16,13 @@ export namespace Bus {
     }),
   )
 
-  const state = createScopedState(
-    (_context: AgentContext) => {
+  const STATE_KEY = Symbol("bus")
+  function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => {
       const subscriptions = new Map<any, Subscription[]>()
-
-      return {
-        subscriptions,
-      }
-    },
-    async (entry: { subscriptions: Map<any, Subscription[]> }) => {
-      const wildcard = entry.subscriptions.get("*")
-      if (!wildcard) return
-      const event = {
-        type: InstanceDisposed.type,
-        properties: {
-          directory: "",
-        },
-      }
-      for (const sub of [...wildcard]) {
-        sub(event)
-      }
-    },
-  )
+      return { subscriptions }
+    })
+  }
 
   export async function publish<Definition extends BusEvent.Definition>(context: AgentContext | undefined, 
     def: Definition,

@@ -18,7 +18,7 @@ import { ProviderTransform } from "../provider/transform"
 import { SystemPrompt } from "./system"
 import { InstructionPrompt } from "./instruction"
 import { Plugin } from "../util/plugin"
-import { AgentContext, createScopedState } from "../agent/context"
+import { AgentContext, getState } from "../agent/context"
 import PROMPT_PLAN from "../session/prompt/plan.txt"
 import BUILD_SWITCH from "../session/prompt/build-switch.txt"
 import MAX_STEPS from "../session/prompt/max-steps.txt"
@@ -65,8 +65,9 @@ const STRUCTURED_OUTPUT_SYSTEM_PROMPT = `IMPORTANT: The user has requested struc
 export namespace SessionPrompt {
   const log = Log.create({ service: "session.prompt" })
 
-  const getState = createScopedState(
-    () => {
+  const STATE_KEY = Symbol("session.prompt")
+  const getState_ = (context: AgentContext) => {
+    return getState(context, STATE_KEY, () => {
       const data: Record<
         string,
         {
@@ -78,16 +79,11 @@ export namespace SessionPrompt {
         }
       > = {}
       return data
-    },
-    async (current) => {
-      for (const item of Object.values(current)) {
-        item.abort.abort()
-      }
-    },
-  )
+    })
+  }
 
   export function assertNotBusy(context: AgentContext, sessionID: SessionID) {
-    const match = getState(context)[sessionID]
+    const match = getState_(context)[sessionID]
     if (match) throw new Session.BusyError(sessionID)
   }
 
@@ -239,7 +235,7 @@ export namespace SessionPrompt {
   }
 
   function start(context: AgentContext, sessionID: SessionID) {
-    const s = getState(context)
+    const s = getState_(context)
     if (s[sessionID]) return
     const controller = new AbortController()
     s[sessionID] = {
@@ -250,7 +246,7 @@ export namespace SessionPrompt {
   }
 
   function resume(context: AgentContext, sessionID: SessionID) {
-    const s = getState(context)
+    const s = getState_(context)
     if (!s[sessionID]) return
 
     return s[sessionID].abort.signal
@@ -258,7 +254,7 @@ export namespace SessionPrompt {
 
   export function cancel(context: AgentContext, sessionID: SessionID) {
     log.info("cancel", { sessionID })
-    const s = getState(context)
+    const s = getState_(context)
     const match = s[sessionID]
     if (!match) {
       SessionStatus.set(context, sessionID, { type: "idle" })
@@ -282,7 +278,7 @@ export namespace SessionPrompt {
     const abort = resume_existing ? resume(context, sessionID) : start(context, sessionID)
     if (!abort) {
       return new Promise<MessageV2.WithParts>((resolve, reject) => {
-        const callbacks = getState(context)[sessionID].callbacks
+        const callbacks = getState_(context)[sessionID].callbacks
         callbacks.push({ resolve, reject })
       })
     }
@@ -733,7 +729,7 @@ export namespace SessionPrompt {
     SessionCompaction.prune(context, { sessionID })
     for await (const item of MessageV2.stream(context, sessionID)) {
       if (item.info.role === "user") continue
-      const queued = getState(context)[sessionID]?.callbacks ?? []
+      const queued = getState_(context)[sessionID]?.callbacks ?? []
       for (const q of queued) {
         q.resolve(item)
       }

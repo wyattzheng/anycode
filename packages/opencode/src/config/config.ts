@@ -1,4 +1,4 @@
-import { createScopedState } from "@/agent/context"
+import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { Log } from "../util/log"
 import path from "path"
@@ -73,7 +73,11 @@ export namespace Config {
     return merged
   }
 
-  export const state = createScopedState(async (context: AgentContext) => {
+  const STATE_KEY = Symbol("config")
+  export function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => initConfig(context))
+  }
+  async function initConfig(context: AgentContext) {
     // Short-circuit: if config was injected via Instance context (e.g. from CodeAgent options),
     // skip all filesystem-based config loading.
     const injected = context.config
@@ -249,7 +253,7 @@ export namespace Config {
       directories,
       deps,
     }
-  })
+  }
 
   export async function waitForDependencies(context: AgentContext) {
     const deps = await state(context).then((x) => x.deps)

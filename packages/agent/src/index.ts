@@ -209,6 +209,7 @@ export class CodeAgent {
     private _git: import("@any-code/opencode/util/git").GitProvider
     private _storageProvider: import("./storage").StorageProvider | undefined
     private _dbClient: any
+    private _state = new Map<any, any>()
     /** Unique scope identifier for context isolation */
     readonly scopeId: string
 
@@ -250,6 +251,7 @@ export class CodeAgent {
             config: this.options.config as any,
             instructions: this.options.instructions,
             db: this._dbClient,
+            state: this._state,
             containsPath: (filepath: string) => {
                 const normalized = pathMod.resolve(filepath)
                 return normalized.startsWith(pathMod.resolve(worktree)) ||

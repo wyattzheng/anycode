@@ -1,7 +1,6 @@
 import { Project } from "../project/project"
 import { VFS } from "../util/vfs"
 import { SearchProvider } from "../util/search"
-import { State } from "../project/state"
 import type { GitProvider } from "../util/git"
 
 export interface InstancePaths {
@@ -39,15 +38,17 @@ export interface AgentContext {
     instructions?: string[]
     /** Database client — set during init, used for all DB operations */
     db: any
+    /** Per-instance module state. Modules use getState() with a unique key for lazy init. */
+    state: Map<any, any>
 }
 
 /**
- * Creates a scoped state initializer bound to an AgentContext's scopeId.
- * Replaces the previous `Instance.state` singleton pattern.
+ * Get or lazily initialize module-scoped state on the context.
+ * Each module uses a unique key (typically a Symbol) to avoid collisions.
  */
-export function createScopedState<S>(
-    init: (context: AgentContext) => S,
-    dispose?: (state: Awaited<S>) => Promise<void>
-): (context: AgentContext) => S {
-    return State.create((context: AgentContext) => `${context?.directory ?? 'global'}::${context?.scopeId ?? 'default'}`, init, dispose)
+export function getState<T>(context: AgentContext, key: any, init: () => T): T {
+    if (context.state.has(key)) return context.state.get(key)!
+    const s = init()
+    context.state.set(key, s)
+    return s
 }

@@ -1,4 +1,4 @@
-import { createScopedState } from "@/agent/context"
+import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { Log } from "../util/log"
 
@@ -26,16 +26,10 @@ export namespace Scheduler {
 
   const shared = create()
 
-  const state = createScopedState(
-    () => create(),
-    async (entry) => {
-      for (const timer of entry.timers.values()) {
-        clearInterval(timer)
-      }
-      entry.tasks.clear()
-      entry.timers.clear()
-    },
-  )
+  const STATE_KEY = Symbol("scheduler")
+  function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => create())
+  }
 
   export function register(context: AgentContext, task: Task) {
     const scope = task.scope ?? "instance"

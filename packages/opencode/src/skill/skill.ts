@@ -1,4 +1,4 @@
-import { createScopedState } from "@/agent/context"
+import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import z from "zod"
 import path from "path"
@@ -52,7 +52,11 @@ export namespace Skill {
   const OPENCODE_SKILL_PATTERN = "{skill,skills}/**/SKILL.md"
   const SKILL_PATTERN = "**/SKILL.md"
 
-  export const state = createScopedState(async (context: AgentContext) => {
+  const STATE_KEY = Symbol("skill")
+  export function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => initSkills(context))
+  }
+  async function initSkills(context: AgentContext) {
     const skills: Record<string, Info> = {}
     const dirs = new Set<string>()
 
@@ -176,7 +180,7 @@ export namespace Skill {
       skills,
       dirs: Array.from(dirs),
     }
-  })
+  }
 
   export async function get(context: AgentContext, name: string) {
     return state(context).then((x) => x.skills[name])

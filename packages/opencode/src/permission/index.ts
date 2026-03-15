@@ -1,4 +1,4 @@
-import { createScopedState } from "@/agent/context"
+import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
@@ -62,19 +62,13 @@ export namespace Permission {
     ),
   }
 
-  const state = createScopedState(
-    () => ({
+  const STATE_KEY = Symbol("permission")
+  function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => ({
       pending: new Map<SessionID, Map<PermissionID, PendingEntry>>(),
       approved: new Map<SessionID, Map<string, boolean>>(),
-    }),
-    async (state) => {
-      for (const session of state.pending.values()) {
-        for (const item of session.values()) {
-          item.reject(new RejectedError(item.info.sessionID, item.info.id, item.info.callID, item.info.metadata))
-        }
-      }
-    },
-  )
+    }))
+  }
 
   export function pending(context: AgentContext) {
     return state(context).pending

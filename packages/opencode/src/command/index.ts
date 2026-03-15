@@ -2,7 +2,8 @@ import { BusEvent } from "@/bus/bus-event"
 import { SessionID, MessageID } from "@/session/schema"
 import z from "zod"
 import { Config } from "../config/config"
-import { createScopedState, AgentContext } from "@/agent/context"
+import { getState } from "@/agent/context"
+import type { AgentContext } from "@/agent/context"
 import { Identifier } from "../util/id"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
@@ -56,7 +57,11 @@ export namespace Command {
     REVIEW: "review",
   } as const
 
-  const state = createScopedState(async (context: AgentContext) => {
+  const STATE_KEY = Symbol("command")
+  function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => initCommands(context))
+  }
+  async function initCommands(context: AgentContext) {
     const cfg = await Config.get(context)
 
     const result: Record<string, Info> = {
@@ -113,7 +118,7 @@ export namespace Command {
     }
 
     return result
-  })
+  }
 
   export async function get(context: AgentContext, name: string) {
     return state(context).then((x) => x[name])

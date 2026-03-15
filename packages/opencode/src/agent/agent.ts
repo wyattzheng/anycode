@@ -1,4 +1,4 @@
-import { createScopedState } from "@/agent/context"
+import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { Config } from "../config/config"
 import z from "zod"
@@ -49,7 +49,11 @@ export namespace Agent {
     })
   export type Info = z.infer<typeof Info>
 
-  const state = createScopedState(async (context: AgentContext) => {
+  const STATE_KEY = Symbol("agent")
+  function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => initAgents(context))
+  }
+  async function initAgents(context: AgentContext) {
     const cfg = await Config.get(context)
 
     const skillDirs = await Skill.dirs(context)
@@ -249,7 +253,7 @@ export namespace Agent {
     }
 
     return result
-  })
+  }
 
   export async function get(context: AgentContext, agent: string) {
     return state(context).then((x) => x[agent])

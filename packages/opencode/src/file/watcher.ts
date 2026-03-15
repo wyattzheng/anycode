@@ -1,4 +1,4 @@
-import { createScopedState } from "@/agent/context"
+import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
@@ -46,8 +46,8 @@ export namespace FileWatcher {
     }
   })
 
-  const state = createScopedState(
-    async (context: AgentContext) => {
+  const STATE_KEY = Symbol("file.watcher")
+  async function initWatcher(context: AgentContext) {
       log.info("init")
       const cfg = await Config.get(context)
       const backend = (() => {
@@ -111,12 +111,10 @@ export namespace FileWatcher {
       }
 
       return { subs }
-    },
-    async (state) => {
-      if (!state.subs) return
-      await Promise.all(state.subs.map((sub) => sub?.unsubscribe()))
-    },
-  )
+  }
+  function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => initWatcher(context))
+  }
 
   export function init(context: AgentContext) {
     if (Flag.OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER) {

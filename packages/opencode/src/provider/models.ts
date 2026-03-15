@@ -1,4 +1,4 @@
-import { createScopedState } from "@/agent/context"
+import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { Log } from "../util/log"
 import path from "path"
@@ -87,8 +87,11 @@ export namespace ModelsDev {
     return Flag.OPENCODE_MODELS_URL || "https://models.dev"
   }
 
-  const state = createScopedState(
-    async (context: AgentContext) => {
+  const STATE_KEY = Symbol("models.dev")
+  function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => initModels(context))
+  }
+  async function initModels(context: AgentContext) {
       let data: Record<string, unknown> | undefined
       try {
         data = await Filesystem.readJson(context, Flag.OPENCODE_MODELS_PATH ?? filepath(context)).catch(() => undefined)
@@ -102,8 +105,7 @@ export namespace ModelsDev {
       if (Flag.OPENCODE_DISABLE_MODELS_FETCH) return { data: {} as Record<string, unknown> }
       const json = await fetch(`${url()}/api.json`).then((x) => x.text())
       return { data: JSON.parse(json) as Record<string, unknown> }
-    },
-  )
+    }
 
   export async function get(context: AgentContext) {
     const s = await state(context)

@@ -1,4 +1,4 @@
-import { createScopedState } from "@/agent/context"
+import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { BusEvent } from "@/bus/bus-event"
 import z from "zod"
@@ -332,7 +332,11 @@ export namespace File {
     ),
   }
 
-  const state = createScopedState(async (context: AgentContext) => {
+  const STATE_KEY = Symbol("file")
+  function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => initFile(context))
+  }
+  async function initFile(context: AgentContext) {
     type Entry = { files: string[]; dirs: string[] }
     let cache: Entry = { files: [], dirs: [] }
     let fetching = false
@@ -407,7 +411,7 @@ export namespace File {
         return cache
       },
     }
-  })
+  }
 
   export function init(context: AgentContext) {
     state(context)

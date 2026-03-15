@@ -1,6 +1,7 @@
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
-import { createScopedState, AgentContext } from "@/agent/context"
+import { getState } from "@/agent/context"
+import type { AgentContext } from "@/agent/context"
 import { SessionID } from "./schema"
 import z from "zod"
 
@@ -42,10 +43,10 @@ export namespace SessionStatus {
     ),
   }
 
-  const state = createScopedState(() => {
-    const data: Record<string, Info> = {}
-    return data
-  })
+  const STATE_KEY = Symbol("session.status")
+  function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => ({} as Record<string, Info>))
+  }
 
   export function get(context: AgentContext, sessionID: SessionID) {
     return (

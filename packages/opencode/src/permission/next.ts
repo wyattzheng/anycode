@@ -1,4 +1,4 @@
-import { createScopedState } from "@/agent/context"
+import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
@@ -114,15 +114,17 @@ export namespace PermissionNext {
     reject: (e: any) => void
   }
 
-  const state = createScopedState((context: AgentContext) => {
-    const row = context.db.findOne("permission")
-    const stored = row?.data ?? ([] as Ruleset)
-
-    return {
-      pending: new Map<PermissionID, PendingEntry>(),
-      approved: stored,
-    }
-  })
+  const STATE_KEY = Symbol("permission.next")
+  function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => {
+      const row = context.db.findOne("permission")
+      const stored = row?.data ?? ([] as Ruleset)
+      return {
+        pending: new Map<PermissionID, PendingEntry>(),
+        approved: stored,
+      }
+    })
+  }
 
   export async function ask(context: import("../agent/context").AgentContext, input: Omit<z.infer<typeof Request>, "id"> & { id?: z.infer<typeof Request>["id"]; ruleset: z.infer<typeof Ruleset> }) {
     const s = await state(context)

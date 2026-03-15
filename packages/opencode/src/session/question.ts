@@ -1,4 +1,4 @@
-import { createScopedState } from "@/agent/context"
+import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
@@ -88,9 +88,12 @@ export namespace Question {
     reject: (e: any) => void
   }
 
-  const state = createScopedState(async (_context: AgentContext) => ({
-    pending: new Map<QuestionID, PendingEntry>(),
-  }))
+  const STATE_KEY = Symbol("question")
+  function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => ({
+      pending: new Map<QuestionID, PendingEntry>(),
+    }))
+  }
 
   export async function ask(context: AgentContext, input: {
     sessionID: SessionID
@@ -164,6 +167,6 @@ export namespace Question {
   }
 
   export async function list(context: AgentContext) {
-    return state(context).then((x) => Array.from(x.pending.values(), (x) => x.info))
+    return Array.from(state(context).pending.values(), (x) => x.info)
   }
 }

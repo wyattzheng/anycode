@@ -14,7 +14,7 @@ import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
 import type { Agent } from "../agent/agent"
 import { Tool } from "./tool"
-import { createScopedState } from "../agent/context"
+import { getState } from "../agent/context"
 import type { AgentContext } from "../agent/context"
 import { Config } from "../config/config"
 import path from "path"
@@ -35,7 +35,11 @@ import { pathToFileURL } from "url"
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
 
-  export const state = createScopedState(async (context: AgentContext) => {
+  const STATE_KEY = Symbol("tool.registry")
+  export function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => initTools(context))
+  }
+  async function initTools(context: AgentContext) {
     const custom = [] as Tool.Info[]
 
     const matches: string[] = []
@@ -59,7 +63,7 @@ export namespace ToolRegistry {
     }
 
     return { custom }
-  })
+  }
 
   function fromPlugin(id: string, def: ToolDefinition): Tool.Info {
     return {

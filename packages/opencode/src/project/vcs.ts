@@ -1,4 +1,4 @@
-import { createScopedState } from "@/agent/context"
+import { getState } from "@/agent/context"
 import type { AgentContext } from "@/agent/context"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
@@ -39,39 +39,40 @@ export namespace Vcs {
     return text
   }
 
-  const state = createScopedState(
-    async (context: AgentContext) => {
-      if (context.project.vcs !== "git") {
-        return { branch: async () => undefined, unsubscribe: undefined }
+  const STATE_KEY = Symbol("vcs")
+  function state(context: AgentContext) {
+    return getState(context, STATE_KEY, () => {
+      const result = {
+        current: undefined as string | undefined,
+        unsub: undefined as (() => void) | undefined,
       }
-      let current = await currentBranch(context)
-      log.info("initialized", { branch: current })
 
-      const unsubscribe = Bus.subscribe(context, FileWatcher.Event.Updated, async (evt) => {
-        if (evt.properties.file.endsWith("HEAD")) return
-        const next = await currentBranch(context)
-        if (next !== current) {
-          log.info("branch changed", { from: current, to: next })
-          current = next
-          Bus.publish(context, Event.BranchUpdated, { branch: next })
-        }
-      })
+      // async init - fire and forget
+      ;(async () => {
+        if (context.project.vcs !== "git") return
+        result.current = await currentBranch(context)
+        log.info("initialized", { branch: result.current })
 
-      return {
-        branch: async () => current,
-        unsubscribe,
-      }
-    },
-    async (state) => {
-      state.unsubscribe?.()
-    },
-  )
+        result.unsub = Bus.subscribe(context, FileWatcher.Event.Updated, async (evt) => {
+          if (evt.properties.file.endsWith("HEAD")) return
+          const next = await currentBranch(context)
+          if (next !== result.current) {
+            log.info("branch changed", { from: result.current, to: next })
+            result.current = next
+            Bus.publish(context, Event.BranchUpdated, { branch: next })
+          }
+        })
+      })()
+
+      return result
+    })
+  }
 
   export async function init(context: AgentContext) {
     return state(context)
   }
 
   export async function branch(context: AgentContext) {
-    return await state(context).then((s) => s.branch())
+    return state(context).current
   }
 }
