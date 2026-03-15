@@ -26,7 +26,7 @@ import { ToolRegistry } from "../tool/registry"
 // MCP module removed (agent mode)
 import { LSP } from "../util/lsp"
 import { ReadTool } from "../tool/read"
-import { FileTime } from "../file"
+import { FileTime } from "@/agent/project"
 import { Flag } from "../util/flag"
 import { ulid } from "ulid"
 

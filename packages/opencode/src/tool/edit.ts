@@ -9,8 +9,8 @@ import { Tool } from "./tool"
 import { LSP } from "../util/lsp"
 import { createTwoFilesPatch, diffLines } from "diff"
 import DESCRIPTION from "./edit.txt"
-import { File } from "../file"
-import { FileWatcher } from "../file"
+import { File } from "@/agent/project"
+import { FileWatcher } from "@/agent/project"
 import { Bus } from "../bus"
 
 

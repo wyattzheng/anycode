@@ -1,8 +1,8 @@
 import { sqliteTable, text, integer, index, primaryKey } from "drizzle-orm/sqlite-core"
-import { ProjectTable } from "../project"
+import { ProjectTable } from "@/agent/project"
 import type { MessageV2 } from "@/agent/memory/message-v2"
 
-import type { ProjectID } from "../project"
+import type { ProjectID } from "@/agent/project"
 import type { SessionID, MessageID, PartID } from "./schema"
 type WorkspaceID = string
 import { Timestamps } from "../storage"

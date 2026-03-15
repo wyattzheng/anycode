@@ -3,14 +3,14 @@ import * as path from "path"
 
 import { Tool } from "./tool"
 import { Bus } from "../bus"
-import { FileWatcher } from "../file"
+import { FileWatcher } from "@/agent/project"
 import { Patch } from "./patch"
 import { createTwoFilesPatch, diffLines } from "diff"
 import { assertExternalDirectory } from "./external-directory"
 import { trimDiff } from "./edit"
 import { LSP } from "../util/lsp"
 import DESCRIPTION from "./apply_patch.txt"
-import { File } from "../file"
+import { File } from "@/agent/project"
 import type { AgentContext } from "@/agent/context"
 
 const PatchParams = z.object({

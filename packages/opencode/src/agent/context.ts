@@ -1,11 +1,11 @@
-import { Project } from "../project"
+import { Project } from "./project"
 import { VFS } from "../util/vfs"
 import { SearchProvider } from "../util/search"
 import type { GitProvider } from "../util/git"
 import type { EnvService } from "../util/env"
 import type { BusService } from "../bus"
 import type { SchedulerService } from "../util/scheduler"
-import type { FileTimeService } from "../file"
+import type { FileTimeService } from "./project"
 
 import type { Question } from "../session/question"
 import type { SessionStatus } from "../session"
@@ -18,9 +18,9 @@ import type { Provider } from "../provider/provider"
 import type { ModelsDev } from "../provider/models"
 import type { ToolRegistry } from "../tool/registry"
 import type { Skill } from "../skill"
-import type { FileWatcher } from "../file"
-import type { File } from "../file"
-import type { Vcs } from "../project"
+import type { FileWatcher } from "./project"
+import type { File } from "./project"
+import type { Vcs } from "./project"
 
 export interface InstancePaths {
     data: string

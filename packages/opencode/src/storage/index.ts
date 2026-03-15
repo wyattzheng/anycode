@@ -14,7 +14,7 @@ export const Timestamps = {
 // ── Schema (table re-exports) ───────────────────────────────────────────────
 
 // Account tables removed (account module deleted)
-export { ProjectTable } from "../project"
+export { ProjectTable } from "@/agent/project"
 export { SessionTable, MessageTable, PartTable, TodoTable } from "../session/session.sql"
 
 // ── NoSqlDb Interface ───────────────────────────────────────────────────────

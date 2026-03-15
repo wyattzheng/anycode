@@ -21,7 +21,7 @@ import { MessageV2 } from "@/agent/memory/message-v2"
 import { fn } from "@/util/fn"
 
 
-import { ProjectID } from "../project"
+import { ProjectID } from "@/agent/project"
 import { SessionID, MessageID, PartID } from "./schema"
 
 import type { Provider } from "@/provider/provider"
