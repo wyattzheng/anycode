@@ -14,6 +14,7 @@
  */
 
 import http from "http"
+import { fileURLToPath } from "url"
 import path from "path"
 import os from "os"
 import fs from "fs"
@@ -294,6 +295,8 @@ const MIME_TYPES: Record<string, string> = {
   ".woff": "font/woff", ".ttf": "font/ttf",
 }
 
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 const APP_DIST = path.resolve(__dirname, "../../app/dist")
 
 function serveStatic(req: http.IncomingMessage, res: http.ServerResponse): boolean {
