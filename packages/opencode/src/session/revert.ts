@@ -7,7 +7,7 @@ import { Log } from "../util/log"
 
 import { Storage } from "@/storage/storage"
 import { Bus } from "../bus"
-import { SessionPrompt } from "./prompt"
+import { SessionPrompt } from "./session"
 import { SessionSummary } from "./summary"
 
 export namespace SessionRevert {

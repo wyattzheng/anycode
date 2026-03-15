@@ -776,7 +776,7 @@ export namespace Session {
     }).passthrough(),
     async (rawInput) => {
       const input = rawInput as typeof rawInput & { context: import("../agent/context").AgentContext }
-      const { SessionPrompt } = await import("./prompt")
+      const { SessionPrompt } = await import("./session")
       await SessionPrompt.command({
         sessionID: input.sessionID,
         messageID: input.messageID,

@@ -4,10 +4,10 @@
 
 export { Agent } from "./agent/agent"
 export { Session } from "./session"
-export { SessionProcessor } from "./session/prompt"
-export { SessionPrompt } from "./session/prompt"
+export { SessionProcessor } from "./session/session"
+export { SessionPrompt } from "./session/session"
 export { SystemPrompt } from "./session"
-export { LLM } from "./session/prompt"
+export { LLM } from "./session/session"
 export { MessageV2 } from "./session/message-v2"
 export { Tool } from "./tool/tool"
 export { ToolRegistry } from "./tool/registry"
