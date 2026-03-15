@@ -1,4 +1,4 @@
-import type { TabId, FileTreeNode, GitChange } from "../App";
+import type { TabId, DirEntry, GitChange } from "../App";
 import { FileBrowser } from "./FileBrowser";
 import { ChangesView } from "./ChangesView";
 import { PreviewTab } from "./PreviewTab";
@@ -6,14 +6,15 @@ import "./MainView.css";
 
 interface MainViewProps {
     activeTab: TabId;
-    fileTree: FileTreeNode[];
+    topLevel: DirEntry[];
     changes: GitChange[];
+    requestLs: (path: string) => Promise<DirEntry[]>;
 }
 
-export function MainView({ activeTab, fileTree, changes }: MainViewProps) {
+export function MainView({ activeTab, topLevel, changes, requestLs }: MainViewProps) {
     return (
         <div className="main-view">
-            {activeTab === "files" && <FileBrowser fileTree={fileTree} />}
+            {activeTab === "files" && <FileBrowser topLevel={topLevel} requestLs={requestLs} />}
             {activeTab === "changes" && <ChangesView changes={changes} />}
             {activeTab === "preview" && <PreviewTab />}
 
@@ -28,4 +29,3 @@ export function MainView({ activeTab, fileTree, changes }: MainViewProps) {
         </div>
     );
 }
-

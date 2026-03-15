@@ -300,17 +300,23 @@ function broadcast(sessionId: string, data: Record<string, unknown>) {
 
 /** Push current state (directory + changes) to all clients of a session */
 async function pushState(sessionId: string) {
-  const session = getSession(sessionId)
-  if (!session) return
-  const dir = session.directory
-  const changes = dir ? await getGitChanges(dir) : []
-  const topLevel = dir ? await listDir(dir) : []
-  broadcast(sessionId, {
-    type: "state",
-    directory: dir,
-    changes,
-    topLevel,  // first-level entries only
-  })
+  try {
+    const session = getSession(sessionId)
+    if (!session) return
+    const dir = session.directory
+    const changes = dir ? await getGitChanges(dir) : []
+    const topLevel = dir ? await listDir(dir) : []
+    const clientCount = sessionClients.get(sessionId)?.size ?? 0
+    console.log(`📤  pushState(${sessionId}): dir="${dir}", topLevel=${topLevel.length} entries, changes=${changes.length}, clients=${clientCount}`)
+    broadcast(sessionId, {
+      type: "state",
+      directory: dir,
+      changes,
+      topLevel,
+    })
+  } catch (err) {
+    console.error(`❌  pushState error:`, err)
+  }
 }
 
 // ── HTTP Server ────────────────────────────────────────────────────────────
@@ -630,17 +636,19 @@ export async function startServer() {
     })
   })
 
-  server.listen(PORT, () => {
-    console.log(`🌐  http://localhost:${PORT}`)
+  const HOST = process.env.HOST ?? "0.0.0.0"
+
+  server.listen(PORT, HOST, () => {
+    console.log(`🌐  http://${HOST}:${PORT}`)
     console.log(`🤖  Provider: ${PROVIDER} / ${MODEL}`)
-    console.log(`🖥  Admin: http://localhost:${PORT}/admin`)
+    console.log(`🖥  Admin: http://${HOST}:${PORT}/admin`)
     if (appDistExists) {
-      console.log(`📱  App: http://localhost:${PORT}`)
+      console.log(`📱  App: http://${HOST}:${PORT}`)
     } else {
       console.log(`⚠  App dist not found at ${APP_DIST} — run 'pnpm --filter app build' first`)
     }
     console.log(`📋  Sessions: POST /api/sessions to create`)
-    console.log(`🔌  WebSocket: ws://localhost:${PORT}?sessionId=xxx`)
+    console.log(`🔌  WebSocket: ws://${HOST}:${PORT}?sessionId=xxx`)
   })
 }
 

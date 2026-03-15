@@ -1,46 +1,83 @@
 import { useState, useRef, useCallback } from "react";
-import type { FileTreeNode } from "../App";
+import type { DirEntry } from "../App";
 import { FolderOpenIcon, FileDocIcon, ChevronIcon } from "./Icons";
 import "./FileBrowser.css";
 
 interface FileBrowserProps {
-    fileTree: FileTreeNode[];
+    topLevel: DirEntry[];
+    requestLs: (path: string) => Promise<DirEntry[]>;
 }
 
-function TreeItem({ node, depth = 0 }: { node: FileTreeNode; depth?: number }) {
-    const [expanded, setExpanded] = useState(depth < 2);
+function LazyTreeItem({
+    entry,
+    parentPath,
+    requestLs,
+    depth = 0,
+}: {
+    entry: DirEntry;
+    parentPath: string;
+    requestLs: (path: string) => Promise<DirEntry[]>;
+    depth?: number;
+}) {
+    const [expanded, setExpanded] = useState(false);
+    const [children, setChildren] = useState<DirEntry[] | null>(null);
+    const [loading, setLoading] = useState(false);
 
-    if (node.type === "dir") {
+    const fullPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+
+    const toggle = async () => {
+        if (entry.type !== "dir") return;
+        if (expanded) {
+            setExpanded(false);
+            return;
+        }
+        if (children === null) {
+            setLoading(true);
+            const entries = await requestLs(fullPath);
+            setChildren(entries);
+            setLoading(false);
+        }
+        setExpanded(true);
+    };
+
+    if (entry.type === "file") {
         return (
-            <>
-                <div
-                    className="file-tree-item folder"
-                    style={{ paddingLeft: `${12 + depth * 16}px` }}
-                    onClick={() => setExpanded(!expanded)}
-                >
-                    <span className={`chevron ${expanded ? "expanded" : ""}`}><ChevronIcon /></span>
-                    <span className="file-icon"><FolderOpenIcon /></span>
-                    <span className="file-name">{node.name}/</span>
-                </div>
-                {expanded && node.children?.map((child) => (
-                    <TreeItem key={child.name} node={child} depth={depth + 1} />
-                ))}
-            </>
+            <div
+                className="file-tree-item file"
+                style={{ paddingLeft: `${12 + depth * 16}px` }}
+            >
+                <span className="file-icon"><FileDocIcon /></span>
+                <span className="file-name">{entry.name}</span>
+            </div>
         );
     }
 
     return (
-        <div
-            className="file-tree-item file"
-            style={{ paddingLeft: `${12 + depth * 16}px` }}
-        >
-            <span className="file-icon"><FileDocIcon /></span>
-            <span className="file-name">{node.name}</span>
-        </div>
+        <>
+            <div
+                className="file-tree-item folder"
+                style={{ paddingLeft: `${12 + depth * 16}px` }}
+                onClick={toggle}
+            >
+                <span className={`chevron ${expanded ? "expanded" : ""}`}><ChevronIcon /></span>
+                <span className="file-icon"><FolderOpenIcon /></span>
+                <span className="file-name">{entry.name}/</span>
+                {loading && <span className="tree-loading">…</span>}
+            </div>
+            {expanded && children?.map((child) => (
+                <LazyTreeItem
+                    key={child.name}
+                    entry={child}
+                    parentPath={fullPath}
+                    requestLs={requestLs}
+                    depth={depth + 1}
+                />
+            ))}
+        </>
     );
 }
 
-export function FileBrowser({ fileTree }: FileBrowserProps) {
+export function FileBrowser({ topLevel, requestLs }: FileBrowserProps) {
     const [sidebarHeight, setSidebarHeight] = useState(200);
     const containerRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -75,7 +112,7 @@ export function FileBrowser({ fileTree }: FileBrowserProps) {
         window.addEventListener("touchend", onUp);
     };
 
-    const isEmpty = fileTree.length === 0;
+    const isEmpty = topLevel.length === 0;
 
     return (
         <div className="file-browser" ref={containerRef}>
@@ -99,8 +136,13 @@ export function FileBrowser({ fileTree }: FileBrowserProps) {
                             <p>加载中…</p>
                         </div>
                     ) : (
-                        fileTree.map((node) => (
-                            <TreeItem key={node.name} node={node} />
+                        topLevel.map((entry) => (
+                            <LazyTreeItem
+                                key={entry.name}
+                                entry={entry}
+                                parentPath=""
+                                requestLs={requestLs}
+                            />
                         ))
                     )}
                 </div>

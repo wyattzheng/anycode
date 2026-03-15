@@ -1,14 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { TabBar } from "./components/TabBar";
 import { MainView } from "./components/MainView";
 import { ConversationOverlay } from "./components/ConversationOverlay";
 
 export type TabId = "files" | "changes" | string;
 
-export interface FileTreeNode {
+export interface DirEntry {
     name: string;
     type: "file" | "dir";
-    children?: FileTreeNode[];
 }
 
 export interface GitChange {
@@ -16,15 +15,24 @@ export interface GitChange {
     status: string;
 }
 
+/** WebSocket message: server → client */
+export type WsMessage =
+    | { type: "state"; directory: string; changes: GitChange[]; topLevel: DirEntry[] }
+    | { type: "ls"; path: string; entries: DirEntry[] };
+
 const API_BASE = "";
 
 export function App() {
     const [activeTab, setActiveTab] = useState<TabId>("files");
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [directory, setDirectory] = useState<string>("");
-    const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
+    const [topLevel, setTopLevel] = useState<DirEntry[]>([]);
     const [changes, setChanges] = useState<GitChange[]>([]);
     const [error, setError] = useState<string | null>(null);
+    const wsRef = useRef<WebSocket | null>(null);
+
+    // ls request-response handlers
+    const lsCallbacks = useRef<Map<string, (entries: DirEntry[]) => void>>(new Map());
 
     // Create session on mount
     useEffect(() => {
@@ -37,29 +45,84 @@ export function App() {
                 });
                 const data = await res.json();
                 setSessionId(data.id);
-                setDirectory(data.directory || "");
+                if (data.directory) setDirectory(data.directory);
             } catch (e: any) {
                 setError(e.message);
             }
         })();
     }, []);
 
-    // Poll session status continuously (directory, file tree, changes)
+    // Connect WebSocket when session is ready
     useEffect(() => {
         if (!sessionId) return;
-        const poll = async () => {
+
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const host = API_BASE ? new URL(API_BASE).host : window.location.host;
+        const ws = new WebSocket(`${protocol}//${host}?sessionId=${sessionId}`);
+        wsRef.current = ws;
+
+        ws.onmessage = (event) => {
+            try {
+                const msg: WsMessage = JSON.parse(event.data);
+
+                if (msg.type === "state") {
+                    if (msg.directory) setDirectory(msg.directory);
+                    setChanges(msg.changes);
+                    setTopLevel(msg.topLevel);
+                }
+
+                if (msg.type === "ls") {
+                    const cb = lsCallbacks.current.get(msg.path);
+                    if (cb) {
+                        cb(msg.entries);
+                        lsCallbacks.current.delete(msg.path);
+                    }
+                }
+            } catch { /* ignore */ }
+        };
+
+        ws.onclose = () => {
+            wsRef.current = null;
+        };
+
+        return () => {
+            ws.close();
+            wsRef.current = null;
+        };
+    }, [sessionId]);
+
+    // Also poll directory (fallback if WebSocket hasn't connected yet)
+    useEffect(() => {
+        if (!sessionId || directory) return;
+        const timer = setInterval(async () => {
             try {
                 const res = await fetch(`${API_BASE}/api/sessions/${sessionId}`);
                 const data = await res.json();
                 if (data.directory) setDirectory(data.directory);
-                if (data.fileTree) setFileTree(data.fileTree);
-                if (data.changes) setChanges(data.changes);
             } catch { /* ignore */ }
-        };
-        poll(); // immediate first poll
-        const timer = setInterval(poll, 3000);
+        }, 2000);
         return () => clearInterval(timer);
-    }, [sessionId]);
+    }, [sessionId, directory]);
+
+    /** Request directory listing for a sub-path (lazy tree expand) */
+    const requestLs = (subPath: string): Promise<DirEntry[]> => {
+        return new Promise((resolve) => {
+            const ws = wsRef.current;
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                resolve([]);
+                return;
+            }
+            lsCallbacks.current.set(subPath, resolve);
+            ws.send(JSON.stringify({ type: "ls", path: subPath }));
+            // Timeout: resolve empty after 5s if no response
+            setTimeout(() => {
+                if (lsCallbacks.current.has(subPath)) {
+                    lsCallbacks.current.delete(subPath);
+                    resolve([]);
+                }
+            }, 5000);
+        });
+    };
 
     if (error) {
         return (
@@ -98,7 +161,7 @@ export function App() {
     // Directory set — full UI
     return (
         <div className="app">
-            <MainView activeTab={activeTab} fileTree={fileTree} changes={changes} />
+            <MainView activeTab={activeTab} topLevel={topLevel} changes={changes} requestLs={requestLs} />
             <ConversationOverlay sessionId={sessionId} />
             <TabBar
                 activeTab={activeTab}
