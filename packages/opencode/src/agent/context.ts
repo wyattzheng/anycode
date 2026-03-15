@@ -56,8 +56,6 @@ export interface AgentContext {
     instructions?: string[]
     /** Database client — set during init, used for all DB operations */
     db: any
-    /** Per-instance module state. Legacy, being phased out. */
-    state: Map<any, any>
 
     // ── Service instances ──────────────────────────────────────────
     // Phase 0: stateless services (created in CodeAgent constructor)
@@ -83,16 +81,4 @@ export interface AgentContext {
     fileWatcher: FileWatcher.FileWatcherService
     file: File.FileService
     vcs: Vcs.VcsService
-}
-
-/**
- * Get or lazily initialize module-scoped state on the context.
- * Each module uses a unique key (typically a Symbol) to avoid collisions.
- * @deprecated Being phased out in favor of typed service properties.
- */
-export function getState<T>(context: AgentContext, key: any, init: () => T): T {
-    if (context.state.has(key)) return context.state.get(key)!
-    const s = init()
-    context.state.set(key, s)
-    return s
 }

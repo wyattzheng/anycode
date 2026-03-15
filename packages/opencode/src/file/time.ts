@@ -73,7 +73,7 @@ export class FileTimeService {
 export namespace FileTime {
   function svc(context: AgentContext) {
     if (context.fileTime) return context.fileTime
-    return getState(context, STATE_KEY, () => new FileTimeService())
+    return context.fileTime
   }
 
   export function state(context: AgentContext) {

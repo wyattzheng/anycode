@@ -56,8 +56,7 @@ export namespace FileWatcher {
     }
   }
 
-  const STATE_KEY = Symbol("file.watcher")
-  async function initWatcher(context: AgentContext) {
+    async function initWatcher(context: AgentContext) {
       log.info("init")
       const cfg = await context.config.get()
       const backend = (() => {
@@ -123,7 +122,7 @@ export namespace FileWatcher {
       return { subs }
   }
   function state(context: AgentContext) {
-    return getState(context, STATE_KEY, () => new FileWatcherService(context))._promise
+    return context.fileWatcher._promise
   }
 
   export function init(context: AgentContext) {

@@ -36,12 +36,11 @@ export class EnvService {
 // Once all call sites are updated, this namespace can be removed.
 
 
-const STATE_KEY = Symbol("env")
 
 export namespace Env {
   function state(context: AgentContext) {
     if (context.env) return context.env
-    return getState(context, STATE_KEY, () => new EnvService())
+    return context.env
   }
 
   export function get(context: AgentContext, key: string) {

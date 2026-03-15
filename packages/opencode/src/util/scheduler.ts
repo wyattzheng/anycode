@@ -1,5 +1,4 @@
 import type { AgentContext } from "@/agent/context"
-import { getState } from "@/agent/context"
 import { Log } from "../util/log"
 
 /**
@@ -62,7 +61,7 @@ export namespace Scheduler {
 
   function state(context: AgentContext) {
     if (context.scheduler) return context.scheduler
-    return getState(context, STATE_KEY, () => new SchedulerService())
+    return context.scheduler
   }
 
   export function register(context: AgentContext, task: Task) {

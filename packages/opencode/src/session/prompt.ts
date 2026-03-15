@@ -18,7 +18,7 @@ import { ProviderTransform } from "../provider/transform"
 import { SystemPrompt } from "./system"
 import { InstructionPrompt } from "./instruction"
 import { Plugin } from "../util/plugin"
-import { AgentContext, getState } from "../agent/context"
+import type { AgentContext } from "../agent/context"
 import PROMPT_PLAN from "../session/prompt/plan.txt"
 import BUILD_SWITCH from "../session/prompt/build-switch.txt"
 import MAX_STEPS from "../session/prompt/max-steps.txt"
@@ -81,13 +81,9 @@ export namespace SessionPrompt {
     > = {}
   }
 
-  const STATE_KEY = Symbol("session.prompt")
-  const getState_ = (context: AgentContext) => {
-    return getState(context, STATE_KEY, () => new SessionPromptService()).sessions
-  }
-
+    
   export function assertNotBusy(context: AgentContext, sessionID: SessionID) {
-    const match = getState_(context)[sessionID]
+    const match = context.sessionPrompt.sessions[sessionID]
     if (match) throw new Session.BusyError(sessionID)
   }
 
@@ -239,7 +235,7 @@ export namespace SessionPrompt {
   }
 
   function start(context: AgentContext, sessionID: SessionID) {
-    const s = getState_(context)
+    const s = context.sessionPrompt.sessions
     if (s[sessionID]) return
     const controller = new AbortController()
     s[sessionID] = {
@@ -250,7 +246,7 @@ export namespace SessionPrompt {
   }
 
   function resume(context: AgentContext, sessionID: SessionID) {
-    const s = getState_(context)
+    const s = context.sessionPrompt.sessions
     if (!s[sessionID]) return
 
     return s[sessionID].abort.signal
@@ -258,7 +254,7 @@ export namespace SessionPrompt {
 
   export function cancel(context: AgentContext, sessionID: SessionID) {
     log.info("cancel", { sessionID })
-    const s = getState_(context)
+    const s = context.sessionPrompt.sessions
     const match = s[sessionID]
     if (!match) {
       context.sessionStatus.set(sessionID, { type: "idle" })
@@ -282,7 +278,7 @@ export namespace SessionPrompt {
     const abort = resume_existing ? resume(context, sessionID) : start(context, sessionID)
     if (!abort) {
       return new Promise<MessageV2.WithParts>((resolve, reject) => {
-        const callbacks = getState_(context)[sessionID].callbacks
+        const callbacks = context.sessionPrompt.sessions[sessionID].callbacks
         callbacks.push({ resolve, reject })
       })
     }
@@ -733,7 +729,7 @@ export namespace SessionPrompt {
     SessionCompaction.prune(context, { sessionID })
     for await (const item of MessageV2.stream(context, sessionID)) {
       if (item.info.role === "user") continue
-      const queued = getState_(context)[sessionID]?.callbacks ?? []
+      const queued = context.sessionPrompt.sessions[sessionID]?.callbacks ?? []
       for (const q of queued) {
         q.resolve(item)
       }
@@ -1347,7 +1343,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
     using _ = defer(() => {
       // If no queued callbacks, cancel (the default)
-      const callbacks = getState_(input.context)[input.sessionID]?.callbacks ?? []
+      const callbacks = input.context.sessionPrompt.sessions[input.sessionID]?.callbacks ?? []
       if (callbacks.length === 0) {
         cancel(input.context, input.sessionID)
       } else {

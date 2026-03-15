@@ -237,7 +237,6 @@ export class CodeAgent {
     private initialized = false
     private _storageProvider: StorageProvider | undefined
     private _dbClient: any
-    private _state = new Map<any, any>()
     private _git: GitProvider
     private _context!: AgentContext
 
@@ -321,7 +320,6 @@ export class CodeAgent {
             configOverrides: this.options.config as any,
             instructions: this.options.instructions,
             db: this._dbClient,
-            state: this._state,
             containsPath: (filepath: string) => {
                 const normalized = path.resolve(filepath)
                 return normalized.startsWith(path.resolve(worktree)) ||
