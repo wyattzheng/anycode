@@ -117,7 +117,7 @@ class NodeGitProvider {
 // ── Agent Bootstrap ────────────────────────────────────────────────────────
 
 let agent: InstanceType<typeof CodeAgent>
-let currentSessionId: string | null = null
+
 
 async function initAgent() {
   const agentPaths = makePaths()
@@ -179,15 +179,7 @@ async function handleChat(req: http.IncomingMessage, res: http.ServerResponse) {
   })
 
   try {
-    for await (const event of agent.chat(message, currentSessionId ?? undefined)) {
-      // Capture session ID from first session.status event
-      if (!currentSessionId && event.type === "session.status") {
-        const sessions = agent.getSessions({ limit: 1 })
-        if (sessions.length > 0) {
-          currentSessionId = sessions[0].id
-          res.write(`data: ${JSON.stringify({ sessionId: currentSessionId })}\n\n`)
-        }
-      }
+    for await (const event of agent.chat(message, agent.sessionId ?? undefined)) {
       res.write(`data: ${JSON.stringify(event)}\n\n`)
     }
   } catch (err: any) {
@@ -260,10 +252,6 @@ function adminHTML() {
     <div class="row"><span class="label">Total Cost</span><span class="value yellow" id="cost">$0</span></div>
     <div class="row"><span class="label">Active Session</span><span class="value" id="session">—</span></div>
   </div>
-  <div class="card">
-    <h2>🗂 Sessions</h2>
-    <div class="sessions" id="sessions"><div style="color:var(--text);font-size:11px;padding:8px 0">Loading...</div></div>
-  </div>
   <div class="card" id="errors-card" style="display:none">
     <h2>⚠ Recent Errors</h2>
     <div class="errors" id="errors"></div>
@@ -284,12 +272,7 @@ async function refresh(){
     const t=d.stats.totalTokens
     document.getElementById('tokens').textContent=fmtK(t.input)+' / '+fmtK(t.output)+' / '+fmtK(t.reasoning)
     document.getElementById('cost').textContent='$'+d.stats.totalCost.toFixed(4)
-    document.getElementById('session').textContent=d.currentSessionId||'none'
-    // Sessions
-    const sl=document.getElementById('sessions')
-    if(d.sessions.length===0){sl.innerHTML='<div style="color:var(--text);font-size:11px;padding:8px 0">No sessions yet</div>'}
-    else{sl.innerHTML=d.sessions.map(s=>'<div class="session-item"><span class="session-title">'+s.title+'</span><span class="session-status '+s.status+'">'+s.status+'</span></div>').join('')}
-    // Errors
+    document.getElementById('session').textContent=d.sessionId||'none'
     const ec=document.getElementById('errors-card'),el=document.getElementById('errors')
     if(d.stats.errors.length>0){
       ec.style.display='block'
@@ -355,33 +338,22 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "GET" && req.url === "/api/status") {
     const stats = agent.getStats()
-    const sessions = agent.getSessions({ limit: 20 })
     res.writeHead(200, { "Content-Type": "application/json" })
     res.end(JSON.stringify({
       stats,
-      currentSessionId,
-      sessions,
-      activeStatuses: agent.getActiveStatuses(),
+      sessionId: agent.sessionId,
     }))
     return
   }
 
-  if (req.method === "GET" && req.url?.startsWith("/api/sessions/") && req.url.endsWith("/messages")) {
-    const sessionId = req.url.slice("/api/sessions/".length, -"/messages".length)
-    agent.getSessionMessages(sessionId, { limit: 30 }).then((messages) => {
+  if (req.method === "GET" && req.url === "/api/messages") {
+    agent.getSessionMessages({ limit: 30 }).then((messages: any) => {
       res.writeHead(200, { "Content-Type": "application/json" })
       res.end(JSON.stringify(messages))
-    }).catch((err) => {
+    }).catch((err: any) => {
       res.writeHead(500, { "Content-Type": "application/json" })
       res.end(JSON.stringify({ error: err.message }))
     })
-    return
-  }
-
-  if (req.method === "GET" && req.url === "/api/sessions") {
-    const sessions = agent.getSessions({ limit: 50 })
-    res.writeHead(200, { "Content-Type": "application/json" })
-    res.end(JSON.stringify(sessions))
     return
   }
 

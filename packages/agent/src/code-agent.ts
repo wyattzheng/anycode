@@ -242,6 +242,7 @@ export interface CodeAgentEvent {
 export class CodeAgent {
     private options: CodeAgentOptions
     private initialized = false
+    private _currentSessionId: string | null = null
     private _storageProvider: StorageProvider | undefined
     private _dbClient: any
     private _git: GitProvider
@@ -410,11 +411,19 @@ export class CodeAgent {
     }
 
     /**
+     * Current session ID (null if no session yet).
+     */
+    get sessionId(): string | null {
+        return this._currentSessionId
+    }
+
+    /**
      * Create a new session (internal).
      */
     private async ensureSession(): Promise<CodeAgentSession> {
         this.assertInitialized()
         const session = await Session.create(this.agentContext)
+        this._currentSessionId = session.id
         return {
             id: session.id,
             title: session.title,
@@ -724,32 +733,11 @@ export class CodeAgent {
     }
 
     /**
-     * List all sessions (most recent first).
+     * Get messages for the current session (simplified for admin display).
      */
-    getSessions(opts?: { limit?: number }) {
+    async getSessionMessages(opts?: { limit?: number }) {
         this.assertInitialized()
-        const sessions: Array<{
-            id: string; title: string; status: string
-            createdAt: number; updatedAt: number
-        }> = []
-        for (const s of Session.list(this.agentContext, { limit: opts?.limit ?? 50 })) {
-            const status = this.agentContext.sessionStatus.get(s.id as any)
-            sessions.push({
-                id: s.id,
-                title: s.title,
-                status: status.type,
-                createdAt: s.time.created,
-                updatedAt: s.time.updated,
-            })
-        }
-        return sessions
-    }
-
-    /**
-     * Get messages for a session (simplified for admin display).
-     */
-    async getSessionMessages(sessionId: string, opts?: { limit?: number }) {
-        this.assertInitialized()
+        if (!this._currentSessionId) return []
         const limit = opts?.limit ?? 50
         const messages: Array<{
             id: string; role: string; createdAt: number
@@ -757,7 +745,7 @@ export class CodeAgent {
         }> = []
 
         const pageResult = await MessageV2.page(this.agentContext, {
-            sessionID: sessionId as any,
+            sessionID: this._currentSessionId as any,
             limit,
         })
 
@@ -787,11 +775,11 @@ export class CodeAgent {
     }
 
     /**
-     * Get all active (non-idle) session statuses.
+     * Get current session status (busy/idle/retry).
      */
-    getActiveStatuses() {
-        this.assertInitialized()
-        return this.agentContext.sessionStatus.list()
+    getSessionStatus(): string {
+        if (!this._currentSessionId) return "idle"
+        return this.agentContext.sessionStatus.get(this._currentSessionId as any).type
     }
 
     // ── Core Loop ──────────────────────────────────────────────────
