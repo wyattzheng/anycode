@@ -24,7 +24,6 @@
  */
 
 import path from "path"
-import type { ToolDefinition } from "../util/plugin"
 import type { AgentContext } from "./context"
 import type { Project } from "../project/project"
 import type { VFS } from "../util/vfs"
@@ -44,7 +43,6 @@ import { GlobalBus } from "../bus/global"
 import { MessageV2 } from "../session/message-v2"
 import { PermissionNext } from "../permission/next"
 import { Permission } from "../permission"
-import { Plugin } from "../util/plugin"
 import { Truncate } from "../tool/truncation"
 import { Snapshot } from "../snapshot"
 import { FileWatcher } from "../file/watcher"
@@ -408,7 +406,6 @@ export class CodeAgent {
 
         // Initialize plugins (skip if in test/lightweight mode)
         if (!this.options.skipPlugins) {
-            await Plugin.init()
         }
 
         this.initialized = true

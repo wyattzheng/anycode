@@ -17,7 +17,6 @@ import { Bus } from "../bus"
 import { ProviderTransform } from "../provider/transform"
 import { SystemPrompt } from "."
 import { InstructionPrompt } from "./instruction"
-import { Plugin } from "../util/plugin"
 import { type AgentContext } from "../agent/context"
 import PROMPT_PLAN from "../session/prompt/plan.txt"
 import BUILD_SWITCH from "../session/prompt/build-switch.txt"
@@ -408,15 +407,6 @@ export namespace SessionPrompt {
           subagent_type: task.agent,
           command: task.command,
         }
-        await Plugin.trigger(
-          "tool.execute.before",
-          {
-            tool: "task",
-            sessionID,
-            callID: part.id,
-          },
-          { args: taskArgs },
-        )
         let executionError: Error | undefined
         const taskAgent = await context.agents.get(task.agent)
         const taskCtx: Tool.Context = {
@@ -457,16 +447,6 @@ export namespace SessionPrompt {
           sessionID,
           messageID: assistantMessage.id,
         }))
-        await Plugin.trigger(
-          "tool.execute.after",
-          {
-            tool: "task",
-            sessionID,
-            callID: part.id,
-            args: taskArgs,
-          },
-          result,
-        )
         assistantMessage.finish = "tool-calls"
         assistantMessage.time.completed = Date.now()
         await Session.updateMessage(context, assistantMessage)
@@ -656,7 +636,6 @@ export namespace SessionPrompt {
         }
       }
 
-      await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
       // Build system prompt, adding structured output instruction if needed
       const skills = await SystemPrompt.skills(context, agent)
@@ -810,17 +789,6 @@ export namespace SessionPrompt {
         inputSchema: jsonSchema(schema as any),
         async execute(args, options) {
           const ctx = context(args, options)
-          await Plugin.trigger(
-            "tool.execute.before",
-            {
-              tool: item.id,
-              sessionID: ctx.sessionID,
-              callID: ctx.callID,
-            },
-            {
-              args,
-            },
-          )
           const result = await item.execute(args, ctx)
           const output = {
             ...result,
@@ -831,16 +799,6 @@ export namespace SessionPrompt {
               messageID: input.processor.message.id,
             })),
           }
-          await Plugin.trigger(
-            "tool.execute.after",
-            {
-              tool: item.id,
-              sessionID: ctx.sessionID,
-              callID: ctx.callID,
-              args,
-            },
-            output,
-          )
           return output
         },
       })
@@ -1159,20 +1117,6 @@ export namespace SessionPrompt {
       }),
     ).then((x) => x.flat().map(assign))
 
-    await Plugin.trigger(
-      "chat.message",
-      {
-        sessionID: input.sessionID,
-        agent: input.agent,
-        model: input.model,
-        messageID: input.messageID,
-        variant: input.variant,
-      },
-      {
-        message: info,
-        parts,
-      },
-    )
 
     await Session.updateMessage(context, info)
     for (const part of parts) {
@@ -1472,15 +1416,6 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         : await lastModel(input.context, input.sessionID)
       : taskModel
 
-    await Plugin.trigger(
-      "command.execute.before",
-      {
-        command: input.command,
-        sessionID: input.sessionID,
-        arguments: input.arguments,
-      },
-      { parts },
-    )
 
     const result = (await prompt({
       sessionID: input.sessionID,
@@ -1736,11 +1671,6 @@ export namespace LLM {
     )
 
     const header = system[0]
-    await Plugin.trigger(
-      "experimental.chat.system.transform",
-      { sessionID: input.sessionID, model: input.model },
-      { system },
-    )
     // rejoin to maintain 2-part structure for caching if header unchanged
     if (system.length > 2 && system[0] === header) {
       const rest = system.slice(1)
@@ -1767,38 +1697,18 @@ export namespace LLM {
       options.instructions = SystemPrompt.instructions()
     }
 
-    const params = await Plugin.trigger(
-      "chat.params",
-      {
-        sessionID: input.sessionID,
-        agent: input.agent,
-        model: input.model,
-        provider,
-        message: input.user,
-      },
-      {
+    const params ={
         temperature: input.model.capabilities.temperature
           ? (input.agent.temperature ?? ProviderTransform.temperature(input.model))
           : undefined,
         topP: input.agent.topP ?? ProviderTransform.topP(input.model),
         topK: ProviderTransform.topK(input.model),
         options,
-      },
-    )
+      }
 
-    const { headers } = await Plugin.trigger(
-      "chat.headers",
-      {
-        sessionID: input.sessionID,
-        agent: input.agent,
-        model: input.model,
-        provider,
-        message: input.user,
-      },
-      {
+    const { headers } ={
         headers: {},
-      },
-    )
+      }
 
     const maxOutputTokens =
       isCodex || provider.id.includes("github-copilot") ? undefined : ProviderTransform.maxOutputTokens(input.model)
@@ -2242,15 +2152,7 @@ export namespace SessionProcessor {
                 case "text-end":
                   if (currentText) {
                     currentText.text = currentText.text.trimEnd()
-                    const textOutput = await Plugin.trigger(
-                      "experimental.text.complete",
-                      {
-                        sessionID: input.sessionID,
-                        messageID: input.assistantMessage.id,
-                        partID: currentText.id,
-                      },
-                      { text: currentText.text },
-                    )
+                    const textOutput = { text: currentText.text }
                     currentText.text = textOutput.text
                     currentText.time = {
                       start: Date.now(),
@@ -2504,11 +2406,7 @@ export namespace SessionCompaction {
       context: input.context,
     })
     // Allow plugins to inject context or replace compaction prompt
-    const compacting = await Plugin.trigger(
-      "experimental.session.compacting",
-      { sessionID: input.sessionID },
-      { context: [], prompt: undefined },
-    )
+    const compacting = { context: [] as string[], prompt: undefined as string | undefined }
     const defaultPrompt = `Provide a detailed prompt for continuing our conversation above.
 Focus on information that would be helpful for continuing the conversation, including what we did, what we're doing, which files we're working on, and what we're going to do next.
 The summary that you construct will be used so that another agent can read it and continue the work.

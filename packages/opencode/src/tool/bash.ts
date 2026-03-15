@@ -15,7 +15,6 @@ import { Shell } from "@/util/shell"
 
 import { BashArity } from "@/permission/arity"
 import { Truncate } from "./truncation"
-import { Plugin } from "@/util/plugin"
 
 const MAX_METADATA_LENGTH = 30_000
 const DEFAULT_TIMEOUT = Flag.OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 2 * 60 * 1000
@@ -158,11 +157,7 @@ export const BashTool = Tool.define("bash", async (initCtx?: Tool.InitContext) =
         })
       }
 
-      const shellEnv = await Plugin.trigger(
-        "shell.env",
-        { cwd, sessionID: ctx.sessionID, callID: ctx.callID },
-        { env: {} },
-      )
+      const shellEnv = { env: {} as Record<string, string> }
       const proc = spawn(params.command, {
         shell,
         cwd,

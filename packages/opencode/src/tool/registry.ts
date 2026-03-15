@@ -17,9 +17,7 @@ import { Tool } from "./tool"
 import type { AgentContext } from "../agent/context"
 import { Config } from "../config/config"
 import path from "path"
-import { type ToolContext as PluginToolContext, type ToolDefinition } from "../util/plugin"
 import z from "zod"
-import { Plugin } from "../util/plugin"
 import { ProviderID, type ModelID } from "../provider/schema"
 import { WebSearchTool } from "./websearch"
 import { CodeSearchTool } from "./codesearch"
@@ -30,6 +28,24 @@ import { Truncate } from "./truncation"
 import { ApplyPatchTool } from "./apply_patch"
 import { Glob } from "../util/glob"
 import { pathToFileURL } from "url"
+
+// Inline type definitions (was in util/plugin.ts)
+type ToolContext = {
+  sessionID: string
+  messageID: string
+  agent: string
+  directory: string
+  worktree: string
+  abort: AbortSignal
+  metadata(input: { title?: string; metadata?: { [key: string]: any } }): void
+  ask(input: { permission: string; patterns: string[]; always: string[]; metadata: { [key: string]: any } }): Promise<void>
+}
+
+type ToolDefinition = {
+  description: string
+  args: z.ZodRawShape
+  execute(args: any, context: ToolContext): Promise<string>
+}
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -80,13 +96,6 @@ export namespace ToolRegistry {
       }
     }
 
-    const plugins = await Plugin.list()
-    for (const plugin of plugins) {
-      for (const [id, def] of Object.entries(plugin.tool ?? {})) {
-        custom.push(fromPlugin(id, def as ToolDefinition))
-      }
-    }
-
     return { custom }
   }
 
@@ -101,7 +110,7 @@ export namespace ToolRegistry {
             ...ctx,
             directory: ctx.directory,
             worktree: ctx.worktree,
-          } as unknown as PluginToolContext
+          } as unknown as ToolContext
           const result = await def.execute(args as any, pluginCtx)
           const out = await Truncate.output(ctx as any, result, {}, initCtx?.agent)
           return {
@@ -178,7 +187,6 @@ export namespace ToolRegistry {
             description: tool.description,
             parameters: tool.parameters,
           }
-          await Plugin.trigger("tool.definition", { toolID: t.id }, output)
           return {
             id: t.id,
             ...tool,

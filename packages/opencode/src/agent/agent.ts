@@ -16,7 +16,6 @@ import PROMPT_TITLE from "./prompt/title.txt"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import path from "path"
-import { Plugin } from "@/util/plugin"
 
 export namespace Agent {
   export const Info = z
@@ -105,7 +104,6 @@ export namespace Agent {
       const language = await this.context.provider.getLanguage(model)
 
       const system = [PROMPT_GENERATE]
-      await Plugin.trigger("experimental.chat.system.transform", { model }, { system })
       const existing = await this.listSorted()
 
       const params = {

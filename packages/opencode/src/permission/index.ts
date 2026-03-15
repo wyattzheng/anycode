@@ -4,7 +4,6 @@ import { Bus } from "@/bus"
 import { SessionID, MessageID } from "@/session/schema"
 import z from "zod"
 import { Log } from "../util/log"
-import { Plugin } from "../util/plugin"
 import { Wildcard } from "../util/wildcard"
 import { PermissionID } from "./schema"
 
@@ -118,16 +117,6 @@ export namespace Permission {
       },
     }
 
-    switch (
-      await Plugin.trigger("permission.ask", info, {
-        status: "ask",
-      }).then((x) => x.status)
-    ) {
-      case "deny":
-        throw new RejectedError(info.sessionID, info.id, info.callID, info.metadata)
-      case "allow":
-        return
-    }
 
     if (!pending.has(input.sessionID)) pending.set(input.sessionID, new Map())
     return new Promise<void>((resolve, reject) => {

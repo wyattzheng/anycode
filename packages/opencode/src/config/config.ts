@@ -64,7 +64,6 @@ export namespace Config {
   function mergeConfigConcatArrays(target: Info, source: Info): Info {
     const merged = mergeDeep(target, source)
     if (target.plugin && source.plugin) {
-      merged.plugin = Array.from(new Set([...target.plugin, ...source.plugin]))
     }
     if (target.instructions && source.instructions) {
       merged.instructions = Array.from(new Set([...target.instructions, ...source.instructions]))
@@ -194,7 +193,6 @@ export namespace Config {
       result.command = mergeDeep(result.command ?? {}, await loadCommand(context, dir))
       result.agent = mergeDeep(result.agent, await loadAgent(context, dir))
       result.agent = mergeDeep(result.agent, await loadMode(context, dir))
-      result.plugin.push(...(await loadPlugin(context, dir)))
     }
 
     // Inline config content overrides all non-managed config sources.
@@ -213,7 +211,6 @@ export namespace Config {
 
 
     // Load managed config files last (highest priority) - enterprise admin-controlled
-    // Kept separate from directories array to avoid write operations when installing plugins
     // which would fail on system directories requiring elevated permissions
     // This way it only loads config file and not skills/plugins/commands
     if (existsSync(managedDir)) {
@@ -503,40 +500,9 @@ export namespace Config {
     return result
   }
 
-  async function loadPlugin(context: AgentContext, dir: string) {
-    const plugins: string[] = []
 
-    for (const item of await Glob.scan(context, "{plugin,plugins}/*.{ts,js}", {
-      cwd: dir,
-      absolute: true,
-      dot: true,
-      symlink: true,
-    })) {
-      plugins.push(pathToFileURL(item).href)
-    }
-    return plugins
-  }
 
-  /**
-   * Extracts a canonical plugin name from a plugin specifier.
-   * - For file:// URLs: extracts filename without extension
-   * - For npm packages: extracts package name without version
-   *
-   * @example
-   * getPluginName("file:///path/to/plugin/foo.js") // "foo"
-   * getPluginName("oh-my-opencode@2.4.3") // "oh-my-opencode"
-   * getPluginName("@scope/pkg@1.0.0") // "@scope/pkg"
-   */
-  export function getPluginName(plugin: string): string {
-    if (plugin.startsWith("file://")) {
-      return path.parse(new URL(plugin).pathname).name
-    }
-    const lastAt = plugin.lastIndexOf("@")
-    if (lastAt > 0) {
-      return plugin.substring(0, lastAt)
-    }
-    return plugin
-  }
+  
 
   /**
    * Deduplicates plugins by name, with later entries (higher priority) winning.

@@ -8,7 +8,6 @@ import { NoSuchModelError, type Provider as SDK } from "ai"
 import { Log } from "../util/log"
 import { BunProc } from "../util/bun"
 import { Hash } from "../util/hash"
-import { Plugin } from "../util/plugin"
 import { NamedError } from "@/util/error"
 import { ModelsDev } from "./models"
 import { Auth } from "../util/auth"
@@ -1262,7 +1261,7 @@ export namespace Provider {
       }
     }
 
-    for (const plugin of await Plugin.list()) {
+    for (const plugin of []) {
       if (!plugin.auth) continue
       const providerID = ProviderID.make(plugin.auth.provider)
       if (disabled.has(providerID)) continue
