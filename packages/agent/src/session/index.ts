@@ -473,20 +473,6 @@ export namespace SessionStatus {
     ),
   }
 
-  /**
-   * SessionStatusService — tracks session busy/idle/retry status (single session).
-   */
-  export class SessionStatusService {
-    private status: Info = { type: "idle" }
-
-    get(): Info {
-      return this.status
-    }
-
-    set(status: Info): void {
-      this.status = status
-    }
-  }
 
 }
 

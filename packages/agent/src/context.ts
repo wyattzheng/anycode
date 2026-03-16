@@ -81,7 +81,7 @@ export interface AgentContext {
 
     // Phase 1+: context-dependent services (created in CodeAgent.init())
     config: Record<string, any>
-    sessionStatus: SessionStatus.SessionStatusService
+    sessionStatus: SessionStatus.Info
 
     sessionPrompt: SessionPrompt.SessionPromptService
 
@@ -91,7 +91,6 @@ export interface AgentContext {
     modelsDev: ModelsDev.ModelsDevService
     toolRegistry: ToolRegistry.ToolRegistryService
     skill: Skill.SkillService
-
 
 
 }
