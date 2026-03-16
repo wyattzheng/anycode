@@ -26,6 +26,7 @@ export namespace Tool {
     messages: MessageV2.WithParts[]
     metadata(input: { title?: string; metadata?: M }): void
     ask(input: { permission: string; patterns: string[]; always: string[]; metadata: Record<string, any> }): Promise<void>
+    emit(event: string, data?: any): void
   }
   export interface Info<Parameters extends z.ZodType = z.ZodType, M extends Metadata = Metadata> {
     id: string

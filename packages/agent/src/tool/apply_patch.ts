@@ -2,7 +2,6 @@ import z from "zod"
 import * as path from "../util/path"
 
 import { Tool } from "./tool"
-import { Bus } from "../bus"
 
 import { Patch } from "./patch"
 import { createTwoFilesPatch, diffLines } from "diff"
@@ -10,7 +9,6 @@ import { assertExternalDirectory } from "./external-directory"
 import { trimDiff } from "./edit"
 import { LSP } from "../util/lsp"
 import DESCRIPTION from "./apply_patch.txt"
-import { File } from "../project"
 import type { AgentContext } from "../context"
 
 const PatchParams = z.object({
@@ -219,9 +217,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
       }
 
       if (edited) {
-        await Bus.publish(ctx, File.Event.Edited, {
-          file: edited,
-        })
+        ctx.emit("file.edited", { file: edited })
       }
     }
 

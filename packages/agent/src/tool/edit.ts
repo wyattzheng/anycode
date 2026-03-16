@@ -9,9 +9,7 @@ import { Tool } from "./tool"
 import { LSP } from "../util/lsp"
 import { createTwoFilesPatch, diffLines } from "diff"
 import DESCRIPTION from "./edit.txt"
-import { File } from "../project"
 
-import { Bus } from "../bus"
 
 
 import { assertExternalDirectory } from "./external-directory"
@@ -69,9 +67,7 @@ export const EditTool = Tool.define("edit", {
           },
         })
         await ctx.fs.write(filePath, params.newString)
-        await Bus.publish(ctx, File.Event.Edited, {
-          file: filePath,
-        })
+        ctx.emit("file.edited", { file: filePath })
 
         ctx.fileTime.read(ctx.sessionID, filePath)
         return
@@ -103,9 +99,7 @@ export const EditTool = Tool.define("edit", {
       })
 
       await ctx.fs.write(filePath, contentNew)
-      await Bus.publish(ctx, File.Event.Edited, {
-        file: filePath,
-      })
+      ctx.emit("file.edited", { file: filePath })
 
       contentNew = await ctx.fs.readText(filePath)
       diff = trimDiff(

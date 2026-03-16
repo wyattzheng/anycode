@@ -290,6 +290,9 @@ export namespace SessionPrompt {
       async ask(_req) {
         // no-op: permission system removed, all operations auto-allowed
       },
+      emit(event, data) {
+        Bus.publish(input.agentContext, event as any, data)
+      },
     })
 
     for (const item of await input.agentContext.toolRegistry.tools(
@@ -490,6 +493,7 @@ export namespace SessionPrompt {
                       messages: [],
                       metadata: async () => { },
                       ask: async () => { },
+                      emit: () => { },
                     }
                     const result = await t.execute(args, readCtx)
                     pieces.push({
@@ -545,6 +549,7 @@ export namespace SessionPrompt {
                   messages: [],
                   metadata: async () => { },
                   ask: async () => { },
+                  emit: () => { },
                 }
                 const result = await ReadTool.init().then((t) => t.execute(args, listCtx))
                 return [

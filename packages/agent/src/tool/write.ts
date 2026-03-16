@@ -4,8 +4,6 @@ import { Tool } from "./tool"
 import { LSP } from "../util/lsp"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./write.txt"
-import { Bus } from "../bus"
-import { File } from "../project"
 
 
 import { trimDiff } from "./edit"
@@ -40,9 +38,7 @@ export const WriteTool = Tool.define("write", {
     })
 
     await ctx.fs.write(filepath, params.content)
-    await Bus.publish(ctx, File.Event.Edited, {
-      file: filepath,
-    })
+    ctx.emit("file.edited", { file: filepath })
 
     ctx.fileTime.read(ctx.sessionID, filepath)
 
