@@ -1,4 +1,5 @@
 import type { AgentContext } from "../context"
+import { Bus } from "../bus"
 import { Decimal } from "decimal.js"
 import z from "zod"
 import { type ProviderMetadata } from "ai"
@@ -13,10 +14,6 @@ import { iife } from "../util/fn"
 import { NotFoundError } from "../storage"
 
 export namespace Memory {
-  /**
-   * Upsert a message into DB. Pure storage — no event emission.
-   * Callers are responsible for publishing bus events.
-   */
   export async function updateMessage(context: AgentContext, msg: any) {
     const time_created = msg.time.created
     const { id, sessionID, ...data } = msg
@@ -25,31 +22,34 @@ export namespace Memory {
       ["id"],
       { data },
     )
+    Bus.publish(context, MessageV2.Event.Updated, {
+      info: msg,
+    })
     return msg
   }
 
-  /**
-   * Remove a message from DB. Pure storage — no event emission.
-   */
   export async function removeMessage(context: AgentContext, input: any) {
     // CASCADE delete handles parts automatically
     context.db.remove("message",
       { op: "and", conditions: [{ op: "eq", field: "id", value: input.messageID }, { op: "eq", field: "session_id", value: input.sessionID }] },
     )
+    Bus.publish(context, MessageV2.Event.Removed, {
+      sessionID: input.sessionID,
+      messageID: input.messageID,
+    })
   }
 
-  /**
-   * Remove a part from DB. Pure storage — no event emission.
-   */
   export async function removePart(context: AgentContext, input: any) {
     context.db.remove("part",
       { op: "and", conditions: [{ op: "eq", field: "id", value: input.partID }, { op: "eq", field: "session_id", value: input.sessionID }] },
     )
+    Bus.publish(context, MessageV2.Event.PartRemoved, {
+      sessionID: input.sessionID,
+      messageID: input.messageID,
+      partID: input.partID,
+    })
   }
 
-  /**
-   * Upsert a part into DB. Pure storage — no event emission.
-   */
   export async function updatePart(context: AgentContext, part: any) {
     const { id, messageID, sessionID, ...data } = part
     const time = Date.now()
@@ -58,17 +58,14 @@ export namespace Memory {
       ["id"],
       { data },
     )
+    Bus.publish(context, MessageV2.Event.PartUpdated, {
+      part: structuredClone(part),
+    })
     return part
   }
 
-  /**
-   * Publish a part delta. Pure passthrough — returns delta data.
-   * Event emission moved to callers (Session namespace).
-   */
-  export async function updatePartDelta(_context: AgentContext, input: any) {
-    // No DB operation — deltas are transient streaming data.
-    // Previously this only called Bus.publish.
-    return input
+  export async function updatePartDelta(context: AgentContext, input: any) {
+    Bus.publish(context, MessageV2.Event.PartDelta, input)
   }
 
   export async function messages(context: AgentContext, input: { sessionID: any; limit?: number }) {
