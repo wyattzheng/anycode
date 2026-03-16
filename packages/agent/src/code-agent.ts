@@ -367,8 +367,7 @@ export class CodeAgent extends EventEmitter {
 
         // Create SessionService and forward its events → CodeAgent
         ctx.session = new SessionService(ctx)
-        const sessionEvents = ["session.updated", "session.created", "todo.updated"]
-        for (const evt of sessionEvents) {
+        for (const evt of ["session.updated", "session.created", "session.status", "session.error", "session.compacted", "todo.updated"]) {
             ctx.session.on(evt, (data: any) => this.emit(evt, data))
         }
 
@@ -609,20 +608,20 @@ export class CodeAgent extends EventEmitter {
                     }
                 }
 
-                // Listen on memory for message events
-                const memoryEvents = ["message.part.delta", "message.part.updated"] as const
-                for (const evt of memoryEvents) {
-                    const handler = (data: any) => globalHandler({ type: evt, properties: data })
-                    this._context.memory.on(evt, handler)
-                    unsubs.push(() => this._context.memory.removeListener(evt, handler))
-                }
-                // Listen on this for session events (emitted by CodeAgent itself)
-                const sessionEvents = ["session.status", "session.error"] as const
-                for (const evt of sessionEvents) {
-                    const handler = (data: any) => globalHandler({ type: evt, properties: data })
-                    this.on(evt, handler)
-                    unsubs.push(() => this.removeListener(evt, handler))
-                }
+                const h1 = (data: any) => globalHandler({ type: "message.part.delta", properties: data })
+                const h2 = (data: any) => globalHandler({ type: "message.part.updated", properties: data })
+                const h3 = (data: any) => globalHandler({ type: "session.status", properties: data })
+                const h4 = (data: any) => globalHandler({ type: "session.error", properties: data })
+                this._context.memory.on("message.part.delta", h1)
+                this._context.memory.on("message.part.updated", h2)
+                this._context.session.on("session.status", h3)
+                this._context.session.on("session.error", h4)
+                unsubs.push(() => {
+                    this._context.memory.removeListener("message.part.delta", h1)
+                    this._context.memory.removeListener("message.part.updated", h2)
+                    this._context.session.removeListener("session.status", h3)
+                    this._context.session.removeListener("session.error", h4)
+                })
 
 
                 const providerID = this.options.provider.id
@@ -693,7 +692,7 @@ export class CodeAgent extends EventEmitter {
             sp.callbacks = []
         }
         this.agentContext.sessionStatus = { type: "idle" }
-        this.emit("session.status", { sessionID: this._currentSessionId, status: { type: "idle" } })
+        this._context.session.emit("session.status", { sessionID: this._currentSessionId, status: { type: "idle" } })
     }
 
     /**
@@ -837,7 +836,7 @@ export class CodeAgent extends EventEmitter {
         if (!opts?.resume) {
             const message = await SessionPrompt.createUserMessage(context, input)
             for (const error of message.errors) {
-                this.emit("session.error", { sessionID, error })
+                this._context.session.emit("session.error", { sessionID, error })
             }
             await context.session.touch(sessionID)
         }
@@ -868,7 +867,7 @@ export class CodeAgent extends EventEmitter {
                 sp.callbacks = []
             }
             context.sessionStatus = { type: "idle" }
-            this.emit("session.status", { sessionID, status: { type: "idle" } })
+            this._context.session.emit("session.status", { sessionID, status: { type: "idle" } })
         })
 
         let structuredOutput: unknown | undefined
@@ -877,7 +876,7 @@ export class CodeAgent extends EventEmitter {
 
         while (true) {
             context.sessionStatus = { type: "busy" }
-            this.emit("session.status", { sessionID, status: { type: "busy" } })
+            this._context.session.emit("session.status", { sessionID, status: { type: "busy" } })
             if (abort.aborted) break
 
             let msgs = await MessageV2.filterCompacted(MessageV2.stream(context, sessionID))
@@ -908,7 +907,7 @@ export class CodeAgent extends EventEmitter {
             const model = await context.provider.getModel(lastUser.model.providerID, lastUser.model.modelID).catch((e) => {
                 if (Provider.ModelNotFoundError.isInstance(e)) {
                     const hint = e.data.suggestions?.length ? ` Did you mean: ${e.data.suggestions.join(", ")}?` : ""
-                    this.emit("session.error", {
+                    this._context.session.emit("session.error", {
                         sessionID,
                         error: new NamedError.Unknown({ message: `Model not found: ${e.data.providerID}/${e.data.modelID}.${hint}` }).toObject(),
                     })
@@ -925,7 +924,7 @@ export class CodeAgent extends EventEmitter {
                     auto: task.auto, overflow: task.overflow, context,
                 })
                 if (result === "stop") break
-                this.emit("session.compacted", { sessionID })
+                this._context.session.emit("session.compacted", { sessionID })
                 continue
             }
 
@@ -993,10 +992,10 @@ export class CodeAgent extends EventEmitter {
             sessionID, model, abort, context,
             onStatusChange: (sid, status) => {
                 context.sessionStatus = status
-                this.emit("session.status", { sessionID: sid, status })
+                context.session.emit("session.status", { sessionID: sid, status })
             },
             onError: (sid, error) => {
-                this.emit("session.error", { sessionID: sid, error })
+                context.session.emit("session.error", { sessionID: sid, error })
             },
         })
 
