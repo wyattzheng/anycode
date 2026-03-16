@@ -609,8 +609,16 @@ export class CodeAgent extends EventEmitter {
                     }
                 }
 
-                const events = ["message.part.delta", "message.part.updated", "session.status", "session.error"] as const
-                for (const evt of events) {
+                // Listen on memory for message events
+                const memoryEvents = ["message.part.delta", "message.part.updated"] as const
+                for (const evt of memoryEvents) {
+                    const handler = (data: any) => globalHandler({ type: evt, properties: data })
+                    this._context.memory.on(evt, handler)
+                    unsubs.push(() => this._context.memory.removeListener(evt, handler))
+                }
+                // Listen on this for session events (emitted by CodeAgent itself)
+                const sessionEvents = ["session.status", "session.error"] as const
+                for (const evt of sessionEvents) {
                     const handler = (data: any) => globalHandler({ type: evt, properties: data })
                     this.on(evt, handler)
                     unsubs.push(() => this.removeListener(evt, handler))
