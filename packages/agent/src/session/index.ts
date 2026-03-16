@@ -112,15 +112,6 @@ export namespace Session {
     }
   }
 
-  function getForkedTitle(title: string): string {
-    const match = title.match(/^(.+) \(fork #(\d+)\)$/)
-    if (match) {
-      const base = match[1]
-      const num = parseInt(match[2], 10)
-      return `${base} (fork #${num + 1})`
-    }
-    return `${title} (fork #1)`
-  }
 
   export const Info = z
     .object({
@@ -190,19 +181,6 @@ export namespace Session {
         info: Info,
       }),
     ),
-    Deleted: BusEvent.define(
-      "session.deleted",
-      z.object({
-        info: Info,
-      }),
-    ),
-    Diff: BusEvent.define(
-      "session.diff",
-      z.object({
-        sessionID: SessionID.zod,
-        diff: MessageV2.FileDiff.array(),
-      }),
-    ),
     Error: BusEvent.define(
       "session.error",
       z.object({
@@ -230,50 +208,6 @@ export namespace Session {
       })
     }
 
-  export type ForkInput = {
-    sessionID: SessionID
-    messageID?: MessageID
-  }
-
-  export const fork = async (
-    context: import("../context").AgentContext,
-    input: ForkInput,
-  ) => {
-      const original = await get(context, input.sessionID)
-      if (!original) throw new Error("session not found")
-      const title = getForkedTitle(original.title)
-      const session = await createNext(context, {
-        directory: context.directory,
-        workspaceID: original.workspaceID,
-        title,
-      })
-      const msgs = await messages(context, { sessionID: input.sessionID })
-      const idMap = new Map<string, MessageID>()
-
-      for (const msg of msgs) {
-        if (input.messageID && msg.info.id >= input.messageID) break
-        const newID = MessageID.ascending()
-        idMap.set(msg.info.id, newID)
-
-        const parentID = msg.info.role === "assistant" && msg.info.parentID ? idMap.get(msg.info.parentID) : undefined
-        const cloned = await updateMessage(context, {
-          ...msg.info,
-          sessionID: session.id,
-          id: newID,
-          ...(parentID && { parentID }),
-        })
-
-        for (const part of msg.parts) {
-          await updatePart(context, {
-            ...part,
-            id: PartID.ascending(),
-            messageID: cloned.id,
-            sessionID: session.id,
-          })
-        }
-      }
-      return session
-    }
 
   export async function touch(context: import("../context").AgentContext, sessionID: any) {
     const now = Date.now()
@@ -325,6 +259,9 @@ export namespace Session {
     return result
   }
 
+
+
+
   export function plan(context: import("../context").AgentContext, input: { slug: string; time: { created: number } }) {
     const base = context.project.vcs
       ? path.join(context.worktree, ".opencode", "plans")
@@ -351,71 +288,7 @@ export namespace Session {
     return info
   }
 
-  export async function setArchived(context: import("../context").AgentContext, input: any) {
-    const row = context.db.update("session",
-      { op: "eq", field: "id", value: input.sessionID },
-      { time_archived: input.time },
-    )
-    if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
-    const info = fromRow(row)
-    Bus.publish(context, Event.Updated, { info })
-    return info
-  }
 
-  export async function setRevert(context: import("../context").AgentContext, input: any) {
-    const row = context.db.update("session",
-      { op: "eq", field: "id", value: input.sessionID },
-      {
-        revert: input.revert ?? null,
-        summary_additions: input.summary?.additions,
-        summary_deletions: input.summary?.deletions,
-        summary_files: input.summary?.files,
-        time_updated: Date.now(),
-      },
-    )
-    if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
-    const info = fromRow(row)
-    Bus.publish(context, Event.Updated, { info })
-    return info
-  }
-
-  export async function clearRevert(context: import("../context").AgentContext, sessionID: any) {
-    const row = context.db.update("session",
-      { op: "eq", field: "id", value: sessionID },
-      {
-        revert: null,
-        time_updated: Date.now(),
-      },
-    )
-    if (!row) throw new NotFoundError({ message: `Session not found: ${sessionID}` })
-    const info = fromRow(row)
-    Bus.publish(context, Event.Updated, { info })
-    return info
-  }
-
-  export async function setSummary(context: import("../context").AgentContext, input: any) {
-    const row = context.db.update("session",
-      { op: "eq", field: "id", value: input.sessionID },
-      {
-        summary_additions: input.summary?.additions,
-        summary_deletions: input.summary?.deletions,
-        summary_files: input.summary?.files,
-        time_updated: Date.now(),
-      },
-    )
-    if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
-    const info = fromRow(row)
-    Bus.publish(context, Event.Updated, { info })
-    return info
-  }
-
-  export async function diff(context: AgentContext, sessionID: SessionID) {
-    try {
-      return await Storage.read<MessageV2.FileDiff[]>(context, ["session_diff", sessionID])
-    } catch {
-      return []
-    }
-  }
 
   export async function messages(context: import("../context").AgentContext, input: { sessionID: any; limit?: number }) {
     return context.memory.messages(input)
@@ -528,43 +401,7 @@ export namespace Session {
     }
   }
 
-  export const children = async (
-    context: import("../context").AgentContext,
-    parentID: SessionID,
-  ) => {
-    const project = context.project
-    const rows = context.db.findMany("session", {
-      filter: { op: "and", conditions: [
-        { op: "eq", field: "project_id", value: project.id },
-        { op: "eq", field: "parent_id", value: parentID },
-      ]},
-    })
-    
-    return rows.map(fromRow)
-  }
 
-  export const remove = async (
-    context: import("../context").AgentContext,
-    sessionID: SessionID,
-  ) => {
-    const project = context.project
-    try {
-      const session = await get(context, sessionID)
-      for (const child of await children(context, sessionID)) {
-        await remove(context, child.id)
-      }
-
-      // CASCADE delete handles messages and parts automatically
-      {
-        context.db.remove("session", { op: "eq", field: "id", value: sessionID })
-        Bus.publish(context, Event.Deleted, {
-            info: session,
-          })
-      }
-    } catch (e) {
-      log.error(e)
-    }
-  }
 
   export async function updateMessage(context: import("../context").AgentContext, msg: any) {
     return context.memory.updateMessage(msg)
