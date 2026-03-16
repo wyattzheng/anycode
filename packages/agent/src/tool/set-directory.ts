@@ -1,14 +1,5 @@
 import z from "zod"
 import { Tool } from "./tool"
-import { BusEvent } from "../bus"
-
-export namespace SetDirectory {
-  /** Event emitted when agent sets the working directory */
-  export const Event = BusEvent.define(
-    "directory.set",
-    z.object({ directory: z.string() }),
-  )
-}
 
 export const SetWorkingDirectoryTool = Tool.define("set_working_directory", {
   description: `Use this tool to set the working directory for this session. The user will tell you which project or folder they want to work on. The directory must be an absolute path to an existing directory on the file system. After setting the directory, the full development environment (file browser, diff viewer, etc.) will become available.
@@ -41,9 +32,8 @@ IMPORTANT: This tool can only be called ONCE per session. Once the working direc
       }
     }
 
-    // Emit bus event — server handler calls agent.setWorkingDirectory()
-    // which updates options, context, project, and containsPath
-    ctx.bus.publish(SetDirectory.Event, { directory: dir })
+    // Emit tool event — server handler calls agent.setWorkingDirectory()
+    ctx.emit("directory.set", { directory: dir })
 
     return {
       title: `Set directory: ${dir}`,
@@ -52,3 +42,4 @@ IMPORTANT: This tool can only be called ONCE per session. Once the working direc
     }
   },
 })
+

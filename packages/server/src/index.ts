@@ -118,7 +118,7 @@ class NodeGitProvider {
 
 // ── Agent Bootstrap ────────────────────────────────────────────────────────
 
-import { SetDirectory } from "@any-code/agent"
+
 
 interface SessionEntry {
   id: string
@@ -191,7 +191,7 @@ async function createSession(directory: string = ""): Promise<SessionEntry> {
   sessions.set(id, entry)
 
   // Listen for directory.set events from the agent's set_working_directory tool
-  agent.bus.subscribe(SetDirectory.Event, (event) => {
+  agent.bus.on("directory.set", (event: any) => {
     const dir = event.properties.directory
     entry.directory = dir
     try { agent.setWorkingDirectory(dir) } catch { /* already set */ }

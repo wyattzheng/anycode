@@ -16,7 +16,7 @@ import os from "os"
 import fs from "fs"
 import path from "path"
 import { CodeAgent, SqliteNoSqlDb } from "../src/index"
-import { SetDirectory } from "../src/tool/set-directory"
+
 import { buildSetDirectoryFixtures } from "./fixtures/set-directory-stream"
 
 // ── Inline test stubs ─────────────────────────────────────────────────
@@ -147,7 +147,7 @@ describe("CodeAgent: set_working_directory via mock conversation", () => {
 
         // Subscribe to bus event (same as server does)
         setDir = ""
-        agent.bus.subscribe(SetDirectory.Event, (event) => {
+        agent.bus.on("directory.set", (event: any) => {
             setDir = event.properties.directory
             try { agent.setWorkingDirectory(event.properties.directory) } catch { /* */ }
         })
