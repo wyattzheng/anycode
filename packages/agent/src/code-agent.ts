@@ -365,6 +365,13 @@ export class CodeAgent {
         // Create MemoryService (needs ctx reference)
         ctx.memory = new MemoryService(ctx)
 
+        // Forward MemoryService events → Bus (for server WebSocket push + chat streaming)
+        ctx.memory.on("message.updated", (data: any) => ctx.bus.publish(MessageV2.Event.Updated, data))
+        ctx.memory.on("message.removed", (data: any) => ctx.bus.publish(MessageV2.Event.Removed, data))
+        ctx.memory.on("message.part.updated", (data: any) => ctx.bus.publish(MessageV2.Event.PartUpdated, data))
+        ctx.memory.on("message.part.removed", (data: any) => ctx.bus.publish(MessageV2.Event.PartRemoved, data))
+        ctx.memory.on("message.part.delta", (data: any) => ctx.bus.publish(MessageV2.Event.PartDelta, data))
+
         // Phase 1: context-dependent services
         ctx.config = (this.options.config ?? {}) as Record<string, any>
         ctx.sessionStatus = new SessionStatus.SessionStatusService(ctx)

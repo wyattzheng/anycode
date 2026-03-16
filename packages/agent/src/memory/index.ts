@@ -1,9 +1,8 @@
 import type { AgentContext } from "../context"
-import { Bus } from "../bus"
 import { Decimal } from "decimal.js"
 import z from "zod"
 import { type ProviderMetadata } from "ai"
-
+import { EventEmitter } from "events"
 
 import { MessageV2 } from "./message-v2"
 import type { Provider } from "../provider/provider"
@@ -16,11 +15,13 @@ import { NotFoundError } from "../storage"
 /**
  * MemoryService — manages message & part persistence + real-time event emission.
  *
- * Each CodeAgent instance gets its own MemoryService via AgentContext.
- * All write operations emit bus events immediately (required for streaming).
+ * Uses EventEmitter for self-contained event emission.
+ * Events are forwarded to the bus at the integration layer (code-agent.ts).
  */
-export class MemoryService {
-  constructor(private context: AgentContext) {}
+export class MemoryService extends EventEmitter {
+  constructor(private context: AgentContext) {
+    super()
+  }
 
   async updateMessage(msg: any) {
     const time_created = msg.time.created
@@ -30,9 +31,7 @@ export class MemoryService {
       ["id"],
       { data },
     )
-    Bus.publish(this.context, MessageV2.Event.Updated, {
-      info: msg,
-    })
+    this.emit("message.updated", { info: msg })
     return msg
   }
 
@@ -41,7 +40,7 @@ export class MemoryService {
     this.context.db.remove("message",
       { op: "and", conditions: [{ op: "eq", field: "id", value: input.messageID }, { op: "eq", field: "session_id", value: input.sessionID }] },
     )
-    Bus.publish(this.context, MessageV2.Event.Removed, {
+    this.emit("message.removed", {
       sessionID: input.sessionID,
       messageID: input.messageID,
     })
@@ -51,7 +50,7 @@ export class MemoryService {
     this.context.db.remove("part",
       { op: "and", conditions: [{ op: "eq", field: "id", value: input.partID }, { op: "eq", field: "session_id", value: input.sessionID }] },
     )
-    Bus.publish(this.context, MessageV2.Event.PartRemoved, {
+    this.emit("message.part.removed", {
       sessionID: input.sessionID,
       messageID: input.messageID,
       partID: input.partID,
@@ -66,14 +65,12 @@ export class MemoryService {
       ["id"],
       { data },
     )
-    Bus.publish(this.context, MessageV2.Event.PartUpdated, {
-      part: structuredClone(part),
-    })
+    this.emit("message.part.updated", { part: structuredClone(part) })
     return part
   }
 
   async updatePartDelta(input: any) {
-    Bus.publish(this.context, MessageV2.Event.PartDelta, input)
+    this.emit("message.part.delta", input)
   }
 
   async messages(input: { sessionID: any; limit?: number }) {
@@ -116,18 +113,12 @@ export namespace Memory {
           0) as number,
       )
 
-      // OpenRouter provides inputTokens as the total count of input tokens (including cached).
-      // AFAIK other providers (OpenRouter/OpenAI/Gemini etc.) do it the same way e.g. vercel/ai#8794 (comment)
-      // Anthropic does it differently though - inputTokens doesn't include cached tokens.
-      // It looks like OpenCode's cost calculation assumes all providers return inputTokens the same way Anthropic does (I'm guessing getUsage logic was originally implemented with anthropic), so it's causing incorrect cost calculation for OpenRouter and others.
       const excludesCachedTokens = !!(input.metadata?.["anthropic"] || input.metadata?.["bedrock"])
       const adjustedInputTokens = safe(
         excludesCachedTokens ? inputTokens : inputTokens - cacheReadInputTokens - cacheWriteInputTokens,
       )
 
       const total = iife(() => {
-        // Anthropic doesn't provide total_tokens, also ai sdk will vastly undercount if we
-        // don't compute from components
         if (
           input.model.api.npm === "@ai-sdk/anthropic" ||
           input.model.api.npm === "@ai-sdk/amazon-bedrock" ||
@@ -160,8 +151,6 @@ export namespace Memory {
             .add(new Decimal(tokens.output).mul(costInfo?.output ?? 0).div(1_000_000))
             .add(new Decimal(tokens.cache.read).mul(costInfo?.cache?.read ?? 0).div(1_000_000))
             .add(new Decimal(tokens.cache.write).mul(costInfo?.cache?.write ?? 0).div(1_000_000))
-            // TODO: update models.dev to have better pricing model, for now:
-            // charge reasoning tokens at the same rate as output tokens
             .add(new Decimal(tokens.reasoning).mul(costInfo?.output ?? 0).div(1_000_000))
             .toNumber(),
         ),
