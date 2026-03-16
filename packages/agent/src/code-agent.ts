@@ -607,7 +607,7 @@ export class CodeAgent {
                 const providerID = this.options.provider.id
                 const modelID = this.options.provider.model
 
-                await this.prepare({
+                await this.runLoop({
                     sessionID: sessionId as any,
                     model: {
                         providerID: providerID as any,
@@ -622,8 +622,6 @@ export class CodeAgent {
                     ...(this.options.systemPrompt ? { system: this.options.systemPrompt } : {}),
                     context: this.agentContext,
                 })
-
-                await this.runLoop(sessionId as any)
 
             } catch (err: any) {
                 console.error("Error from SessionPrompt.prompt:", err)
@@ -667,7 +665,13 @@ export class CodeAgent {
      */
     async abort(): Promise<void> {
         this.assertInitialized()
-        await SessionPrompt.cancel(this.agentContext)
+        const sp = this.agentContext.sessionPrompt
+        if (sp.abort) {
+            sp.abort.abort()
+            sp.abort = undefined
+            sp.callbacks = []
+        }
+        this.agentContext.sessionStatus.set({ type: "idle" })
         Bus.publish(this.agentContext, SessionStatus.Event.Status, { sessionID: this._currentSessionId as any, status: { type: "idle" as const } })
     }
 
@@ -802,40 +806,47 @@ export class CodeAgent {
     // ── Core Loop ──────────────────────────────────────────────────
 
     /**
-     * Prepare a prompt — create user message, set permissions.
-     * Call runLoop() after this to start the agent loop.
+     * Main agent loop — creates user message, then iterates through reasoning, tool calls, subtasks, and compaction.
      */
-    async prepare(input: SessionPrompt.PromptInput): Promise<MessageV2.WithParts | void> {
+    async runLoop(input: SessionPrompt.PromptInput, opts?: { resume?: boolean }): Promise<MessageV2.WithParts> {
         const context = this.agentContext
-        const session = await Session.get(context, input.sessionID)
+        const sessionID = input.sessionID
 
-
-        const message = await SessionPrompt.createUserMessage(context, input)
-        for (const error of message.errors) {
-            Bus.publish(context, Session.Event.Error, { sessionID: input.sessionID, error })
+        // ── Prepare: create user message ──
+        if (!opts?.resume) {
+            const message = await SessionPrompt.createUserMessage(context, input)
+            for (const error of message.errors) {
+                Bus.publish(context, Session.Event.Error, { sessionID, error })
+            }
+            await Session.touch(context, sessionID)
         }
-        await Session.touch(context, input.sessionID)
 
-
-        return message
-    }
-
-    /**
-     * Main agent loop — iterates through reasoning, tool calls, subtasks, and compaction.
-     */
-    async runLoop(sessionID: SessionID, opts?: { resume?: boolean }): Promise<MessageV2.WithParts> {
-        const context = this.agentContext
-        const abort = opts?.resume
-            ? SessionPrompt.resume(context)
-            : SessionPrompt.start(context)
+        // ── Acquire abort signal ──
+        const sp = context.sessionPrompt
+        let abort: AbortSignal | undefined
+        if (opts?.resume) {
+            abort = sp.abort?.signal
+        } else {
+            if (!sp.abort) {
+                const controller = new AbortController()
+                sp.abort = controller
+                sp.callbacks = []
+                abort = controller.signal
+            }
+        }
         if (!abort) {
             return new Promise<MessageV2.WithParts>((resolve, reject) => {
-                context.sessionPrompt.callbacks.push({ resolve, reject })
+                sp.callbacks.push({ resolve, reject })
             })
         }
 
         using _ = defer(() => {
-            SessionPrompt.cancel(context)
+            if (sp.abort) {
+                sp.abort.abort()
+                sp.abort = undefined
+                sp.callbacks = []
+            }
+            context.sessionStatus.set({ type: "idle" })
             Bus.publish(context, SessionStatus.Event.Status, { sessionID, status: { type: "idle" as const } })
         })
 

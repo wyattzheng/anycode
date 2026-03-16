@@ -199,34 +199,8 @@ export namespace SessionPrompt {
     return parts
   }
 
-  export function start(context: AgentContext) {
-    const sp = context.sessionPrompt
-    if (sp.abort) return
-    const controller = new AbortController()
-    sp.abort = controller
-    sp.callbacks = []
-    return controller.signal
-  }
 
-  export function resume(context: AgentContext) {
-    const sp = context.sessionPrompt
-    if (!sp.abort) return
-    return sp.abort.signal
-  }
 
-  export function cancel(context: AgentContext) {
-    log.info("cancel")
-    const sp = context.sessionPrompt
-    if (!sp.abort) {
-      context.sessionStatus.set({ type: "idle" })
-      return
-    }
-    sp.abort.abort()
-    sp.abort = undefined
-    sp.callbacks = []
-    context.sessionStatus.set({ type: "idle" })
-    return
-  }
 
 
 
