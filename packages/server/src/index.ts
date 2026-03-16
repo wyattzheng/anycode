@@ -367,7 +367,7 @@ async function handleChat(req: http.IncomingMessage, res: http.ServerResponse) {
   })
 
   try {
-    for await (const event of session.agent.chat(message, session.agent.sessionId ?? undefined)) {
+    for await (const event of session.agent.chat(message)) {
       res.write(`data: ${JSON.stringify(event)}\n\n`)
     }
   } catch (err: any) {
