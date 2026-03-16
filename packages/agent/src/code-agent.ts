@@ -830,6 +830,9 @@ export class CodeAgent {
 
 
         const message = await SessionPrompt.createUserMessage(context, input)
+        for (const error of message.errors) {
+            Bus.publish(context, Session.Event.Error, { sessionID: input.sessionID, error })
+        }
         await Session.touch(context, input.sessionID)
 
 

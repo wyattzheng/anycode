@@ -385,6 +385,8 @@ export namespace SessionPrompt {
       id: part.id ? PartID.make(part.id) : PartID.ascending(),
     })
 
+    const errors: any[] = []
+
     const parts = await Promise.all(
       input.parts.map(async (part): Promise<Draft<MessageV2.Part>[]> => {
         if (part.type === "file") {
@@ -518,12 +520,7 @@ export namespace SessionPrompt {
                   .catch((error) => {
                     log.error("failed to read file", { error })
                     const message = error instanceof Error ? error.message : error.toString()
-                    Bus.publish(context, Session.Event.Error, {
-                      sessionID: input.sessionID,
-                      error: new NamedError.Unknown({
-                        message,
-                      }).toObject(),
-                    })
+                    errors.push(new NamedError.Unknown({ message }).toObject())
                     pieces.push({
                       messageID: info.id,
                       sessionID: input.sessionID,
@@ -639,6 +636,7 @@ export namespace SessionPrompt {
     return {
       info,
       parts,
+      errors,
     }
   }
 
