@@ -363,6 +363,7 @@ export namespace LLMRunner {
     abort: AbortSignal
     context: AgentContext
     onStatusChange?: (sessionID: SessionID, status: SessionStatus.Info) => void
+    onError?: (sessionID: SessionID, error: any) => void
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
     let blocked = false
@@ -647,10 +648,7 @@ export namespace LLMRunner {
             const error = MessageV2.fromError(e, { providerID: input.model.providerID })
             if (MessageV2.ContextOverflowError.isInstance(error)) {
               needsCompaction = true
-              Bus.publish(input.context, Session.Event.Error, {
-                sessionID: input.sessionID,
-                error,
-              })
+              input.onError?.(input.sessionID, error)
             } else {
               const retry = SessionRetry.retryable(error)
               if (retry !== undefined) {
@@ -666,10 +664,7 @@ export namespace LLMRunner {
                 continue
               }
               input.assistantMessage.error = error
-              Bus.publish(input.context, Session.Event.Error, {
-                sessionID: input.assistantMessage.sessionID,
-                error: input.assistantMessage.error,
-              })
+              input.onError?.(input.assistantMessage.sessionID, input.assistantMessage.error)
               input.onStatusChange?.(input.sessionID, { type: "idle" })
             }
           }

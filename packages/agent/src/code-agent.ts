@@ -978,6 +978,9 @@ export class CodeAgent {
                 context.sessionStatus.set(sid, status)
                 Bus.publish(context, SessionStatus.Event.Status, { sessionID: sid, status })
             },
+            onError: (sid, error) => {
+                Bus.publish(context, Session.Event.Error, { sessionID: sid, error })
+            },
         })
 
 
