@@ -1,4 +1,4 @@
-import { BusEvent } from "../bus"
+
 import { SessionID, MessageID, PartID } from "../session/schema"
 import z from "zod"
 import { NamedError } from "../util/error"
@@ -452,45 +452,7 @@ export namespace MessageV2 {
   })
   export type Info = z.infer<typeof Info>
 
-  export const Event = {
-    Updated: BusEvent.define(
-      "message.updated",
-      z.object({
-        info: Info,
-      }),
-    ),
-    Removed: BusEvent.define(
-      "message.removed",
-      z.object({
-        sessionID: SessionID.zod,
-        messageID: MessageID.zod,
-      }),
-    ),
-    PartUpdated: BusEvent.define(
-      "message.part.updated",
-      z.object({
-        part: Part,
-      }),
-    ),
-    PartDelta: BusEvent.define(
-      "message.part.delta",
-      z.object({
-        sessionID: SessionID.zod,
-        messageID: MessageID.zod,
-        partID: PartID.zod,
-        field: z.string(),
-        delta: z.string(),
-      }),
-    ),
-    PartRemoved: BusEvent.define(
-      "message.part.removed",
-      z.object({
-        sessionID: SessionID.zod,
-        messageID: MessageID.zod,
-        partID: PartID.zod,
-      }),
-    ),
-  }
+
 
   export const WithParts = z.object({
     info: Info,

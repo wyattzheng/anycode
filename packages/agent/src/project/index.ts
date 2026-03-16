@@ -13,7 +13,7 @@ import { Log } from "../util/log"
 import { Flag } from "../util/flag"
 
 
-import { BusEvent } from "../bus"
+
 import { Glob } from "../util/glob"
 
 
@@ -233,9 +233,6 @@ export namespace Project {
     .meta({ ref: "Project" })
   export type Info = z.infer<typeof Info>
 
-  export const Event = {
-    Updated: BusEvent.define("project.updated", Info),
-  }
 
   type Row = Record<string, any>
 
@@ -290,10 +287,4 @@ export namespace Project {
 
 
 
-// ── File ────────────────────────────────────────────────────────────────────
 
-export namespace File {
-  export const Event = {
-    Edited: BusEvent.define("file.edited", z.object({ file: z.string() })),
-  }
-}

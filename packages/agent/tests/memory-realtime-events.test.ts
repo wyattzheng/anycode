@@ -2,11 +2,11 @@ import { testPaths, testNodeDeps } from "./_test-paths"
 /**
  * Test: Real-time event emission during chat streaming
  *
- * Verifies that bus events are emitted IN REAL-TIME as the LLM streams
+ * Verifies that events are emitted IN REAL-TIME as the LLM streams
  * its response — not batched or deferred until after chat() completes.
  *
  * This is the critical invariant for AnyCode's streaming architecture:
- * the server uses bus.subscribeAll to push events to the client via WebSocket,
+ * the server uses agent.on() to push events to the client via WebSocket,
  * so events MUST fire immediately as they happen.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest"
@@ -41,11 +41,15 @@ describe("Real-time event emission during chat", () => {
     afterAll(() => cleanupTempDir(tmpDir))
 
     it("bus events should fire BEFORE chat() completes", async () => {
-        // Track bus events received via subscribeAll (same mechanism as server/index.ts)
+        // Track events received via agent.on() (same mechanism as server/index.ts)
         const busEvents: Array<{ type: string; time: number }> = []
-        const unsub = agent.bus.subscribeAll((payload: any) => {
-            busEvents.push({ type: payload.type, time: Date.now() })
-        })
+        const trackedEvents = ["message.part.updated", "message.part.delta", "message.updated", "session.status", "session.error"]
+        const handlers: Array<() => void> = []
+        for (const evt of trackedEvents) {
+            const handler = () => { busEvents.push({ type: evt, time: Date.now() }) }
+            agent.on(evt, handler)
+            handlers.push(() => agent.removeListener(evt, handler))
+        }
 
         // Track chat() events received via the async generator
         const chatEvents: Array<{ type: string; time: number }> = []
@@ -56,7 +60,7 @@ describe("Real-time event emission during chat", () => {
         }
         chatDoneTime = Date.now()
 
-        unsub()
+        handlers.forEach(fn => fn())
 
         // ── Assertions ──
 
@@ -88,11 +92,10 @@ describe("Real-time event emission during chat", () => {
 
     it("text.delta chat events should correspond to real-time bus PartDelta events", async () => {
         const partDeltaEvents: string[] = []
-        const unsub = agent.bus.subscribeAll((payload: any) => {
-            if (payload.type === "message.part.delta") {
-                partDeltaEvents.push(payload.properties?.delta ?? "")
-            }
-        })
+        const handler = (data: any) => {
+            partDeltaEvents.push(data?.delta ?? "")
+        }
+        agent.on("message.part.delta", handler)
 
         const chatDeltas: string[] = []
         let firstChatDeltaSawBusEvents = -1
@@ -108,7 +111,7 @@ describe("Real-time event emission during chat", () => {
             }
         }
 
-        unsub()
+        agent.removeListener("message.part.delta", handler)
 
         // Bus must have had PartDelta events by the time first text.delta arrived in chat
         expect(firstChatDeltaSawBusEvents).toBeGreaterThan(0)

@@ -197,7 +197,7 @@ export namespace Session {
       )
       if (!row) throw new NotFoundError({ message: `Session not found: ${sessionID}` })
       const info = fromRow(row)
-      context.bus.emitEvent("session.updated", { info })
+      context.emitEvent("session.updated", { info })
     }
   }
 
@@ -228,9 +228,9 @@ export namespace Session {
     log.info("created", result)
     {
       context.db.insert("session", toRow(result))
-      context.bus.emitEvent("session.created", { info: result })
+      context.emitEvent("session.created", { info: result })
     }
-    context.bus.emitEvent("session.updated", { info: result })
+    context.emitEvent("session.updated", { info: result })
     return result
   }
 
@@ -259,7 +259,7 @@ export namespace Session {
     )
     if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
     const info = fromRow(row)
-    context.bus.emitEvent("session.updated", { info })
+    context.emitEvent("session.updated", { info })
     return info
   }
 
@@ -459,7 +459,7 @@ export namespace Todo {
         })
       }
     })
-    context.bus.emitEvent("todo.updated", input)
+    context.emitEvent("todo.updated", input)
   }
 
   export function get(context: AgentContext, sessionID: SessionID) {

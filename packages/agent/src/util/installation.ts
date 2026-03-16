@@ -3,7 +3,6 @@
  * Provides VERSION/CHANNEL/USER_AGENT constants used throughout the codebase.
  */
 import z from "zod"
-import { BusEvent } from "../bus"
 import { Flag } from "../util/flag"
 
 declare global {
@@ -22,21 +21,6 @@ export namespace Installation {
 
   export function isLocal() {
     return CHANNEL === "local"
-  }
-
-  export const Event = {
-    Updated: BusEvent.define(
-      "installation.updated",
-      z.object({
-        version: z.string(),
-      }),
-    ),
-    UpdateAvailable: BusEvent.define(
-      "installation.update-available",
-      z.object({
-        version: z.string(),
-      }),
-    ),
   }
 
   export const Info = z.object({

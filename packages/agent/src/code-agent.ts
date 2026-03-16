@@ -29,7 +29,7 @@ import type { VFS } from "./util/vfs"
 import type { SearchProvider } from "./util/search"
 import type { GitProvider } from "./util/git"
 import { EnvService } from "./util/env"
-import { BusService } from "./bus"
+import { EventEmitter } from "events"
 import { SchedulerService } from "./util/scheduler"
 import { FileTimeService } from "./project"
 import { Database } from "./storage"
@@ -37,7 +37,7 @@ import { ToolRegistry } from "./tool/registry"
 import { Tool } from "./tool/tool"
 import { Session } from "./session"
 import { SessionPrompt } from "./session/session"
-import { Bus } from "./bus"
+
 
 import { MessageV2 } from "./memory/message-v2"
 import { MemoryService } from "./memory"
@@ -239,7 +239,7 @@ export interface CodeAgentEvent {
 
 // ── CodeAgent Class ────────────────────────────────────────────────────────
 
-export class CodeAgent {
+export class CodeAgent extends EventEmitter {
     private options: CodeAgentOptions
     private initialized = false
     private _currentSessionId: string | null = null
@@ -250,19 +250,26 @@ export class CodeAgent {
 
     // ── Phase 0: stateless services (no context dependency) ──────
     readonly env: EnvService
-    readonly bus: BusService
     readonly scheduler: SchedulerService
     readonly fileTime: FileTimeService
 
     constructor(options: CodeAgentOptions) {
+        super()
         this.options = options
         this._git = options.git
+        this.setMaxListeners(100)
 
         // Create stateless services
         this.env = new EnvService()
-        this.bus = new BusService()
         this.scheduler = new SchedulerService()
         this.fileTime = new FileTimeService()
+    }
+
+    /**
+     * Emit a typed event.
+     */
+    emitEvent(type: string, data: any) {
+        this.emit(type, data)
     }
 
     /**
@@ -356,7 +363,7 @@ export class CodeAgent {
             },
             // Phase 0: stateless services
             env: this.env,
-            bus: this.bus,
+            emitEvent: (type: string, data: any) => this.emitEvent(type, data),
             scheduler: this.scheduler,
             fileTime: this.fileTime,
             memory: undefined as any, // will be set below after ctx is created
@@ -365,12 +372,12 @@ export class CodeAgent {
         // Create MemoryService (needs ctx reference)
         ctx.memory = new MemoryService(ctx)
 
-        // Forward MemoryService events → Bus (for server WebSocket push + chat streaming)
-        ctx.memory.on("message.updated", (data: any) => ctx.bus.publish(MessageV2.Event.Updated, data))
-        ctx.memory.on("message.removed", (data: any) => ctx.bus.publish(MessageV2.Event.Removed, data))
-        ctx.memory.on("message.part.updated", (data: any) => ctx.bus.publish(MessageV2.Event.PartUpdated, data))
-        ctx.memory.on("message.part.removed", (data: any) => ctx.bus.publish(MessageV2.Event.PartRemoved, data))
-        ctx.memory.on("message.part.delta", (data: any) => ctx.bus.publish(MessageV2.Event.PartDelta, data))
+        // Forward MemoryService events → CodeAgent EventEmitter
+        ctx.memory.on("message.updated", (data: any) => this.emitEvent("message.updated", data))
+        ctx.memory.on("message.removed", (data: any) => this.emitEvent("message.removed", data))
+        ctx.memory.on("message.part.updated", (data: any) => this.emitEvent("message.part.updated", data))
+        ctx.memory.on("message.part.removed", (data: any) => this.emitEvent("message.part.removed", data))
+        ctx.memory.on("message.part.delta", (data: any) => this.emitEvent("message.part.delta", data))
 
         // Phase 1: context-dependent services
         ctx.config = (this.options.config ?? {}) as Record<string, any>
@@ -494,7 +501,7 @@ export class CodeAgent {
                     const props = payload.properties
 
                     // ── PartDelta: route to thinking.delta or text.delta ──
-                    if (type === MessageV2.Event.PartDelta.type) {
+                    if (type === "message.part.delta") {
                         const partType = partTypeMap.get(props.partID)
                         if (partType === "reasoning") {
                             push({
@@ -510,7 +517,7 @@ export class CodeAgent {
                     }
 
                     // ── PartUpdated: reasoning / text / tool / step-finish ──
-                    if (type === MessageV2.Event.PartUpdated.type) {
+                    if (type === "message.part.updated") {
                         const part = props?.part
                         if (!part) return
 
@@ -601,7 +608,13 @@ export class CodeAgent {
                         })
                     }
                 }
-                unsubs.push(this.bus.subscribeAll(globalHandler))
+
+                const events = ["message.part.delta", "message.part.updated", "session.status", "session.error"] as const
+                for (const evt of events) {
+                    const handler = (data: any) => globalHandler({ type: evt, properties: data })
+                    this.on(evt, handler)
+                    unsubs.push(() => this.removeListener(evt, handler))
+                }
 
 
                 const providerID = this.options.provider.id
@@ -672,7 +685,7 @@ export class CodeAgent {
             sp.callbacks = []
         }
         this.agentContext.sessionStatus = { type: "idle" }
-        this.bus.emitEvent("session.status", { sessionID: this._currentSessionId, status: { type: "idle" } })
+        this.emitEvent("session.status", { sessionID: this._currentSessionId, status: { type: "idle" } })
     }
 
     /**
@@ -816,7 +829,7 @@ export class CodeAgent {
         if (!opts?.resume) {
             const message = await SessionPrompt.createUserMessage(context, input)
             for (const error of message.errors) {
-                this.bus.emitEvent("session.error", { sessionID, error })
+                this.emitEvent("session.error", { sessionID, error })
             }
             await Session.touch(context, sessionID)
         }
@@ -847,7 +860,7 @@ export class CodeAgent {
                 sp.callbacks = []
             }
             context.sessionStatus = { type: "idle" }
-            this.bus.emitEvent("session.status", { sessionID, status: { type: "idle" } })
+            this.emitEvent("session.status", { sessionID, status: { type: "idle" } })
         })
 
         let structuredOutput: unknown | undefined
@@ -856,7 +869,7 @@ export class CodeAgent {
 
         while (true) {
             context.sessionStatus = { type: "busy" }
-            this.bus.emitEvent("session.status", { sessionID, status: { type: "busy" } })
+            this.emitEvent("session.status", { sessionID, status: { type: "busy" } })
             if (abort.aborted) break
 
             let msgs = await MessageV2.filterCompacted(MessageV2.stream(context, sessionID))
@@ -887,7 +900,7 @@ export class CodeAgent {
             const model = await context.provider.getModel(lastUser.model.providerID, lastUser.model.modelID).catch((e) => {
                 if (Provider.ModelNotFoundError.isInstance(e)) {
                     const hint = e.data.suggestions?.length ? ` Did you mean: ${e.data.suggestions.join(", ")}?` : ""
-                    this.bus.emitEvent("session.error", {
+                    this.emitEvent("session.error", {
                         sessionID,
                         error: new NamedError.Unknown({ message: `Model not found: ${e.data.providerID}/${e.data.modelID}.${hint}` }).toObject(),
                     })
@@ -904,7 +917,7 @@ export class CodeAgent {
                     auto: task.auto, overflow: task.overflow, context,
                 })
                 if (result === "stop") break
-                this.bus.emitEvent("session.compacted", { sessionID })
+                this.emitEvent("session.compacted", { sessionID })
                 continue
             }
 
@@ -972,10 +985,10 @@ export class CodeAgent {
             sessionID, model, abort, context,
             onStatusChange: (sid, status) => {
                 context.sessionStatus = status
-                this.bus.emitEvent("session.status", { sessionID: sid, status })
+                this.emitEvent("session.status", { sessionID: sid, status })
             },
             onError: (sid, error) => {
-                this.bus.emitEvent("session.error", { sessionID: sid, error })
+                this.emitEvent("session.error", { sessionID: sid, error })
             },
         })
 
@@ -986,7 +999,7 @@ export class CodeAgent {
         const tools = await SessionPrompt.resolveTools({
             agent, session, model, tools: lastUser.tools,
             processor, bypassAgentCheck, messages: msgs, agentContext: context,
-            onToolEvent: (event, data) => this.bus.emitEvent(event, data),
+            onToolEvent: (event, data) => this.emitEvent(event, data),
         })
 
         if (lastUser.format?.type === "json_schema") {

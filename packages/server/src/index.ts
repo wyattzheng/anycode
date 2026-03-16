@@ -191,8 +191,8 @@ async function createSession(directory: string = ""): Promise<SessionEntry> {
   sessions.set(id, entry)
 
   // Listen for directory.set events from the agent's set_working_directory tool
-  agent.bus.on("directory.set", (event: any) => {
-    const dir = event.properties.directory
+  agent.on("directory.set", (data: any) => {
+    const dir = data.directory
     entry.directory = dir
     try { agent.setWorkingDirectory(dir) } catch { /* already set */ }
     console.log(`📂  Session ${id} directory set to: ${dir}`)
@@ -202,14 +202,12 @@ async function createSession(directory: string = ""): Promise<SessionEntry> {
     watchDirectory(id, dir)
   })
 
-  // Supplementary: also trigger on agent bus events (file edits via tools)
+  // Supplementary: also trigger on agent events (file edits via tools)
   let pushTimer: ReturnType<typeof setTimeout> | null = null
-  agent.bus.subscribeAll((payload: any) => {
-    if (!payload || !entry.directory) return
-    if (payload.type === "file.edited") {
-      if (pushTimer) clearTimeout(pushTimer)
-      pushTimer = setTimeout(() => pushState(id), 300)
-    }
+  agent.on("file.edited", () => {
+    if (!entry.directory) return
+    if (pushTimer) clearTimeout(pushTimer)
+    pushTimer = setTimeout(() => pushState(id), 300)
   })
 
   console.log(`✅  Session ${id} created (directory: ${directory || "(none)"})`)

@@ -38,7 +38,7 @@ export { ProviderID, ModelID } from "./provider/schema"
 export { Agent } from "./agent"
 
 // Bus & logging
-export { Bus } from "./bus"
+
 export { Log } from "./util/log"
 
 // Storage
@@ -59,7 +59,6 @@ export {
 // Project
 export {
   Project,
-  File,
   FileTimeService,
   type ProjectID,
   Protected,

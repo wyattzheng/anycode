@@ -147,9 +147,9 @@ describe("CodeAgent: set_working_directory via mock conversation", () => {
 
         // Subscribe to bus event (same as server does)
         setDir = ""
-        agent.bus.on("directory.set", (event: any) => {
-            setDir = event.properties.directory
-            try { agent.setWorkingDirectory(event.properties.directory) } catch { /* */ }
+        agent.on("directory.set", (data: any) => {
+            setDir = data.directory
+            try { agent.setWorkingDirectory(data.directory) } catch { /* */ }
         })
     }, 60_000)
 

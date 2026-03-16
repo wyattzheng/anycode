@@ -3,7 +3,7 @@ import { VFS } from "./util/vfs"
 import { SearchProvider } from "./util/search"
 import type { GitProvider } from "./util/git"
 import type { EnvService } from "./util/env"
-import type { BusService } from "./bus"
+
 import type { SchedulerService } from "./util/scheduler"
 import type { FileTimeService } from "./project"
 import type { MemoryService } from "./memory"
@@ -74,7 +74,7 @@ export interface AgentContext {
     // ── Service instances ──────────────────────────────────────────
     // Phase 0: stateless services (created in CodeAgent constructor)
     env: EnvService
-    bus: BusService
+    emitEvent: (type: string, data: any) => void
     scheduler: SchedulerService
     fileTime: FileTimeService
     memory: MemoryService
