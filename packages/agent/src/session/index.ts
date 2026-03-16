@@ -1,8 +1,7 @@
 import type { AgentContext } from "../context"
 import { Slug } from "../util/slug"
 import * as path from "../util/path"
-import { BusEvent } from "../bus"
-import { Bus } from "../bus"
+
 import { Decimal } from "decimal.js"
 import z from "zod"
 import { type ProviderMetadata } from "ai"
@@ -168,20 +167,7 @@ export namespace Session {
   })
   export type GlobalInfo = z.output<typeof GlobalInfo>
 
-  export const Event = {
-    Created: BusEvent.define(
-      "session.created",
-      z.object({
-        info: Info,
-      }),
-    ),
-    Updated: BusEvent.define(
-      "session.updated",
-      z.object({
-        info: Info,
-      }),
-    ),
-  }
+
 
   export type CreateInput = {
     parentID?: SessionID
@@ -211,7 +197,7 @@ export namespace Session {
       )
       if (!row) throw new NotFoundError({ message: `Session not found: ${sessionID}` })
       const info = fromRow(row)
-      Bus.publish(context, Event.Updated, { info })
+      context.bus.emitEvent("session.updated", { info })
     }
   }
 
@@ -242,13 +228,9 @@ export namespace Session {
     log.info("created", result)
     {
       context.db.insert("session", toRow(result))
-      Bus.publish(context, Event.Created, {
-          info: result,
-        })
+      context.bus.emitEvent("session.created", { info: result })
     }
-    Bus.publish(context, Event.Updated, {
-      info: result,
-    })
+    context.bus.emitEvent("session.updated", { info: result })
     return result
   }
 
@@ -277,7 +259,7 @@ export namespace Session {
     )
     if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
     const info = fromRow(row)
-    Bus.publish(context, Event.Updated, { info })
+    context.bus.emitEvent("session.updated", { info })
     return info
   }
 
@@ -461,15 +443,7 @@ export namespace Todo {
     .meta({ ref: "Todo" })
   export type Info = z.infer<typeof Info>
 
-  export const Event = {
-    Updated: BusEvent.define(
-      "todo.updated",
-      z.object({
-        sessionID: SessionID.zod,
-        todos: z.array(Info),
-      }),
-    ),
-  }
+
 
   export function update(context: AgentContext, input: { sessionID: SessionID; todos: Info[] }) {
     context.db.transaction((tx: any) => {
@@ -485,7 +459,7 @@ export namespace Todo {
         })
       }
     })
-    Bus.publish(context, Event.Updated, input)
+    context.bus.emitEvent("todo.updated", input)
   }
 
   export function get(context: AgentContext, sessionID: SessionID) {
