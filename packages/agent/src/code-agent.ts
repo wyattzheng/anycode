@@ -266,13 +266,6 @@ export class CodeAgent extends EventEmitter {
     }
 
     /**
-     * Emit a typed event.
-     */
-    emitEvent(type: string, data: any) {
-        this.emit(type, data)
-    }
-
-    /**
      * The virtual file system instance.
      */
     get fs(): VFS {
@@ -363,7 +356,7 @@ export class CodeAgent extends EventEmitter {
             },
             // Phase 0: stateless services
             env: this.env,
-            emitEvent: (type: string, data: any) => this.emitEvent(type, data),
+            emit: (type: string, data: any) => this.emit(type, data),
             scheduler: this.scheduler,
             fileTime: this.fileTime,
             memory: undefined as any, // will be set below after ctx is created
@@ -373,11 +366,11 @@ export class CodeAgent extends EventEmitter {
         ctx.memory = new MemoryService(ctx)
 
         // Forward MemoryService events → CodeAgent EventEmitter
-        ctx.memory.on("message.updated", (data: any) => this.emitEvent("message.updated", data))
-        ctx.memory.on("message.removed", (data: any) => this.emitEvent("message.removed", data))
-        ctx.memory.on("message.part.updated", (data: any) => this.emitEvent("message.part.updated", data))
-        ctx.memory.on("message.part.removed", (data: any) => this.emitEvent("message.part.removed", data))
-        ctx.memory.on("message.part.delta", (data: any) => this.emitEvent("message.part.delta", data))
+        ctx.memory.on("message.updated", (data: any) => this.emit("message.updated", data))
+        ctx.memory.on("message.removed", (data: any) => this.emit("message.removed", data))
+        ctx.memory.on("message.part.updated", (data: any) => this.emit("message.part.updated", data))
+        ctx.memory.on("message.part.removed", (data: any) => this.emit("message.part.removed", data))
+        ctx.memory.on("message.part.delta", (data: any) => this.emit("message.part.delta", data))
 
         // Phase 1: context-dependent services
         ctx.config = (this.options.config ?? {}) as Record<string, any>
@@ -685,7 +678,7 @@ export class CodeAgent extends EventEmitter {
             sp.callbacks = []
         }
         this.agentContext.sessionStatus = { type: "idle" }
-        this.emitEvent("session.status", { sessionID: this._currentSessionId, status: { type: "idle" } })
+        this.emit("session.status", { sessionID: this._currentSessionId, status: { type: "idle" } })
     }
 
     /**
@@ -829,7 +822,7 @@ export class CodeAgent extends EventEmitter {
         if (!opts?.resume) {
             const message = await SessionPrompt.createUserMessage(context, input)
             for (const error of message.errors) {
-                this.emitEvent("session.error", { sessionID, error })
+                this.emit("session.error", { sessionID, error })
             }
             await Session.touch(context, sessionID)
         }
@@ -860,7 +853,7 @@ export class CodeAgent extends EventEmitter {
                 sp.callbacks = []
             }
             context.sessionStatus = { type: "idle" }
-            this.emitEvent("session.status", { sessionID, status: { type: "idle" } })
+            this.emit("session.status", { sessionID, status: { type: "idle" } })
         })
 
         let structuredOutput: unknown | undefined
@@ -869,7 +862,7 @@ export class CodeAgent extends EventEmitter {
 
         while (true) {
             context.sessionStatus = { type: "busy" }
-            this.emitEvent("session.status", { sessionID, status: { type: "busy" } })
+            this.emit("session.status", { sessionID, status: { type: "busy" } })
             if (abort.aborted) break
 
             let msgs = await MessageV2.filterCompacted(MessageV2.stream(context, sessionID))
@@ -900,7 +893,7 @@ export class CodeAgent extends EventEmitter {
             const model = await context.provider.getModel(lastUser.model.providerID, lastUser.model.modelID).catch((e) => {
                 if (Provider.ModelNotFoundError.isInstance(e)) {
                     const hint = e.data.suggestions?.length ? ` Did you mean: ${e.data.suggestions.join(", ")}?` : ""
-                    this.emitEvent("session.error", {
+                    this.emit("session.error", {
                         sessionID,
                         error: new NamedError.Unknown({ message: `Model not found: ${e.data.providerID}/${e.data.modelID}.${hint}` }).toObject(),
                     })
@@ -917,7 +910,7 @@ export class CodeAgent extends EventEmitter {
                     auto: task.auto, overflow: task.overflow, context,
                 })
                 if (result === "stop") break
-                this.emitEvent("session.compacted", { sessionID })
+                this.emit("session.compacted", { sessionID })
                 continue
             }
 
@@ -985,10 +978,10 @@ export class CodeAgent extends EventEmitter {
             sessionID, model, abort, context,
             onStatusChange: (sid, status) => {
                 context.sessionStatus = status
-                this.emitEvent("session.status", { sessionID: sid, status })
+                this.emit("session.status", { sessionID: sid, status })
             },
             onError: (sid, error) => {
-                this.emitEvent("session.error", { sessionID: sid, error })
+                this.emit("session.error", { sessionID: sid, error })
             },
         })
 
@@ -999,7 +992,7 @@ export class CodeAgent extends EventEmitter {
         const tools = await SessionPrompt.resolveTools({
             agent, session, model, tools: lastUser.tools,
             processor, bypassAgentCheck, messages: msgs, agentContext: context,
-            onToolEvent: (event, data) => this.emitEvent(event, data),
+            onToolEvent: (event, data) => this.emit(event, data),
         })
 
         if (lastUser.format?.type === "json_schema") {

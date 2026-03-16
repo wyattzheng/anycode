@@ -74,7 +74,7 @@ export interface AgentContext {
     // ── Service instances ──────────────────────────────────────────
     // Phase 0: stateless services (created in CodeAgent constructor)
     env: EnvService
-    emitEvent: (type: string, data: any) => void
+    emit: (type: string, data: any) => void
     scheduler: SchedulerService
     fileTime: FileTimeService
     memory: MemoryService
