@@ -547,6 +547,7 @@ export class CodeAgent extends EventEmitter {
                                 toolCallId: part.callID,
                                 toolName: part.tool,
                                 toolArgs: part.state.input as Record<string, unknown>,
+                                toolTitle: part.state.title,
                             })
                         }
                         if (part.type === "tool" && part.state.status === "completed") {

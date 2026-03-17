@@ -221,20 +221,30 @@ export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
                 });
                 break;
             case "tool.start": {
-                const toolPart: ToolCard = {
-                    kind: "tool", id: data.toolCallId || "", name: data.toolName || "",
-                    args: data.toolArgs, status: "running",
-                };
-                setMessages(prev => {
-                    const last = prev[prev.length - 1];
-                    if (last && last.role === "assistant") {
-                        const newParts = [...last.parts, toolPart];
-                        if (data.toolCallId) toolMapRef.current.set(data.toolCallId, newParts.length - 1);
-                        return [...prev.slice(0, -1), { ...last, parts: newParts }];
-                    }
-                    if (data.toolCallId) toolMapRef.current.set(data.toolCallId, 0);
-                    return [...prev, { role: "assistant", parts: [toolPart] }];
-                });
+                const id = data.toolCallId || "";
+                if (id && toolMapRef.current.has(id)) {
+                    // Already exists — update in place
+                    updateToolById(id, t => ({
+                        ...t,
+                        ...(data.toolTitle != null ? { title: data.toolTitle } : {}),
+                    }));
+                } else {
+                    // New tool — append
+                    const toolPart: ToolCard = {
+                        kind: "tool", id, name: data.toolName || "",
+                        args: data.toolArgs, title: data.toolTitle, status: "running",
+                    };
+                    setMessages(prev => {
+                        const last = prev[prev.length - 1];
+                        if (last && last.role === "assistant") {
+                            const newParts = [...last.parts, toolPart];
+                            if (id) toolMapRef.current.set(id, newParts.length - 1);
+                            return [...prev.slice(0, -1), { ...last, parts: newParts }];
+                        }
+                        if (id) toolMapRef.current.set(id, 0);
+                        return [...prev, { role: "assistant", parts: [toolPart] }];
+                    });
+                }
                 break;
             }
             case "tool.done":
