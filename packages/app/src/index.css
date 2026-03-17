@@ -3,7 +3,7 @@
     --color-surface: #252526;
     --color-surface-hover: #2a2d2e;
     --color-border: #3c3c3c;
-    --color-text: #cccccc;
+    --color-text: rgb(240, 240, 240);
     --color-text-dim: #858585;
     --color-accent: #0078d4;
     --color-accent-hover: #1a8ceb;

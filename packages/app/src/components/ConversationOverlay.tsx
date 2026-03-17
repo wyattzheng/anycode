@@ -5,11 +5,12 @@ import "./ConversationOverlay.css";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type ThinkingBlock = { kind: "thinking"; content: string; duration?: number };
+type ToolArgs = Record<string, unknown>;
 type ToolCard = {
     kind: "tool";
     id: string;
     name: string;
-    args?: string;
+    args?: ToolArgs;
     title?: string;
     status: "running" | "done" | "error";
     duration?: number;
@@ -30,13 +31,89 @@ function fmtDur(ms?: number) {
     return ms >= 1000 ? (ms / 1000).toFixed(1) + "s" : ms + "ms";
 }
 
-function argSummary(args?: Record<string, unknown>) {
+function normalizeInlineText(value: unknown) {
+    if (value == null) return "";
+    if (typeof value === "string") return value.replace(/\s+/g, " ").trim();
+    try {
+        return JSON.stringify(value).replace(/\s+/g, " ").trim();
+    } catch {
+        return String(value).replace(/\s+/g, " ").trim();
+    }
+}
+
+function compactPathLabel(value: string) {
+    const normalized = value.trim().replaceAll("\\", "/").replace(/\/+/g, "/");
+    if (!normalized) return "";
+    const trailingSlash = normalized.length > 1 && normalized.endsWith("/");
+    const parts = normalized.split("/").filter(Boolean);
+    if (parts.length === 0) return normalized;
+    if (parts.length === 1) return trailingSlash ? `${parts[0]}/` : parts[0];
+    const label = `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+    return trailingSlash ? `${label}/` : label;
+}
+
+function firstString(args: ToolArgs | undefined, keys: string[]) {
     if (!args) return "";
-    const keys = Object.keys(args);
-    if (keys.length === 0) return "";
-    const first = args[keys[0]];
-    const val = typeof first === "string" ? first : JSON.stringify(first);
-    return val.length > 40 ? val.slice(0, 37) + "…" : val;
+    for (const key of keys) {
+        const value = args[key];
+        if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    return "";
+}
+
+function summarizeApplyPatchFromText(text: string) {
+    if (!text) return "";
+    const lines = text.split(/\r?\n/);
+    const files: string[] = [];
+
+    for (const line of lines) {
+        const patchMatch = line.match(/^\*\*\* (?:Add|Delete|Update) File: (.+)$/);
+        if (patchMatch) {
+            files.push(patchMatch[1].trim());
+            continue;
+        }
+        const moveMatch = line.match(/^\*\*\* Move to: (.+)$/);
+        if (moveMatch && files.length > 0) {
+            files[files.length - 1] = moveMatch[1].trim();
+            continue;
+        }
+        const resultMatch = line.match(/^[AMD] (.+)$/);
+        if (resultMatch) files.push(resultMatch[1].trim());
+    }
+
+    if (files.length === 0) return normalizeInlineText(text);
+    const primary = compactPathLabel(files[0]);
+    return files.length === 1 ? primary : `${primary} +${files.length - 1}`;
+}
+
+function summarizeToolInfo(tool: ToolCard) {
+    if (tool.status === "error") return tool.error || "error";
+
+    switch (tool.name) {
+        case "apply_patch":
+            return summarizeApplyPatchFromText(tool.title || firstString(tool.args, ["patchText"]));
+        case "write":
+        case "edit":
+        case "multiedit":
+        case "read":
+        case "ls":
+        case "glob":
+            return compactPathLabel(tool.title || firstString(tool.args, ["filePath", "path"]));
+        case "set_working_directory": {
+            const titlePath = tool.title?.replace(/^Set directory:\s*/, "") || "";
+            return compactPathLabel(titlePath || firstString(tool.args, ["directory"]));
+        }
+        case "codesearch":
+            return (tool.title?.replace(/^Code search:\s*/, "") || firstString(tool.args, ["query"])).trim();
+        case "websearch":
+            return (tool.title?.replace(/^Web search:\s*/, "") || firstString(tool.args, ["query"])).trim();
+        case "grep":
+            return firstString(tool.args, ["pattern", "query", "include"]);
+        case "bash":
+            return firstString(tool.args, ["command", "description"]) || normalizeInlineText(tool.title);
+        default:
+            return normalizeInlineText(tool.title) || normalizeInlineText(tool.args);
+    }
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -146,7 +223,7 @@ export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
             case "tool.start": {
                 const toolPart: ToolCard = {
                     kind: "tool", id: data.toolCallId || "", name: data.toolName || "",
-                    args: argSummary(data.toolArgs), status: "running",
+                    args: data.toolArgs, status: "running",
                 };
                 setMessages(prev => {
                     const last = prev[prev.length - 1];
@@ -308,11 +385,12 @@ export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
                     </details>
                 );
             case "tool":
+                const toolInfo = summarizeToolInfo(part);
                 return (
-                    <div key={i} className={`co-tool ${part.status}`} title={part.error || part.title || part.args || ""}>
+                    <div key={i} className={`co-tool ${part.status}`} title={toolInfo}>
                         <span className="co-tool-icon">{part.status === "running" ? "⏳" : part.status === "done" ? "✓" : "✗"}</span>
                         <span className="co-tool-name">{part.name}</span>
-                        <span className="co-tool-info">{part.status === "error" ? (part.error || "error") : (part.title || part.args || "")}</span>
+                        <span className="co-tool-info">{toolInfo}</span>
                         {part.duration != null && <span className="co-tool-dur">{fmtDur(part.duration)}</span>}
                     </div>
                 );

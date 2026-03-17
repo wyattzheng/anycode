@@ -139,7 +139,7 @@
 
 /* ── Tool capsule ── */
 .co-tool {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 4px;
     padding: 2px 6px;
@@ -150,6 +150,7 @@
     border: 1px solid var(--color-border);
     background: var(--color-surface-hover);
     max-width: 100%;
+    min-width: 0;
     overflow: hidden;
 }
 
@@ -159,22 +160,25 @@
 }
 
 .co-tool-name {
-    color: #dcdcaa;
+    color: #cfc27a;
     white-space: nowrap;
+    flex-shrink: 0;
+    font-weight: 500;
 }
 
 .co-tool-info {
-    color: var(--color-text-dim);
+    color: #bcc3cd;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 100px;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .co-tool-dur {
-    color: var(--color-text-dim);
+    color: #9ba3af;
     font-size: 9px;
-    margin-left: auto;
+    margin-left: 4px;
     flex-shrink: 0;
 }
 
