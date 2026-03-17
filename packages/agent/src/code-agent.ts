@@ -117,7 +117,11 @@ export interface CodeAgentOptions {
     config?: Record<string, unknown>
 
     /**
-
+     * Attach to an existing session instead of creating a new one.
+     * When set, init() will resume this session ID rather than
+     * calling session.create().
+     */
+    sessionId?: string
 
     /**
      * Virtual File System implementation.
@@ -449,9 +453,14 @@ export class CodeAgent extends EventEmitter {
 
         this.initialized = true
 
-        // Create the single session
-        const session = await this._context.session.create()
-        this._currentSessionId = session.id
+        // Resume existing session or create a new one
+        if (this.options.sessionId) {
+            await this._context.session.get(this.options.sessionId)
+            this._currentSessionId = this.options.sessionId
+        } else {
+            const session = await this._context.session.create()
+            this._currentSessionId = session.id
+        }
     }
 
     /**
@@ -775,7 +784,7 @@ export class CodeAgent extends EventEmitter {
     }
 
     /**
-     * Get messages for the current session (simplified for admin display).
+     * Get messages for the current session (for history restoration and admin display).
      */
     async getSessionMessages(opts?: { limit?: number }) {
         this.assertInitialized()
@@ -805,9 +814,9 @@ export class CodeAgent extends EventEmitter {
                 simplified.text = textParts.join("\n")
             } else {
                 simplified.parts = msg.parts.map((p: any) => {
-                    if (p.type === "text") return { type: "text", content: (p.content || "").slice(0, 200) }
+                    if (p.type === "text") return { type: "text", content: p.text || p.content || "" }
                     if (p.type === "tool") return { type: "tool", tool: p.tool, content: p.state?.title || p.state?.status }
-                    if (p.type === "reasoning") return { type: "thinking", content: (p.content || "").slice(0, 100) }
+                    if (p.type === "reasoning") return { type: "thinking", content: p.text || p.content || "" }
                     return { type: p.type }
                 })
             }

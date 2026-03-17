@@ -1,20 +1,44 @@
 /**
- * SqlJsStorage — in-memory SQLite backend using sql.js (WASM).
+ * SqlJsStorage — SQLite backend using sql.js (WASM).
  *
- * Used for tests — no filesystem needed.
- * Returns a NoSqlDb interface backed by sql.js.
+ * Supports optional file-backed persistence: pass a `dbPath` to the
+ * constructor and the database will be loaded from / flushed to disk
+ * automatically.  When no path is given it behaves as a pure in-memory
+ * database (useful for tests).
+ *
+ * `connect()` is idempotent — multiple calls return the same NoSqlDb
+ * instance and only initialise the database once.  This allows a single
+ * SqlJsStorage to be shared across several CodeAgent instances.
  */
+import fs from "fs"
+import nodePath from "path"
 import type { StorageProvider, Migration } from "./storage"
 import type { NoSqlDb, RawSqliteDb } from "@any-code/agent"
 
 export class SqlJsStorage implements StorageProvider {
     private db: any = null
+    private noSqlDb: NoSqlDb | null = null
+    private dbPath: string | null
+    private flushTimer: ReturnType<typeof setTimeout> | null = null
+
+    constructor(dbPath?: string) {
+        this.dbPath = dbPath ?? null
+    }
 
     async connect(migrations: Migration[]): Promise<NoSqlDb> {
-        // Dynamic imports for sql.js (WASM) and our adapter
+        // Idempotent: return cached client when already initialised
+        if (this.noSqlDb) return this.noSqlDb
+
         const initSqlJs = (await import("sql.js")).default
         const SQL = await initSqlJs()
-        this.db = new SQL.Database()
+
+        // Load existing database file if available
+        if (this.dbPath && fs.existsSync(this.dbPath)) {
+            const buffer = fs.readFileSync(this.dbPath)
+            this.db = new SQL.Database(new Uint8Array(buffer))
+        } else {
+            this.db = new SQL.Database()
+        }
 
         // Enable foreign key support (required for CASCADE deletes)
         this.db.run("PRAGMA foreign_keys = ON")
@@ -22,17 +46,46 @@ export class SqlJsStorage implements StorageProvider {
         // Apply migrations
         this.applyMigrations(migrations)
 
+        // Initial flush so the file exists even before the first write
+        this.flushSync()
+
         // Wrap sql.js as RawSqliteDb
         const raw = this.createRawDb()
         const { SqliteNoSqlDb } = await import("@any-code/agent")
-        return new SqliteNoSqlDb(raw)
+        this.noSqlDb = new SqliteNoSqlDb(raw)
+        return this.noSqlDb
     }
+
+    // ── Flush to disk ──────────────────────────────────────────────
+
+    /** Schedule an async flush (debounced 100ms). */
+    private scheduleFlush() {
+        if (!this.dbPath) return
+        if (this.flushTimer) return
+        this.flushTimer = setTimeout(() => {
+            this.flushTimer = null
+            this.flushSync()
+        }, 100)
+    }
+
+    /** Synchronously write the entire database to disk. */
+    private flushSync() {
+        if (!this.dbPath || !this.db) return
+        const dir = nodePath.dirname(this.dbPath)
+        fs.mkdirSync(dir, { recursive: true })
+        const data: Uint8Array = this.db.export()
+        fs.writeFileSync(this.dbPath, Buffer.from(data))
+    }
+
+    // ── RawSqliteDb wrapper ────────────────────────────────────────
 
     private createRawDb(): RawSqliteDb {
         const db = this.db!
+        const self = this
         return {
             run(sql: string, params?: any[]) {
                 db.run(sql, params)
+                self.scheduleFlush()
             },
             get(sql: string, params?: any[]): Record<string, any> | undefined {
                 const stmt = db.prepare(sql)
@@ -60,6 +113,7 @@ export class SqlJsStorage implements StorageProvider {
                 try {
                     fn()
                     db.run("COMMIT")
+                    self.scheduleFlush()
                 } catch (e) {
                     db.run("ROLLBACK")
                     throw e
@@ -67,6 +121,8 @@ export class SqlJsStorage implements StorageProvider {
             },
         }
     }
+
+    // ── Migrations ─────────────────────────────────────────────────
 
     private applyMigrations(entries: Migration[]) {
         if (!this.db) throw new Error("SqlJsStorage: db not initialized")
@@ -101,10 +157,25 @@ export class SqlJsStorage implements StorageProvider {
         }
     }
 
+    /** Run raw SQL (for server-specific DDL like extra tables). */
+    exec(sql: string) {
+        if (!this.db) throw new Error("SqlJsStorage: db not initialized")
+        this.db.run(sql)
+        this.scheduleFlush()
+    }
+
     close() {
+        // Flush any pending writes before closing
+        if (this.flushTimer) {
+            clearTimeout(this.flushTimer)
+            this.flushTimer = null
+        }
+        this.flushSync()
+
         if (this.db) {
             this.db.close()
             this.db = null
         }
+        this.noSqlDb = null
     }
 }

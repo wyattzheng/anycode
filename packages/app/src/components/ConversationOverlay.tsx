@@ -147,6 +147,51 @@ export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
     const msgsRef = useRef<HTMLDivElement>(null);
     const toolMapRef = useRef<Map<string, number>>(new Map());
 
+    // Load history messages when session resumes
+    useEffect(() => {
+        if (!sessionId) return;
+        (async () => {
+            try {
+                const res = await fetch(`/api/messages?sessionId=${encodeURIComponent(sessionId)}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!Array.isArray(data) || data.length === 0) return;
+
+                const history: ChatMessage[] = [];
+                for (const msg of data) {
+                    if (msg.role === "user") {
+                        history.push({ role: "user", text: msg.text || "" });
+                    } else {
+                        const parts: ResponsePart[] = [];
+                        if (Array.isArray(msg.parts)) {
+                            for (const p of msg.parts) {
+                                if (p.type === "text") {
+                                    parts.push({ kind: "text", content: p.content || "" });
+                                } else if (p.type === "tool") {
+                                    parts.push({
+                                        kind: "tool",
+                                        id: "",
+                                        name: p.tool || "",
+                                        status: "done",
+                                        title: p.content || "",
+                                    });
+                                } else if (p.type === "thinking") {
+                                    parts.push({ kind: "thinking", content: p.content || "" });
+                                }
+                            }
+                        }
+                        if (parts.length > 0) {
+                            history.push({ role: "assistant", parts });
+                        }
+                    }
+                }
+                if (history.length > 0) {
+                    setMessages(history);
+                }
+            } catch { /* ignore */ }
+        })();
+    }, [sessionId]);
+
     // Auto-scroll
     useEffect(() => {
         msgsRef.current?.scrollTo(0, msgsRef.current.scrollHeight);

@@ -20,7 +20,7 @@ import os from "os"
 import fs from "fs"
 import fsPromises from "fs/promises"
 import { execFile, spawn as cpSpawn } from "child_process"
-import { CodeAgent } from "@any-code/agent"
+import { CodeAgent, Database, type NoSqlDb } from "@any-code/agent"
 import { WebSocketServer, WebSocket as WS } from "ws"
 import { SqlJsStorage } from "./storage-sqljs"
 import { NodeFS } from "./vfs-node"
@@ -42,8 +42,11 @@ if (!API_KEY) {
 
 // ── Paths ──────────────────────────────────────────────────────────────────
 
+const ANYCODE_DIR = path.join(os.homedir(), ".anycode")
+const DB_PATH = path.join(ANYCODE_DIR, "data.db")
+
 function makePaths() {
-  const dataPath = path.join(os.homedir(), ".any-code", "data")
+  const dataPath = path.join(ANYCODE_DIR, "data")
   fs.mkdirSync(dataPath, { recursive: true })
   return dataPath
 }
@@ -127,25 +130,25 @@ interface SessionEntry {
   createdAt: number
 }
 
+// In-memory agent cache, keyed by session ID
 const sessions = new Map<string, SessionEntry>()
-
-let sessionCounter = 0
-
-function generateSessionId(): string {
-  return `ses_${Date.now().toString(36)}_${(++sessionCounter).toString(36)}`
-}
 
 const PROVIDER_ID = BASE_URL ? `${PROVIDER}-proxy` : PROVIDER
 
-function createAgentConfig(directory: string) {
+// Shared storage & DB — initialised lazily inside startServer()
+let sharedStorage: SqlJsStorage
+let db: NoSqlDb
+
+function createAgentConfig(directory: string, sessionId?: string) {
   return {
     directory: directory,
     fs: new NodeFS(),
     search: new NodeSearchProvider(),
-    storage: new SqlJsStorage(),
+    storage: sharedStorage,
     shell: new NodeShellProvider(),
     git: new NodeGitProvider(),
     dataPath: makePaths(),
+    ...(sessionId ? { sessionId } : {}),
     provider: {
       id: PROVIDER_ID,
       apiKey: API_KEY!,
@@ -182,12 +185,9 @@ function createAgentConfig(directory: string) {
   }
 }
 
-async function createSession(directory: string = ""): Promise<SessionEntry> {
-  const id = generateSessionId()
-  const agent = new CodeAgent(createAgentConfig(directory))
-  await agent.init()
-
-  const entry: SessionEntry = { id, agent, directory, createdAt: Date.now() }
+/** Wire up agent events and register in sessions map. */
+function registerSession(id: string, agent: InstanceType<typeof CodeAgent>, directory: string, createdAt: number): SessionEntry {
+  const entry: SessionEntry = { id, agent, directory, createdAt }
   sessions.set(id, entry)
 
   // Listen for directory.set events from the agent's set_working_directory tool
@@ -195,10 +195,10 @@ async function createSession(directory: string = ""): Promise<SessionEntry> {
     const dir = data.directory
     entry.directory = dir
     try { agent.setWorkingDirectory(dir) } catch { /* already set */ }
+    // Persist directory back to user_session mapping
+    db.update("user_session", { op: "eq", field: "session_id", value: id }, { directory: dir })
     console.log(`📂  Session ${id} directory set to: ${dir}`)
-    // Push state to all connected WebSocket clients
     pushState(id)
-    // Start watching the directory for file changes
     watchDirectory(id, dir)
   })
 
@@ -210,7 +210,53 @@ async function createSession(directory: string = ""): Promise<SessionEntry> {
     pushTimer = setTimeout(() => pushState(id), 300)
   })
 
-  console.log(`✅  Session ${id} created (directory: ${directory || "(none)"})`)
+  return entry
+}
+
+/**
+ * Get or create a session for the given user ID.
+ * If the user already has a persisted session it is resumed;
+ * otherwise a brand-new session is created and the mapping stored.
+ */
+async function getOrCreateSession(userId: string): Promise<SessionEntry> {
+  // 1. Look up persisted mapping
+  const row = db.findOne("user_session", { op: "eq", field: "user_id", value: userId })
+
+  if (row) {
+    const sessionId = row.session_id as string
+    // Already in memory?
+    const cached = sessions.get(sessionId)
+    if (cached) return cached
+
+    // Spin up agent for persisted session
+    const dir = (row.directory as string) || ""
+    const agent = new CodeAgent(createAgentConfig(dir, sessionId))
+    await agent.init()
+    const entry = registerSession(sessionId, agent, dir, row.time_created as number)
+    if (dir) {
+      try { agent.setWorkingDirectory(dir) } catch { /* already set */ }
+      watchDirectory(sessionId, dir)
+    }
+    console.log(`♻️  Session ${sessionId} resumed for user ${userId}`)
+    return entry
+  }
+
+  // 2. No mapping — create new session
+  const agent = new CodeAgent(createAgentConfig(""))
+  await agent.init()
+  const sessionId = agent.sessionId
+  const now = Date.now()
+  const entry = registerSession(sessionId, agent, "", now)
+
+  // Persist mapping
+  db.insert("user_session", {
+    user_id: userId,
+    session_id: sessionId,
+    directory: "",
+    time_created: now,
+  })
+
+  console.log(`✅  Session ${sessionId} created for user ${userId}`)
   return entry
 }
 
@@ -225,7 +271,7 @@ interface DirEntry {
   type: "file" | "dir"
 }
 
-const IGNORE = new Set([".git", "node_modules", ".next", "dist", ".opencode", ".any-code", "__pycache__", ".venv", ".DS_Store"])
+const IGNORE = new Set([".git", "node_modules", ".next", "dist", ".opencode", ".anycode", ".any-code", "__pycache__", ".venv", ".DS_Store"])
 
 /** List one level of a directory — for lazy tree loading */
 async function listDir(dir: string): Promise<DirEntry[]> {
@@ -531,8 +577,13 @@ const server = http.createServer(async (req, res) => {
     (async () => {
       let body = ""
       for await (const chunk of req) body += chunk
-      const { directory } = body ? JSON.parse(body) : { directory: "" }
-      createSession(directory || "").then((entry) => {
+      const { userId } = body ? JSON.parse(body) : {} as any
+      if (!userId) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ error: "userId is required" }))
+        return
+      }
+      getOrCreateSession(userId).then((entry) => {
         res.writeHead(200, { "Content-Type": "application/json" })
         res.end(JSON.stringify({ id: entry.id, directory: entry.directory }))
       }).catch((err: any) => {
@@ -684,6 +735,22 @@ const server = http.createServer(async (req, res) => {
 
 export async function startServer() {
   console.log("🚀  Starting any-code-server…")
+
+  // ── Initialise shared storage ──
+  sharedStorage = new SqlJsStorage(DB_PATH)
+  const migrations = Database.getMigrations()
+  db = await sharedStorage.connect(migrations)
+
+  // Server-specific table: maps user IDs to their session
+  sharedStorage.exec(`
+    CREATE TABLE IF NOT EXISTS "user_session" (
+      "user_id"      TEXT PRIMARY KEY,
+      "session_id"   TEXT NOT NULL,
+      "directory"    TEXT NOT NULL DEFAULT '',
+      "time_created" INTEGER NOT NULL
+    )
+  `)
+
   const appDistExists = fs.existsSync(APP_DIST)
 
   // ── WebSocket server on same HTTP server ──

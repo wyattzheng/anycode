@@ -17,6 +17,16 @@ export interface GitChange {
 
 const API_BASE = "";
 
+function getUserId(): string {
+    const KEY = "anycode-user-id";
+    let id = localStorage.getItem(KEY);
+    if (!id) {
+        id = crypto.randomUUID();
+        localStorage.setItem(KEY, id);
+    }
+    return id;
+}
+
 export function App() {
     const [activeTab, setActiveTab] = useState<TabId>("files");
     const [sessionId, setSessionId] = useState<string | null>(null);
@@ -25,45 +35,18 @@ export function App() {
     const [changes, setChanges] = useState<GitChange[]>([]);
     const [error, setError] = useState<string | null>(null);
 
-    // Restore or create session on mount
+    // Get or create session for this user
     useEffect(() => {
         (async () => {
             try {
-                // 1. Try to restore session from sessionStorage
-                const savedId = sessionStorage.getItem("anycode-session-id");
-                if (savedId) {
-                    const res = await fetch(`${API_BASE}/api/sessions/${savedId}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        setSessionId(data.id);
-                        if (data.directory) setDirectory(data.directory);
-                        return;
-                    }
-                    sessionStorage.removeItem("anycode-session-id");
-                }
-
-                // 2. Check for existing sessions with a workspace
-                const listRes = await fetch(`${API_BASE}/api/sessions`);
-                if (listRes.ok) {
-                    const sessions: { id: string; directory: string }[] = await listRes.json();
-                    const active = sessions.find((s) => s.directory);
-                    if (active) {
-                        setSessionId(active.id);
-                        setDirectory(active.directory);
-                        sessionStorage.setItem("anycode-session-id", active.id);
-                        return;
-                    }
-                }
-
-                // 3. No existing session — create new
                 const res = await fetch(`${API_BASE}/api/sessions`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({}),
+                    body: JSON.stringify({ userId: getUserId() }),
                 });
                 const data = await res.json();
+                if (data.error) throw new Error(data.error);
                 setSessionId(data.id);
-                sessionStorage.setItem("anycode-session-id", data.id);
                 if (data.directory) setDirectory(data.directory);
             } catch (e: any) {
                 setError(e.message);
