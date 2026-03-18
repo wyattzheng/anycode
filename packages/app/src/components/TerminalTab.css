@@ -32,6 +32,10 @@
     height: 100%;
 }
 
+.terminal-tab .xterm-cursor-layer {
+    display: none !important;
+}
+
 .terminal-tab .xterm-viewport {
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.15) transparent;

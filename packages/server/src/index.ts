@@ -41,6 +41,14 @@ if (!API_KEY) {
   process.exit(1)
 }
 
+// ── Global error handlers — prevent crashes from unhandled rejections ──
+process.on("uncaughtException", (err) => {
+  console.error("⚠  Uncaught exception:", err.message)
+})
+process.on("unhandledRejection", (reason) => {
+  console.error("⚠  Unhandled rejection:", reason instanceof Error ? reason.message : reason)
+})
+
 // ── Paths ──────────────────────────────────────────────────────────────────
 
 const ANYCODE_DIR = path.join(os.homedir(), ".anycode")

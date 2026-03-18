@@ -49,7 +49,6 @@ export function TerminalTab({ sessionId }: TerminalTabProps) {
                 brightWhite: "#ffffff",
             },
             cursorBlink: false,
-            cursorStyle: "bar",
             cursorInactiveStyle: "none",
             disableStdin: true,
             scrollback: 5000,
