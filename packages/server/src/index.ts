@@ -133,7 +133,7 @@ interface SessionEntry {
 // In-memory agent cache, keyed by session ID
 const sessions = new Map<string, SessionEntry>()
 
-const PROVIDER_ID = BASE_URL ? `${PROVIDER}-proxy` : PROVIDER
+const PROVIDER_ID = PROVIDER
 
 // Shared storage & DB — initialised lazily inside startServer()
 let sharedStorage: SqlJsStorage
