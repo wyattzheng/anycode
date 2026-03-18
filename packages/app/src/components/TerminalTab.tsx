@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
@@ -11,8 +11,8 @@ interface TerminalTabProps {
 export function TerminalTab({ sessionId }: TerminalTabProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const termRef = useRef<Terminal | null>(null);
-    const wsRef = useRef<WebSocket | null>(null);
     const fitRef = useRef<FitAddon | null>(null);
+    const [alive, setAlive] = useState<boolean | null>(null);
 
     useEffect(() => {
         if (!containerRef.current) return;
@@ -55,87 +55,106 @@ export function TerminalTab({ sessionId }: TerminalTabProps) {
         termRef.current = term;
         fitRef.current = fitAddon;
 
-        // WebSocket connection to server PTY
-        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        const ws = new WebSocket(
-            `${protocol}//${location.host}/terminal?sessionId=${sessionId}`
-        );
-        wsRef.current = ws;
+        // ── WebSocket with auto-reconnect ──
+        let ws: WebSocket | null = null;
+        let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+        let disposed = false;
+        let retryDelay = 1000;
 
-        ws.onopen = () => {
-            ws.send(
-                JSON.stringify({
+        function sendResize() {
+            if (ws?.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
                     type: "terminal.resize",
                     cols: term.cols,
                     rows: term.rows,
-                })
-            );
-        };
-
-        ws.onmessage = (e) => {
-            try {
-                const msg = JSON.parse(e.data);
-                if (msg.type === "terminal.output") {
-                    term.write(msg.data);
-                } else if (msg.type === "terminal.exited") {
-                    term.write(
-                        `\r\n\x1b[90m[终端已退出 (code ${msg.exitCode})]\x1b[0m\r\n`
-                    );
-                } else if (msg.type === "terminal.ready") {
-                    // Terminal already exists on server, send resize
-                    ws.send(
-                        JSON.stringify({
-                            type: "terminal.resize",
-                            cols: term.cols,
-                            rows: term.rows,
-                        })
-                    );
-                }
-            } catch {
-                /* ignore malformed */
+                }));
             }
-        };
+        }
 
-        ws.onclose = () => {
-            term.write("\r\n\x1b[90m[连接已断开]\x1b[0m\r\n");
-        };
+        function connect() {
+            if (disposed) return;
 
-        // Forward user input to server
+            const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+            ws = new WebSocket(
+                `${protocol}//${location.host}/terminal?sessionId=${sessionId}`
+            );
+
+            ws.onopen = () => {
+                retryDelay = 1000;
+                sendResize();
+            };
+
+            ws.onmessage = (e) => {
+                try {
+                    const msg = JSON.parse(e.data);
+                    if (msg.type === "terminal.output") {
+                        term.write(msg.data);
+                    } else if (msg.type === "terminal.ready") {
+                        setAlive(true);
+                        sendResize();
+                    } else if (msg.type === "terminal.none") {
+                        setAlive(false);
+                    } else if (msg.type === "terminal.exited") {
+                        setAlive(false);
+                    }
+                } catch { /* ignore */ }
+            };
+
+            ws.onclose = () => {
+                ws = null;
+                if (disposed) return;
+                reconnectTimer = setTimeout(() => {
+                    reconnectTimer = null;
+                    retryDelay = Math.min(retryDelay * 1.5, 10000);
+                    connect();
+                }, retryDelay);
+            };
+
+            ws.onerror = () => {};
+        }
+
+        connect();
+
         const inputDisposable = term.onData((data) => {
-            if (ws.readyState === WebSocket.OPEN) {
+            if (ws?.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: "terminal.input", data }));
             }
         });
 
-        // Handle resize
-        const sendResize = () => {
-            fitAddon.fit();
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(
-                    JSON.stringify({
-                        type: "terminal.resize",
-                        cols: term.cols,
-                        rows: term.rows,
-                    })
-                );
-            }
-        };
-
         const resizeObserver = new ResizeObserver(() => {
+            fitAddon.fit();
             sendResize();
         });
         resizeObserver.observe(containerRef.current);
 
         return () => {
+            disposed = true;
+            if (reconnectTimer) clearTimeout(reconnectTimer);
             resizeObserver.disconnect();
             inputDisposable.dispose();
-            ws.close();
+            if (ws) ws.close();
             term.dispose();
             termRef.current = null;
-            wsRef.current = null;
             fitRef.current = null;
         };
     }, [sessionId]);
 
-    return <div className="terminal-tab" ref={containerRef} />;
+    return (
+        <div className="terminal-tab">
+            <div
+                ref={containerRef}
+                className="terminal-xterm"
+                style={{ display: alive ? "block" : "none" }}
+            />
+            {alive === false && (
+                <div className="terminal-empty">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-dim)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}>
+                        <polyline points="4 17 10 11 4 5" />
+                        <line x1="12" y1="19" x2="20" y2="19" />
+                    </svg>
+                    <p>终端未启动</p>
+                </div>
+            )}
+        </div>
+    );
 }

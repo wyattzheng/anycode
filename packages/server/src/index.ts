@@ -540,15 +540,22 @@ class NodeTerminalProvider implements TerminalProvider {
     proc.onExit(({ exitCode }: { exitCode: number }) => {
       console.log(`🖥  Terminal exited for session ${this.sessionId} (code ${exitCode})`)
       this.proc = null
-      // Notify WS clients that terminal is gone
       for (const ws of this.wsClients) {
         if (ws.readyState === WS.OPEN) {
           ws.send(JSON.stringify({ type: "terminal.exited", exitCode }))
+          ws.send(JSON.stringify({ type: "terminal.none" }))
         }
       }
     })
 
     this.proc = proc
+
+    // Notify all WS clients that terminal is now ready
+    for (const ws of this.wsClients) {
+      if (ws.readyState === WS.OPEN) {
+        ws.send(JSON.stringify({ type: "terminal.ready" }))
+      }
+    }
   }
 
   destroy(): void {
@@ -558,6 +565,11 @@ class NodeTerminalProvider implements TerminalProvider {
     this.proc = null
     this.lines = []
     this.currentLine = ""
+    for (const ws of this.wsClients) {
+      if (ws.readyState === WS.OPEN) {
+        ws.send(JSON.stringify({ type: "terminal.none" }))
+      }
+    }
   }
 
   write(data: string): void {
@@ -663,9 +675,11 @@ function handleTerminalWs(ws: WS, sessionId: string) {
   const tp = getOrCreateTerminalProvider(sessionId)
   tp.addClient(ws)
 
-  // If terminal already exists, notify client it's ready
+  // Notify client of current terminal state
   if (tp.exists()) {
     ws.send(JSON.stringify({ type: "terminal.ready" }))
+  } else {
+    ws.send(JSON.stringify({ type: "terminal.none" }))
   }
 
   ws.on("message", (raw: Buffer | string) => tp.handleWsMessage(raw))

@@ -40,6 +40,30 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
     const [scrollToLine, setScrollToLine] = useState<number | null>(null);
     const contentBodyRef = useRef<HTMLDivElement>(null);
 
+    // React to changes list updates: close if file gone, refresh if still present
+    useEffect(() => {
+        if (!selectedFile) return;
+        if (!changes.some((c) => c.file === selectedFile)) {
+            setSelectedFile(null);
+            setFileContent(null);
+            setAddedLines(new Set());
+            onFileContext?.(null);
+            return;
+        }
+        // File still in changes — silently refresh content + diff
+        let cancelled = false;
+        (async () => {
+            const [content, diff] = await Promise.all([
+                requestFile(selectedFile),
+                requestDiff(selectedFile),
+            ]);
+            if (cancelled) return;
+            setFileContent(content);
+            setAddedLines(new Set(diff.added));
+        })();
+        return () => { cancelled = true; };
+    }, [changes, selectedFile, onFileContext, requestFile, requestDiff]);
+
     const onDragMove = useCallback((clientY: number) => {
         if (!dragRef.current || !containerRef.current) return;
         const containerRect = containerRef.current.getBoundingClientRect();
