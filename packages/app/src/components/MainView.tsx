@@ -13,13 +13,14 @@ interface MainViewProps {
     changes: GitChange[];
     directory: string;
     sessionId: string;
+    previewPort: number | null;
     requestLs: (path: string) => Promise<DirEntry[]>;
     requestFile: (path: string) => Promise<string | null>;
     requestDiff: (path: string) => Promise<{ added: number[]; removed: number[] }>;
     onFileContext?: (ctx: FileContext | null) => void;
 }
 
-export function MainView({ activeTab, topLevel, changes, directory, sessionId, requestLs, requestFile, requestDiff, onFileContext }: MainViewProps) {
+export function MainView({ activeTab, topLevel, changes, directory, sessionId, previewPort, requestLs, requestFile, requestDiff, onFileContext }: MainViewProps) {
     // Lazy-mount terminal: only create once the tab is first activated
     const [terminalMounted, setTerminalMounted] = useState(false);
     useEffect(() => {
@@ -42,7 +43,7 @@ export function MainView({ activeTab, topLevel, changes, directory, sessionId, r
                     {terminalMounted && <TerminalTab sessionId={sessionId} />}
                 </div>
                 <div className="main-tab-panel" style={{ display: activeTab === "preview" ? "flex" : "none" }}>
-                    <PreviewTab />
+                    <PreviewTab previewPort={previewPort} />
                 </div>
 
                 {/* 动态 Tab：渲染 iframe 访问 agent web 项目路由 */}

@@ -20,7 +20,7 @@ import os from "os"
 import fs from "fs"
 import fsPromises from "fs/promises"
 import { execFile, spawn as cpSpawn } from "child_process"
-import { CodeAgent, Database, type NoSqlDb, type TerminalProvider } from "@any-code/agent"
+import { CodeAgent, Database, type NoSqlDb, type TerminalProvider, type PreviewProvider } from "@any-code/agent"
 import { WebSocketServer, WebSocket as WS } from "ws"
 import * as pty from "node-pty"
 import { SqlJsStorage } from "./storage-sqljs"
@@ -34,6 +34,7 @@ const MODEL = process.env.MODEL ?? "claude-sonnet-4-20250514"
 const API_KEY = process.env.API_KEY
 const BASE_URL = process.env.BASE_URL
 const PORT = parseInt(process.env.PORT ?? "3210", 10)
+const PREVIEW_PORT = parseInt(process.env.PREVIEW_PORT ?? String(PORT + 1), 10)
 
 if (!API_KEY) {
   console.error("❌  Missing API_KEY environment variable")
@@ -155,7 +156,7 @@ const PROVIDER_ID = PROVIDER
 let sharedStorage: SqlJsStorage
 let db: NoSqlDb
 
-function createAgentConfig(directory: string, sessionId?: string, terminal?: TerminalProvider) {
+function createAgentConfig(directory: string, sessionId?: string, terminal?: TerminalProvider, preview?: PreviewProvider) {
   return {
     directory: directory,
     fs: new NodeFS(),
@@ -166,6 +167,7 @@ function createAgentConfig(directory: string, sessionId?: string, terminal?: Ter
     dataPath: makePaths(),
     ...(sessionId ? { sessionId } : {}),
     ...(terminal ? { terminal } : {}),
+    ...(preview ? { preview } : {}),
     provider: {
       id: PROVIDER_ID,
       apiKey: API_KEY!,
@@ -241,7 +243,8 @@ async function resumeSession(row: Record<string, unknown>): Promise<SessionEntry
 
   const dir = (row.directory as string) || ""
   const tp = getOrCreateTerminalProvider(sessionId)
-  const agent = new CodeAgent(createAgentConfig(dir, sessionId, tp))
+  const pp = getOrCreatePreviewProvider(sessionId)
+  const agent = new CodeAgent(createAgentConfig(dir, sessionId, tp, pp))
   await agent.init()
   const entry = registerSession(sessionId, agent, dir, row.time_created as number)
   if (dir) {
@@ -258,13 +261,17 @@ async function resumeSession(row: Record<string, unknown>): Promise<SessionEntry
 async function createNewWindow(userId: string, isDefault = false): Promise<SessionEntry> {
   const tempId = `temp-${Date.now()}`
   const tp = getOrCreateTerminalProvider(tempId)
-  const agent = new CodeAgent(createAgentConfig("", undefined, tp))
+  const pp = getOrCreatePreviewProvider(tempId)
+  const agent = new CodeAgent(createAgentConfig("", undefined, tp, pp))
   await agent.init()
   const sessionId = agent.sessionId
   const now = Date.now()
   terminalProviders.delete(tempId)
   terminalProviders.set(sessionId, tp)
+  previewProviders.delete(tempId)
+  previewProviders.set(sessionId, pp)
     ; (tp as any).sessionId = sessionId
+    ; (pp as any).sessionId = sessionId
   const entry = registerSession(sessionId, agent, "", now)
 
   db.insert("user_session", {
@@ -462,6 +469,7 @@ async function pushState(sessionId: string) {
       directory: dir,
       changes,
       topLevel,
+      previewPort: (previewSessionId === sessionId && previewTarget) ? PREVIEW_PORT : null,
     })
   } catch (err) {
     console.error(`❌  pushState error:`, err)
@@ -484,10 +492,13 @@ const MAX_BUFFER_LINES = 5000
  * Manages a single PTY process, a scrollback buffer (for agent reads),
  * and a set of WebSocket clients (for user UI).
  */
+const MAX_RAW_BUFFER = 200
+
 class NodeTerminalProvider implements TerminalProvider {
   private proc: pty.IPty | null = null
   private lines: string[] = []
   private currentLine = ""
+  private rawBuffer: string[] = []
   private wsClients = new Set<WS>()
   private sessionId: string
 
@@ -514,6 +525,7 @@ class NodeTerminalProvider implements TerminalProvider {
 
     this.lines = []
     this.currentLine = ""
+    this.rawBuffer = []
 
     // Filter out undefined env values (node-pty requires string values)
     const env: Record<string, string> = {}
@@ -536,11 +548,14 @@ class NodeTerminalProvider implements TerminalProvider {
     console.log(`🖥  Terminal created for session ${this.sessionId} (pid ${proc.pid}, cwd ${cwd})`)
 
     proc.onData((data: string) => {
-      // DEBUG: log raw PTY output
-      console.log(`🔍  PTY raw (${data.length} chars):`, JSON.stringify(data))
       // 1. Append to line buffer (strip ANSI for agent reads)
       this.appendToBuffer(data)
-      // 2. Forward raw data to all connected WS clients (keep ANSI for xterm.js)
+      // 2. Cache raw output for replay on WS reconnect
+      this.rawBuffer.push(data)
+      if (this.rawBuffer.length > MAX_RAW_BUFFER) {
+        this.rawBuffer.splice(0, this.rawBuffer.length - MAX_RAW_BUFFER)
+      }
+      // 3. Forward raw data to all connected WS clients (keep ANSI for xterm.js)
       for (const ws of this.wsClients) {
         if (ws.readyState === WS.OPEN) {
           ws.send(JSON.stringify({ type: "terminal.output", data }))
@@ -576,6 +591,7 @@ class NodeTerminalProvider implements TerminalProvider {
     this.proc = null
     this.lines = []
     this.currentLine = ""
+    this.rawBuffer = []
     for (const ws of this.wsClients) {
       if (ws.readyState === WS.OPEN) {
         ws.send(JSON.stringify({ type: "terminal.none" }))
@@ -603,6 +619,11 @@ class NodeTerminalProvider implements TerminalProvider {
     if (this.proc && cols > 0 && rows > 0) {
       this.proc.resize(cols, rows)
     }
+  }
+
+  /** Get buffered raw output for replay */
+  getRawBuffer(): string[] {
+    return this.rawBuffer
   }
 
   /** Register a WebSocket client for live output */
@@ -686,9 +707,13 @@ function handleTerminalWs(ws: WS, sessionId: string) {
   const tp = getOrCreateTerminalProvider(sessionId)
   tp.addClient(ws)
 
-  // Notify client of current terminal state
+  // Notify client of current terminal state and replay buffer
   if (tp.exists()) {
     ws.send(JSON.stringify({ type: "terminal.ready" }))
+    // Replay buffered output so late-connecting clients see prior output
+    for (const chunk of tp.getRawBuffer()) {
+      ws.send(JSON.stringify({ type: "terminal.output", data: chunk }))
+    }
   } else {
     ws.send(JSON.stringify({ type: "terminal.none" }))
   }
@@ -700,6 +725,131 @@ function handleTerminalWs(ws: WS, sessionId: string) {
     console.log(`🖥  Terminal WS closed for session ${sessionId}`)
   })
 }
+
+// ── Preview Provider — dedicated preview port with full reverse proxy ─────
+
+/** Stores the current preview target URL. Only one active target at a time. */
+let previewTarget: string | null = null
+let previewSessionId: string | null = null
+
+class NodePreviewProvider implements PreviewProvider {
+  sessionId: string
+
+  constructor(sessionId: string) {
+    this.sessionId = sessionId
+  }
+
+  setPreviewTarget(forwardedLocalUrl: string): void {
+    previewTarget = forwardedLocalUrl.replace(/\/+$/, "")
+    previewSessionId = this.sessionId
+    console.log(`🔗  Preview proxy: :${PREVIEW_PORT} → ${previewTarget} (session ${this.sessionId})`)
+
+    // Broadcast preview port to frontend
+    broadcast(this.sessionId, {
+      type: "preview",
+      port: PREVIEW_PORT,
+    })
+  }
+}
+
+const previewProviders = new Map<string, NodePreviewProvider>()
+
+function getOrCreatePreviewProvider(sessionId: string): NodePreviewProvider {
+  let pp = previewProviders.get(sessionId)
+  if (!pp) {
+    pp = new NodePreviewProvider(sessionId)
+    previewProviders.set(sessionId, pp)
+  }
+  return pp
+}
+
+/** Dedicated preview HTTP server — proxies all requests to the current target */
+const previewServer = http.createServer((req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*")
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+  res.setHeader("Access-Control-Allow-Headers", "*")
+  if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return }
+
+  if (!previewTarget) {
+    res.writeHead(502, { "Content-Type": "text/plain" })
+    res.end("No preview target configured")
+    return
+  }
+
+  try {
+    const targetUrl = previewTarget + (req.url || "/")
+    const parsed = new URL(targetUrl)
+    const options: http.RequestOptions = {
+      hostname: parsed.hostname,
+      port: parsed.port,
+      path: parsed.pathname + parsed.search,
+      method: req.method,
+      headers: { ...req.headers, host: parsed.host },
+    }
+
+    const proxyReq = http.request(options, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode || 502, proxyRes.headers)
+      proxyRes.pipe(res)
+    })
+
+    proxyReq.on("error", (err) => {
+      if (!res.headersSent) res.writeHead(502, { "Content-Type": "text/plain" })
+      res.end(`Preview proxy error: ${err.message}`)
+    })
+
+    req.pipe(proxyReq)
+  } catch (err: any) {
+    res.writeHead(502, { "Content-Type": "text/plain" })
+    res.end(`Invalid proxy target: ${err.message}`)
+  }
+})
+
+// WebSocket upgrade proxy — needed for HMR (Vite, webpack, etc.)
+previewServer.on("upgrade", (req, socket, head) => {
+  if (!previewTarget) {
+    socket.destroy()
+    return
+  }
+
+  try {
+    const parsed = new URL(previewTarget)
+    const targetWs = `ws://${parsed.hostname}:${parsed.port}${req.url || "/"}`
+    const wsTarget = new URL(targetWs)
+
+    const options: http.RequestOptions = {
+      hostname: wsTarget.hostname,
+      port: wsTarget.port,
+      path: wsTarget.pathname + wsTarget.search,
+      method: "GET",
+      headers: { ...req.headers, host: wsTarget.host },
+    }
+
+    const proxyReq = http.request(options)
+
+    proxyReq.on("upgrade", (_proxyRes, proxySocket, proxyHead) => {
+      socket.write(
+        "HTTP/1.1 101 Switching Protocols\r\n" +
+        "Upgrade: websocket\r\n" +
+        "Connection: Upgrade\r\n" +
+        Object.entries(_proxyRes.headers)
+          .filter(([k]) => !["upgrade", "connection"].includes(k.toLowerCase()))
+          .map(([k, v]) => `${k}: ${v}`)
+          .join("\r\n") +
+        "\r\n\r\n"
+      )
+      if (proxyHead.length > 0) socket.write(proxyHead)
+      proxySocket.pipe(socket)
+      socket.pipe(proxySocket)
+    })
+
+    proxyReq.on("error", () => socket.destroy())
+    socket.on("error", () => proxyReq.destroy())
+
+    proxyReq.end()
+  } catch {
+    socket.destroy()
+  }
+})
 
 // ── HTTP Server ────────────────────────────────────────────────────────────
 
@@ -1006,8 +1156,9 @@ const server = http.createServer(async (req, res) => {
         dir ? listDir(dir) : Promise.resolve([]),
         dir ? getGitChanges(dir) : Promise.resolve([]),
       ])
+      const hasPreview = previewSessionId === session.id && previewTarget
       res.writeHead(200, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ directory: dir, topLevel, changes }))
+      res.end(JSON.stringify({ directory: dir, topLevel, changes, previewPort: hasPreview ? PREVIEW_PORT : null }))
       return
     }
 
@@ -1290,6 +1441,10 @@ export async function startServer() {
   })
 
   const HOST = process.env.HOST ?? "0.0.0.0"
+
+  previewServer.listen(PREVIEW_PORT, HOST, () => {
+    console.log(`👁  Preview proxy: http://${HOST}:${PREVIEW_PORT}`)
+  })
 
   server.listen(PORT, HOST, () => {
     console.log(`🌐  http://${HOST}:${PORT}`)

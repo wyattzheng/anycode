@@ -48,6 +48,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
     const [topLevel, setTopLevel] = useState<DirEntry[]>([]);
     const [changes, setChanges] = useState<GitChange[]>([]);
     const [fileContext, setFileContext] = useState<FileContext | null>(null);
+    const [previewPort, setPreviewPort] = useState<number | null>(null);
 
     // Poll state — only when visible
     const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
@@ -66,6 +67,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                 if (data.directory) setDirectory(data.directory);
                 setTopLevel(data.topLevel);
                 setChanges(data.changes);
+                if (data.previewPort !== undefined) setPreviewPort(data.previewPort);
             } catch { /* ignore */ }
             onWindowsChanged();
         };
@@ -126,6 +128,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                         changes={changes}
                         directory={directory}
                         sessionId={sessionId}
+                        previewPort={previewPort}
                         requestLs={requestLs}
                         requestFile={requestFile}
                         requestDiff={requestDiff}

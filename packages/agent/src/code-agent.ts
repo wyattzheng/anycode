@@ -23,7 +23,7 @@
  */
 
 import * as path from "./util/path"
-import type { AgentContext, ShellProvider, TerminalProvider } from "./context"
+import type { AgentContext, ShellProvider, TerminalProvider, PreviewProvider } from "./context"
 import type { Project } from "./project"
 import type { VFS } from "./util/vfs"
 import type { SearchProvider } from "./util/search"
@@ -184,6 +184,12 @@ export interface CodeAgentOptions {
      * Optional — when not provided, terminal tools will throw errors.
      */
     terminal?: TerminalProvider
+
+    /**
+     * Preview provider for setting reverse proxy URLs.
+     * Optional — when not provided, set_preview_url tool will throw errors.
+     */
+    preview?: PreviewProvider
 }
 
 export interface CodeAgentSession {
@@ -367,6 +373,9 @@ export class CodeAgent extends EventEmitter {
                 write() { throw new Error("Terminal not available in this environment.") },
                 read() { throw new Error("Terminal not available in this environment.") },
                 exists() { return false },
+            },
+            preview: this.options.preview ?? {
+                setPreviewTarget() { throw new Error("Preview not available in this environment.") },
             },
             search: this.options.search as any,
             dataPath: this.options.dataPath,

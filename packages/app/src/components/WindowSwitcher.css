@@ -68,7 +68,17 @@
     border-radius: var(--radius-sm);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     z-index: 400;
-    overflow: hidden;
+    overflow: visible;
+}
+
+.taskbar-popover::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--color-border);
 }
 
 .taskbar-popover-btn {

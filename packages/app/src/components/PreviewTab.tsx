@@ -1,11 +1,12 @@
 import { MonitorIcon } from "./Icons";
 import "./PreviewTab.css";
 
-export function PreviewTab() {
-    // TODO: previewUrl will come from agent web project route mapping
-    const previewUrl: string | null = null;
+interface PreviewTabProps {
+    previewPort: number | null;
+}
 
-    if (!previewUrl) {
+export function PreviewTab({ previewPort }: PreviewTabProps) {
+    if (!previewPort) {
         return (
             <div className="preview-tab">
                 <div className="preview-empty">
@@ -16,9 +17,11 @@ export function PreviewTab() {
         );
     }
 
+    const src = `${location.protocol}//${location.hostname}:${previewPort}`;
+
     return (
         <div className="preview-tab">
-            <iframe className="preview-iframe" src={previewUrl} title="Preview" />
+            <iframe className="preview-iframe" src={src} title="Preview" />
         </div>
     );
 }

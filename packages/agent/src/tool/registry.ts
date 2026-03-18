@@ -27,6 +27,7 @@ import { Truncate } from "./truncation"
 import { ApplyPatchTool } from "./apply_patch"
 import { TerminalWriteTool } from "./terminal-write"
 import { TerminalReadTool } from "./terminal-read"
+import { SetPreviewUrlTool } from "./set-preview-url"
 import { Glob } from "../util/glob"
 import { pathToFileURL } from "url"
 
@@ -131,6 +132,7 @@ export namespace ToolRegistry {
       ApplyPatchTool,
       TerminalWriteTool,
       TerminalReadTool,
+      SetPreviewUrlTool,
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
       ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [PlanExitTool] : []),
       ...custom,
