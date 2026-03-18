@@ -81,9 +81,11 @@ export interface CodeViewerProps {
     removedLines?: Set<number>;
     /** Called when user selects lines. Empty array = cleared. */
     onSelectionChange?: (lines: number[]) => void;
+    /** Scroll to this line once Shiki rendering completes (one-shot) */
+    scrollToLine?: number | null;
 }
 
-export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines, removedLines, onSelectionChange }: CodeViewerProps) {
+export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines, removedLines, onSelectionChange, scrollToLine }: CodeViewerProps) {
     const [rawHtml, setRawHtml] = useState<string | null>(null);
     const [error, setError] = useState(false);
     const [selectedLines, setSelectedLines] = useState<Set<number>>(new Set());
@@ -131,6 +133,28 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
         anchorRef.current = null;
         onSelectionChange?.([]);
     }, [filePath, code]);
+
+    // Scroll to target line once Shiki rendering is done (before paint).
+    // The wrapper starts visibility:hidden when a scroll is pending so the
+    // first painted frame already shows the content at the correct position.
+    const scrolledForRef = useRef<string | null>(null);
+    useLayoutEffect(() => {
+        if (scrollToLine == null || !rawHtml || !containerRef.current) return;
+        // One-shot: don't re-scroll for same file+line combo
+        const key = `${filePath}:${scrollToLine}`;
+        if (scrolledForRef.current === key) return;
+        scrolledForRef.current = key;
+
+        const lineEl = containerRef.current.querySelector(`[data-line="${scrollToLine}"]`) as HTMLElement;
+        if (!lineEl) { if (wrapperRef.current) wrapperRef.current.style.visibility = ''; return; }
+        const scrollParent = containerRef.current.closest('.file-content-body') as HTMLElement;
+        if (!scrollParent) { if (wrapperRef.current) wrapperRef.current.style.visibility = ''; return; }
+        // Position ~3 lines from the top
+        const offset = lineEl.offsetTop - scrollParent.offsetTop - 3 * 19.2;
+        scrollParent.scrollTo({ top: Math.max(0, offset), behavior: 'instant' as ScrollBehavior });
+        // Reveal now that scroll is in position (still before paint)
+        if (wrapperRef.current) wrapperRef.current.style.visibility = '';
+    }, [rawHtml, scrollToLine, filePath]);
 
     // Derive final HTML
     const finalHtml = useMemo(() => {
@@ -420,8 +444,12 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
         return <div className="code-viewer-loading">...</div>;
     }
 
+    // Hide wrapper until scroll is in position — prevents any visible jump
+    const scrollPending = scrollToLine != null && scrolledForRef.current !== `${filePath}:${scrollToLine}`;
+
     return (
-        <div ref={wrapperRef} className="code-viewer-wrapper">
+        <div ref={wrapperRef} className="code-viewer-wrapper"
+             style={scrollPending ? { visibility: 'hidden' } : undefined}>
             <div
                 ref={containerRef}
                 className="code-viewer"

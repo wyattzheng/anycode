@@ -41,23 +41,6 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
     const [scrollToLine, setScrollToLine] = useState<number | null>(null);
     const contentBodyRef = useRef<HTMLDivElement>(null);
 
-    // Scroll to first changed line after content renders
-    useEffect(() => {
-        if (scrollToLine === null || !contentBodyRef.current) return;
-        // Wait a tick for Shiki to render
-        const timer = setTimeout(() => {
-            const el = contentBodyRef.current?.querySelector(`[data-line="${scrollToLine}"]`) as HTMLElement | null;
-            if (el && contentBodyRef.current) {
-                // Scroll so the changed line sits ~3 lines from the top
-                const container = contentBodyRef.current;
-                const offset = el.offsetTop - container.offsetTop - 3 * 19.2; // ~3 lines padding
-                container.scrollTop = Math.max(0, offset);
-            }
-            setScrollToLine(null);
-        }, 100);
-        return () => clearTimeout(timer);
-    }, [scrollToLine, fileContent]);
-
     const onDragMove = useCallback((clientY: number) => {
         if (!dragRef.current || !containerRef.current) return;
         const containerRect = containerRef.current.getBoundingClientRect();
@@ -93,8 +76,13 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
         setFileContent(null);
         setAddedLines(new Set());
         setRemovedLines(new Set());
+        setScrollToLine(null);
         setFileLoading(true);
         onFileContext?.(null); // clear selection on file switch
+        // Reset scroll position immediately so the old file's position doesn't linger
+        if (contentBodyRef.current) {
+            contentBodyRef.current.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+        }
 
         const [content, diff] = await Promise.all([
             requestFile(filePath),
@@ -143,6 +131,7 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
                                     addedLines={addedLines}
                                     removedLines={removedLines}
                                     onSelectionChange={handleSelectionChange}
+                                    scrollToLine={scrollToLine}
                                 />
                             ) : (
                                 <div className="file-content-error">无法读取文件</div>
