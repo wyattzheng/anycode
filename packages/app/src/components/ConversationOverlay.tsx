@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import type { FileContext } from "../App";
 import { MicIcon, KeyboardIcon, SendIcon, CloseIcon, ChatIcon, StopIcon } from "./Icons";
 import "./ConversationOverlay.css";
 
@@ -129,6 +130,7 @@ function summarizeToolInfo(tool: ToolCard) {
 
 interface ConversationOverlayProps {
     sessionId: string;
+    fileContext?: FileContext | null;
 }
 
 const SIDEBAR_BREAKPOINT = 768;
@@ -159,7 +161,7 @@ function useIsSidebar() {
     return isSidebar;
 }
 
-export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
+export function ConversationOverlay({ sessionId, fileContext }: ConversationOverlayProps) {
     const isSidebar = useIsSidebar();
 
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -370,7 +372,12 @@ export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
         const text = input.trim();
         if (!text || busy) return;
         setInput("");
-        setMessages(prev => [...prev, { role: "user", text }]);
+
+        // Build display text with context info
+        const contextLabel = fileContext
+            ? `[${fileContext.file} L${fileContext.lines[0]}–${fileContext.lines[fileContext.lines.length - 1]}]\n${text}`
+            : text;
+        setMessages(prev => [...prev, { role: "user", text: contextLabel }]);
         setBusy(true);
         toolMapRef.current.clear();
 
@@ -380,11 +387,17 @@ export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
         // Start assistant response container
         setMessages(prev => [...prev, { role: "assistant", parts: [] }]);
 
+        // Build payload — include file context if available
+        const payload: Record<string, unknown> = { message: text, sessionId };
+        if (fileContext) {
+            payload.fileContext = fileContext;
+        }
+
         try {
             const res = await fetch("/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: text, sessionId }),
+                body: JSON.stringify(payload),
                 signal: ctl.signal,
             });
             const reader = res.body!.getReader();
@@ -408,7 +421,7 @@ export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
         }
         abortRef.current = null;
         setBusy(false);
-    }, [input, busy, handleEvent, appendPart]);
+    }, [input, busy, handleEvent, appendPart, fileContext]);
 
     const handleStop = useCallback(() => {
         abortRef.current?.abort();
@@ -549,6 +562,13 @@ export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
                 )}
             </div>
 
+            {fileContext && (
+                <div className="co-file-context">
+                    <span className="co-file-context-text">
+                        {fileContext.file.split("/").pop()} L{fileContext.lines[0]}–{fileContext.lines[fileContext.lines.length - 1]}
+                    </span>
+                </div>
+            )}
             <div className="conversation-input">
                 {showTextInput ? (
                     <>

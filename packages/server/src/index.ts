@@ -405,13 +405,23 @@ async function pushState(sessionId: string) {
 async function handleChat(req: http.IncomingMessage, res: http.ServerResponse) {
   let body = ""
   for await (const chunk of req) body += chunk
-  const { message, sessionId } = JSON.parse(body)
+  const { message, sessionId, fileContext } = JSON.parse(body)
 
   const session = sessionId ? getSession(sessionId) : undefined
   if (!session) {
     res.writeHead(404, { "Content-Type": "application/json" })
     res.end(JSON.stringify({ error: "Session not found" }))
     return
+  }
+
+  // Build the effective message — prepend file context if present
+  let effectiveMessage = message
+  if (fileContext && fileContext.file && Array.isArray(fileContext.lines) && fileContext.lines.length > 0) {
+    const lines = fileContext.lines as number[]
+    const start = lines[0]
+    const end = lines[lines.length - 1]
+    const range = start === end ? `L${start}` : `L${start}–${end}`
+    effectiveMessage = `[用户选中了文件 ${fileContext.file} 的 ${range} 行]\n\n${message}`
   }
 
   res.writeHead(200, {
@@ -421,7 +431,7 @@ async function handleChat(req: http.IncomingMessage, res: http.ServerResponse) {
   })
 
   try {
-    for await (const event of session.agent.chat(message)) {
+    for await (const event of session.agent.chat(effectiveMessage)) {
       res.write(`data: ${JSON.stringify(event)}\n\n`)
     }
   } catch (err: any) {

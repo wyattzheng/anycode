@@ -1,4 +1,4 @@
-import type { TabId, DirEntry, GitChange } from "../App";
+import type { TabId, DirEntry, GitChange, FileContext } from "../App";
 import { FileBrowser } from "./FileBrowser";
 import { ChangesView } from "./ChangesView";
 import { PreviewTab } from "./PreviewTab";
@@ -13,9 +13,10 @@ interface MainViewProps {
     requestLs: (path: string) => Promise<DirEntry[]>;
     requestFile: (path: string) => Promise<string | null>;
     requestDiff: (path: string) => Promise<{ added: number[]; removed: number[] }>;
+    onFileContext?: (ctx: FileContext | null) => void;
 }
 
-export function MainView({ activeTab, topLevel, changes, directory, requestLs, requestFile, requestDiff }: MainViewProps) {
+export function MainView({ activeTab, topLevel, changes, directory, requestLs, requestFile, requestDiff, onFileContext }: MainViewProps) {
     return (
         <div className="main-view">
             <div className="main-path-bar">
@@ -23,10 +24,10 @@ export function MainView({ activeTab, topLevel, changes, directory, requestLs, r
             </div>
             <div className="main-tab-area">
                 <div className="main-tab-panel" style={{ display: activeTab === "files" ? "flex" : "none" }}>
-                    <FileBrowser topLevel={topLevel} requestLs={requestLs} requestFile={requestFile} />
+                    <FileBrowser topLevel={topLevel} requestLs={requestLs} requestFile={requestFile} onFileContext={onFileContext} />
                 </div>
                 <div className="main-tab-panel" style={{ display: activeTab === "changes" ? "flex" : "none" }}>
-                    <ChangesView changes={changes} requestFile={requestFile} requestDiff={requestDiff} />
+                    <ChangesView changes={changes} requestFile={requestFile} requestDiff={requestDiff} onFileContext={onFileContext} />
                 </div>
                 <div className="main-tab-panel" style={{ display: activeTab === "preview" ? "flex" : "none" }}>
                     <PreviewTab />

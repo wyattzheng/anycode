@@ -227,6 +227,26 @@
     margin: 2px 0;
 }
 
+/* ── File context indicator ── */
+.co-file-context {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: rgba(0, 120, 212, 0.1);
+    border-top: 1px solid rgba(0, 120, 212, 0.2);
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--color-accent);
+    overflow: hidden;
+}
+
+.co-file-context-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 /* ── Input bar ── */
 .conversation-input {
     display: flex;

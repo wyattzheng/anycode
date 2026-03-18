@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import type { DirEntry } from "../App";
+import type { DirEntry, FileContext } from "../App";
 import { FolderOpenIcon, FileDocIcon, ChevronIcon } from "./Icons";
 import { CodeViewer } from "./CodeViewer";
 import "./FileBrowser.css";
@@ -8,6 +8,7 @@ interface FileBrowserProps {
     topLevel: DirEntry[];
     requestLs: (path: string) => Promise<DirEntry[]>;
     requestFile: (path: string) => Promise<string | null>;
+    onFileContext?: (ctx: FileContext | null) => void;
 }
 
 function LazyTreeItem({
@@ -87,7 +88,7 @@ function LazyTreeItem({
     );
 }
 
-export function FileBrowser({ topLevel, requestLs, requestFile }: FileBrowserProps) {
+export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }: FileBrowserProps) {
     const [sidebarHeight, setSidebarHeight] = useState(200);
     const containerRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -130,10 +131,20 @@ export function FileBrowser({ topLevel, requestLs, requestFile }: FileBrowserPro
         setSelectedFile(filePath);
         setFileContent(null);
         setFileLoading(true);
+        onFileContext?.(null); // clear selection on file switch
         const content = await requestFile(filePath);
         setFileContent(content);
         setFileLoading(false);
     };
+
+    const handleSelectionChange = useCallback((lines: number[]) => {
+        if (!selectedFile) return;
+        if (lines.length === 0) {
+            onFileContext?.(null);
+        } else {
+            onFileContext?.({ file: selectedFile, lines });
+        }
+    }, [selectedFile, onFileContext]);
 
     const isEmpty = topLevel.length === 0;
 
@@ -150,7 +161,7 @@ export function FileBrowser({ topLevel, requestLs, requestFile }: FileBrowserPro
                             {fileLoading ? (
                                 <div className="file-content-loading">加载中…</div>
                             ) : fileContent !== null ? (
-                                <CodeViewer code={fileContent} filePath={selectedFile} />
+                                <CodeViewer code={fileContent} filePath={selectedFile} onSelectionChange={handleSelectionChange} />
                             ) : (
                                 <div className="file-content-error">无法读取文件</div>
                             )}

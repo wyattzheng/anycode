@@ -19,6 +19,8 @@ export namespace Hooks {
 
   export interface HookRule {
     matcher: string
+    /** Regex patterns — if file_path matches any, this rule is skipped */
+    ignore?: string[]
     hooks: HookDef[]
   }
 
@@ -61,15 +63,17 @@ export namespace Hooks {
 
   /**
    * Find hook definitions that match the given tool name.
+   * Rules whose ignore patterns match the filePath are skipped.
    */
-  export function matchTool(rules: HookRule[], toolName: string): HookDef[] {
+  export function matchTool(rules: HookRule[], toolName: string, filePath?: string): HookDef[] {
     const matched: HookDef[] = []
     for (const rule of rules) {
       try {
-        const re = new RegExp(rule.matcher, "i")
-        if (re.test(toolName)) {
-          matched.push(...rule.hooks)
-        }
+        if (!new RegExp(rule.matcher, "i").test(toolName)) continue
+        if (filePath && rule.ignore?.some((pat) => {
+          try { return new RegExp(pat, "i").test(filePath) } catch { return false }
+        })) continue
+        matched.push(...rule.hooks)
       } catch {
         // invalid regex, skip
       }
@@ -126,7 +130,8 @@ export namespace Hooks {
     const rules = hooksConfig["PostToolUse"]
     if (!rules || rules.length === 0) return
 
-    const hooks = matchTool(rules, toolName)
+    const filePath = toolInput?.filePath ?? toolInput?.file_path
+    const hooks = matchTool(rules, toolName, filePath)
     if (hooks.length === 0) return
 
     const payload: HookPayload = {

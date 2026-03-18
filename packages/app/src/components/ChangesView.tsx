@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import type { GitChange } from "../App";
+import type { GitChange, FileContext } from "../App";
 import { FileDocIcon, DiffIcon } from "./Icons";
 import { CodeViewer } from "./CodeViewer";
 import "./ChangesView.css";
@@ -8,6 +8,7 @@ interface ChangesViewProps {
     changes: GitChange[];
     requestFile: (path: string) => Promise<string | null>;
     requestDiff: (path: string) => Promise<{ added: number[]; removed: number[] }>;
+    onFileContext?: (ctx: FileContext | null) => void;
 }
 
 function statusClass(status: string): string {
@@ -27,7 +28,7 @@ function statusLabel(status: string): string {
     }
 }
 
-export function ChangesView({ changes, requestFile, requestDiff }: ChangesViewProps) {
+export function ChangesView({ changes, requestFile, requestDiff, onFileContext }: ChangesViewProps) {
     const [listHeight, setListHeight] = useState(200);
     const containerRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -93,6 +94,7 @@ export function ChangesView({ changes, requestFile, requestDiff }: ChangesViewPr
         setAddedLines(new Set());
         setRemovedLines(new Set());
         setFileLoading(true);
+        onFileContext?.(null); // clear selection on file switch
 
         const [content, diff] = await Promise.all([
             requestFile(filePath),
@@ -110,6 +112,15 @@ export function ChangesView({ changes, requestFile, requestDiff }: ChangesViewPr
             setScrollToLine(allChanged[0]);
         }
     };
+
+    const handleSelectionChange = useCallback((lines: number[]) => {
+        if (!selectedFile) return;
+        if (lines.length === 0) {
+            onFileContext?.(null);
+        } else {
+            onFileContext?.({ file: selectedFile, lines });
+        }
+    }, [selectedFile, onFileContext]);
 
     const isEmpty = changes.length === 0;
 
@@ -131,6 +142,7 @@ export function ChangesView({ changes, requestFile, requestDiff }: ChangesViewPr
                                     filePath={selectedFile}
                                     addedLines={addedLines}
                                     removedLines={removedLines}
+                                    onSelectionChange={handleSelectionChange}
                                 />
                             ) : (
                                 <div className="file-content-error">无法读取文件</div>

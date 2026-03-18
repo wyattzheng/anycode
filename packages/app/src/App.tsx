@@ -15,6 +15,11 @@ export interface GitChange {
     status: string;
 }
 
+export interface FileContext {
+    file: string;
+    lines: number[];
+}
+
 const API_BASE = "";
 
 function getUserId(): string {
@@ -33,6 +38,7 @@ export function App() {
     const [directory, setDirectory] = useState<string>("");
     const [topLevel, setTopLevel] = useState<DirEntry[]>([]);
     const [changes, setChanges] = useState<GitChange[]>([]);
+    const [fileContext, setFileContext] = useState<FileContext | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     // Get or create session for this user
@@ -165,14 +171,14 @@ export function App() {
     return (
         <div className="app-root">
             <div className="app-main">
-                <MainView activeTab={activeTab} topLevel={topLevel} changes={changes} directory={directory} requestLs={requestLs} requestFile={requestFile} requestDiff={requestDiff} />
+                <MainView activeTab={activeTab} topLevel={topLevel} changes={changes} directory={directory} requestLs={requestLs} requestFile={requestFile} requestDiff={requestDiff} onFileContext={setFileContext} />
                 <TabBar
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
                     changeCount={changes.length}
                 />
             </div>
-            <ConversationOverlay sessionId={sessionId} />
+            <ConversationOverlay sessionId={sessionId} fileContext={fileContext} />
         </div>
     );
 }
