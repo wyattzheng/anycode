@@ -144,31 +144,35 @@ export function App() {
     // No directory yet — empty main view + floating conversation + tab bar
     if (!directory) {
         return (
-            <div className="app">
-                <div className="main-view" style={{ display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "16px" }}>
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-dim)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}>
-                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                    </svg>
-                    <p style={{ color: "var(--color-text-dim)", fontSize: "13px", opacity: 0.5, textAlign: "center", lineHeight: 1.6, maxWidth: "220px" }}>
-                        通过对话面板<br />打开一个项目开始编辑
-                    </p>
+            <div className="app-root">
+                <div className="app-main">
+                    <div className="main-view" style={{ display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "16px" }}>
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-dim)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}>
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                        </svg>
+                        <p style={{ color: "var(--color-text-dim)", fontSize: "13px", opacity: 0.5, textAlign: "center", lineHeight: 1.6, maxWidth: "220px" }}>
+                            通过对话面板<br />打开一个项目开始编辑
+                        </p>
+                    </div>
+                    <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
                 </div>
                 <ConversationOverlay sessionId={sessionId} />
-                <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
             </div>
         );
     }
 
     // Directory set — full UI
     return (
-        <div className="app">
-            <MainView activeTab={activeTab} topLevel={topLevel} changes={changes} requestLs={requestLs} requestFile={requestFile} requestDiff={requestDiff} />
+        <div className="app-root">
+            <div className="app-main">
+                <MainView activeTab={activeTab} topLevel={topLevel} changes={changes} requestLs={requestLs} requestFile={requestFile} requestDiff={requestDiff} />
+                <TabBar
+                    activeTab={activeTab}
+                    onTabChange={setActiveTab}
+                    changeCount={changes.length}
+                />
+            </div>
             <ConversationOverlay sessionId={sessionId} />
-            <TabBar
-                activeTab={activeTab}
-                onTabChange={setActiveTab}
-                changeCount={changes.length}
-            />
         </div>
     );
 }

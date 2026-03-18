@@ -131,14 +131,56 @@ interface ConversationOverlayProps {
     sessionId: string;
 }
 
+const SIDEBAR_BREAKPOINT = 768;
+const STORAGE_KEY_POS = "anycode-conv-pos";
+const STORAGE_KEY_SIZE = "anycode-conv-size";
+
+function loadStoredRect() {
+    try {
+        const pos = JSON.parse(localStorage.getItem(STORAGE_KEY_POS) || "null");
+        const size = JSON.parse(localStorage.getItem(STORAGE_KEY_SIZE) || "null");
+        return {
+            pos: pos && typeof pos.x === "number" ? pos as { x: number; y: number } : { x: 0, y: 0 },
+            size: size && typeof size.w === "number" ? size as { w: number; h: number } : { w: 220, h: 280 },
+        };
+    } catch {
+        return { pos: { x: 0, y: 0 }, size: { w: 220, h: 280 } };
+    }
+}
+
+function useIsSidebar() {
+    const [isSidebar, setIsSidebar] = useState(() => window.innerWidth > SIDEBAR_BREAKPOINT);
+    useEffect(() => {
+        const mq = window.matchMedia(`(min-width: ${SIDEBAR_BREAKPOINT + 1}px)`);
+        const handler = (e: MediaQueryListEvent) => setIsSidebar(e.matches);
+        mq.addEventListener("change", handler);
+        return () => mq.removeEventListener("change", handler);
+    }, []);
+    return isSidebar;
+}
+
 export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
+    const isSidebar = useIsSidebar();
+
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [recording, setRecording] = useState(false);
     const [showTextInput, setShowTextInput] = useState(false);
     const [busy, setBusy] = useState(false);
-    const [position, setPosition] = useState({ x: 0, y: 0 });
-    const [size, setSize] = useState({ w: 220, h: 280 });
+
+    const stored = useRef(loadStoredRect());
+    const [position, setPosition] = useState(stored.current.pos);
+    const [size, setSize] = useState(stored.current.size);
+
+    // Persist floating position/size to localStorage
+    useEffect(() => {
+        if (isSidebar) return;
+        localStorage.setItem(STORAGE_KEY_POS, JSON.stringify(position));
+    }, [position, isSidebar]);
+    useEffect(() => {
+        if (isSidebar) return;
+        localStorage.setItem(STORAGE_KEY_SIZE, JSON.stringify(size));
+    }, [size, isSidebar]);
 
     const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
     const resizeRef = useRef<{ startX: number; startY: number; origW: number; origH: number } | null>(null);
@@ -466,17 +508,24 @@ export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
         }
     };
 
+    const panelClass = isSidebar ? "conversation-panel conversation-sidebar" : "conversation-panel conversation-floating";
+    const panelStyle = isSidebar
+        ? undefined
+        : { transform: `translate(${position.x}px, ${position.y}px)`, width: size.w, height: size.h };
+
     return (
-        <div className="conversation-panel" style={{ transform: `translate(${position.x}px, ${position.y}px)`, width: size.w, height: size.h }}>
-            <div className="conversation-header" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart}>
-                <div className="drag-grip" />
-                <div className="conversation-header-content"><ChatIcon /> 对话</div>
-            </div>
+        <div className={panelClass} style={panelStyle}>
+            {!isSidebar && (
+                <div className="conversation-header" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart}>
+                    <div className="drag-grip" />
+                    <div className="conversation-header-content"><ChatIcon /> 对话</div>
+                </div>
+            )}
 
             <div className="conversation-messages" ref={msgsRef}>
                 {messages.length === 0 && (
                     <div className="co-text" style={{ color: "var(--color-text-dim)" }}>
-                        你好！告诉我你想做什么 ✨
+                        你好！告诉我你想做什么
                     </div>
                 )}
                 {messages.map((msg, i) =>
@@ -521,8 +570,12 @@ export function ConversationOverlay({ sessionId }: ConversationOverlayProps) {
                     </>
                 )}
             </div>
-            <div className="co-resize-grip co-resize-bl" onMouseDown={makeResizeMouseDown("bl")} onTouchStart={makeResizeTouchStart("bl")} />
-            <div className="co-resize-grip co-resize-br" onMouseDown={makeResizeMouseDown("br")} onTouchStart={makeResizeTouchStart("br")} />
+            {!isSidebar && (
+                <>
+                    <div className="co-resize-grip co-resize-bl" onMouseDown={makeResizeMouseDown("bl")} onTouchStart={makeResizeTouchStart("bl")} />
+                    <div className="co-resize-grip co-resize-br" onMouseDown={makeResizeMouseDown("br")} onTouchStart={makeResizeTouchStart("br")} />
+                </>
+            )}
         </div>
     );
 }

@@ -1,4 +1,11 @@
 .conversation-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ── Floating mode (narrow screens) ── */
+.conversation-floating {
     position: absolute;
     top: 20px;
     right: 20px;
@@ -8,9 +15,15 @@
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+}
+
+/* ── Sidebar mode (wide screens) ── */
+.conversation-sidebar {
+    width: 320px;
+    flex-shrink: 0;
+    height: 100%;
+    background: var(--color-surface);
+    border-left: 1px solid var(--color-border);
 }
 
 .conversation-header {
