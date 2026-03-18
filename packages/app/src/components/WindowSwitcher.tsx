@@ -32,13 +32,15 @@ export function WindowSwitcher({
     onDelete,
 }: WindowSwitcherProps) {
     const [popoverId, setPopoverId] = useState<string | null>(null);
-    const popoverRef = useRef<HTMLDivElement>(null);
+    const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null);
+    const taskbarRef = useRef<HTMLElement>(null);
+    const btnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
-    // Tap outside to dismiss
+    // Tap outside taskbar to dismiss
     useEffect(() => {
         if (!popoverId) return;
         const handler = (e: MouseEvent | TouchEvent) => {
-            if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+            if (taskbarRef.current && !taskbarRef.current.contains(e.target as Node)) {
                 setPopoverId(null);
             }
         };
@@ -52,9 +54,17 @@ export function WindowSwitcher({
 
     const handleClick = useCallback((w: WindowInfo) => {
         if (w.id === activeWindowId) {
-            // Already active — toggle popover (only for non-default)
             if (!w.isDefault) {
-                setPopoverId((prev) => (prev === w.id ? null : w.id));
+                setPopoverId((prev) => {
+                    if (prev === w.id) return null;
+                    // Calculate position from button
+                    const btn = btnRefs.current.get(w.id);
+                    if (btn) {
+                        const rect = btn.getBoundingClientRect();
+                        setPopoverPos({ x: rect.left + rect.width / 2, y: rect.top });
+                    }
+                    return w.id;
+                });
             }
         } else {
             setPopoverId(null);
@@ -63,33 +73,38 @@ export function WindowSwitcher({
     }, [activeWindowId, onSwitch]);
 
     return (
-        <nav className="taskbar">
+        <nav className="taskbar" ref={taskbarRef}>
             <div className="taskbar-items">
                 {windows.map((w) => (
                     <button
                         key={w.id}
+                        ref={(el) => { if (el) btnRefs.current.set(w.id, el); }}
                         className={`taskbar-item ${w.id === activeWindowId ? "active" : ""}`}
                         onClick={() => handleClick(w)}
                     >
                         <span className="taskbar-label">{windowLabel(w)}</span>
-                        {popoverId === w.id && (
-                            <div className="taskbar-popover" ref={popoverRef}>
-                                <button
-                                    className="taskbar-popover-btn"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setPopoverId(null);
-                                        onDelete(w.id);
-                                    }}
-                                >
-                                    关闭窗口
-                                </button>
-                            </div>
-                        )}
                     </button>
                 ))}
             </div>
             <button className="taskbar-add" onClick={onCreate} title="新建窗口">+</button>
+
+            {popoverId && popoverPos && (
+                <div
+                    className="taskbar-popover"
+                    style={{ left: popoverPos.x, top: popoverPos.y }}
+                >
+                    <button
+                        className="taskbar-popover-btn"
+                        onClick={() => {
+                            const id = popoverId;
+                            setPopoverId(null);
+                            onDelete(id);
+                        }}
+                    >
+                        关闭窗口
+                    </button>
+                </div>
+            )}
         </nav>
     );
 }

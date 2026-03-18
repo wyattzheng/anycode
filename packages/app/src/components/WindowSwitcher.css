@@ -61,15 +61,13 @@
 
 /* ── Popover bubble ── */
 .taskbar-popover {
-    position: absolute;
-    bottom: calc(100% + 6px);
-    left: 50%;
-    transform: translateX(-50%);
+    position: fixed;
+    transform: translate(-50%, -100%) translateY(-8px);
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 4px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-    z-index: 300;
+    z-index: 400;
     overflow: hidden;
 }
 
