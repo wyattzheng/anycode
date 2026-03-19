@@ -1,16 +1,16 @@
 import type { AgentContext } from "../context"
 import type { Provider } from "../provider/provider"
 import type { Agent } from "../agent"
-import { getInstructionPrompt, getProviderSystemPrompt } from "../provider/vendors"
+import { VendorRegistry } from "../provider/vendors"
 import { Skill } from "../skill"
 
 export namespace SystemPrompt {
   export function instructions(model: Provider.Model) {
-    return getInstructionPrompt(model)
+    return VendorRegistry.getInstructionPrompt(model)
   }
 
   export function provider(model: Provider.Model) {
-    return getProviderSystemPrompt(model)
+    return VendorRegistry.getProviderSystemPrompt(model)
   }
 
   export async function environment(model: Provider.Model, context: AgentContext) {

@@ -3,12 +3,7 @@ import { mergeDeep, pipe } from "remeda"
 import type { AgentContext } from "./context"
 import { ProviderTransform } from "./provider/transform"
 import { Provider } from "./provider/provider"
-import {
-  shouldAddNoopToolFallback,
-  shouldDisableMaxOutputTokens,
-  shouldIncludeProviderSystemPrompt,
-  shouldUseInstructionPrompt,
-} from "./provider/vendors"
+import { VendorRegistry } from "./provider/vendors"
 import { Agent } from "./agent"
 import { SystemPrompt } from "./prompt"
 import { Flag } from "./util/flag"
@@ -166,8 +161,8 @@ export namespace LLM {
     ])
     const cfg = context.config
     const runtime = { model: input.model, provider, auth }
-    const useInstructions = shouldUseInstructionPrompt(runtime)
-    const includeProviderPrompt = shouldIncludeProviderSystemPrompt(runtime)
+    const useInstructions = VendorRegistry.shouldUseInstructionPrompt(runtime)
+    const includeProviderPrompt = VendorRegistry.shouldIncludeProviderSystemPrompt(runtime)
 
     const system = []
     system.push(
@@ -221,7 +216,9 @@ export namespace LLM {
       headers: {},
     }
 
-    const maxOutputTokens = shouldDisableMaxOutputTokens(runtime) ? undefined : ProviderTransform.maxOutputTokens(input.model)
+    const maxOutputTokens = VendorRegistry.shouldDisableMaxOutputTokens(runtime)
+      ? undefined
+      : ProviderTransform.maxOutputTokens(input.model)
 
     const tools = await resolveTools(input)
 
@@ -231,7 +228,7 @@ export namespace LLM {
     // This is enabled for:
     // 1. Providers with "litellm" in their ID or API ID (auto-detected)
     // 2. Providers with explicit "litellmProxy: true" option (opt-in for custom gateways)
-    const isLiteLLMProxy = shouldAddNoopToolFallback(runtime)
+    const isLiteLLMProxy = VendorRegistry.shouldAddNoopToolFallback(runtime)
 
     if (isLiteLLMProxy && Object.keys(tools).length === 0 && hasToolCalls(input.messages)) {
       tools["_noop"] = tool({

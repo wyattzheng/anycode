@@ -4,15 +4,7 @@ import type { JSONSchema } from "zod/v4/core"
 import type { Provider } from "./provider"
 import type { ModelsDev } from "./models"
 import { Flag } from "../util/flag"
-import {
-  applyProviderMessageTransforms,
-  getProviderOptions,
-  getProviderOptionsKey,
-  getProviderSmallOptions,
-  getProviderTemperature,
-  getProviderTopK,
-  transformProviderSchema,
-} from "./vendors"
+import { VendorRegistry } from "./vendors"
 
 type Modality = NonNullable<ModelsDev.Model["modalities"]>["input"][number]
 
@@ -67,11 +59,11 @@ export namespace ProviderTransform {
 
   export function message(msgs: ModelMessage[], model: Provider.Model, options: Record<string, unknown>) {
     msgs = unsupportedParts(msgs, model)
-    return applyProviderMessageTransforms(msgs, model, options)
+    return VendorRegistry.applyMessageTransforms(msgs, model, options)
   }
 
   export function temperature(model: Provider.Model) {
-    return getProviderTemperature(model)
+    return VendorRegistry.getTemperature(model)
   }
 
   export function topP(_model: Provider.Model): number | undefined {
@@ -79,7 +71,7 @@ export namespace ProviderTransform {
   }
 
   export function topK(model: Provider.Model) {
-    return getProviderTopK(model)
+    return VendorRegistry.getTopK(model)
   }
 
 
@@ -88,15 +80,15 @@ export namespace ProviderTransform {
     sessionID: string
     providerOptions?: Record<string, any>
   }): Record<string, any> {
-    return getProviderOptions(input)
+    return VendorRegistry.getOptions(input)
   }
 
   export function smallOptions(model: Provider.Model) {
-    return getProviderSmallOptions(model)
+    return VendorRegistry.getSmallOptions(model)
   }
 
   export function providerOptions(model: Provider.Model, options: { [x: string]: any }) {
-    const key = getProviderOptionsKey(model)
+    const key = VendorRegistry.getOptionsKey(model)
     return { [key]: options }
   }
 
@@ -105,6 +97,6 @@ export namespace ProviderTransform {
   }
 
   export function schema(model: Provider.Model, schema: JSONSchema.BaseSchema | JSONSchema7): JSONSchema7 {
-    return transformProviderSchema(model, schema)
+    return VendorRegistry.transformSchema(model, schema)
   }
 }
