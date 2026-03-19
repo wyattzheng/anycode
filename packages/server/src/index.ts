@@ -1,5 +1,5 @@
 /**
- * any-code-server — API server for CodeAgent
+ * @any-code/server — API server for CodeAgent
  *
  * Starts a lightweight HTTP server that:
  *   1. Chat is handled via WebSocket (broadcast to all clients)
@@ -1116,7 +1116,7 @@ function adminHTML() {
     <h2>⚠ Recent Errors</h2>
     <div class="errors" id="errors"></div>
   </div>
-  <div class="footer">any-code-server v0.0.1</div>
+  <div class="footer">@any-code/server v0.0.1</div>
 </div>
 <script>
 function fmtK(n){return n>=1000?(n/1000).toFixed(1)+'k':String(n)}
@@ -1154,9 +1154,8 @@ const MIME_TYPES: Record<string, string> = {
   ".woff": "font/woff", ".ttf": "font/ttf",
 }
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const APP_DIST = path.resolve(__dirname, "../../app/dist")
+const appIndexPath = fileURLToPath(import.meta.resolve("@any-code/app/index.html"))
+const APP_DIST = path.dirname(appIndexPath)
 
 function serveStatic(req: http.IncomingMessage, res: http.ServerResponse): boolean {
   const url = req.url || "/"
@@ -1549,7 +1548,7 @@ const server = http.createServer(async (req, res) => {
 // ── Main ───────────────────────────────────────────────────────────────────
 
 export async function startServer() {
-  console.log("🚀  Starting any-code-server…")
+  console.log("🚀  Starting @any-code/server…")
 
   // ── Initialise shared storage ──
   sharedStorage = new SqlJsStorage(DB_PATH)
@@ -1665,7 +1664,7 @@ export async function startServer() {
     if (appDistExists) {
       console.log(`📱  App: http://${HOST}:${PORT}`)
     } else {
-      console.log(`⚠  App dist not found at ${APP_DIST} — run 'pnpm --filter app build' first`)
+      console.log(`⚠  App dist not found at ${APP_DIST} — run 'pnpm --filter @any-code/app build' first`)
     }
     console.log(`📋  Sessions: POST /api/sessions to create`)
     console.log(`🔌  WebSocket: ws://${HOST}:${PORT}?sessionId=xxx`)
@@ -1673,4 +1672,3 @@ export async function startServer() {
 }
 
 export { CodeAgent, SqlJsStorage, NodeFS, NodeSearchProvider }
-

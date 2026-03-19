@@ -10,7 +10,7 @@
         "build": "tsup"
     },
     "dependencies": {
-        "any-code-server": "workspace:*"
+        "@any-code/server": "workspace:*"
     },
     "devDependencies": {
         "@types/node": "^25.5.0",

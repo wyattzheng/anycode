@@ -1,7 +1,14 @@
 {
-    "name": "app",
-    "private": true,
+    "name": "@any-code/app",
+    "private": false,
     "type": "module",
+    "files": [
+        "dist"
+    ],
+    "exports": {
+        "./index.html": "./dist/index.html",
+        "./package.json": "./package.json"
+    },
     "scripts": {
         "dev": "vite",
         "build": "tsc -b && vite build",

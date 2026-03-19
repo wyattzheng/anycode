@@ -2,11 +2,11 @@
   "name": "any-code",
   "private": true,
   "scripts": {
-    "dev:app": "pnpm --filter app dev",
-    "build:agent": "pnpm --filter agent build",
-    "build:server": "pnpm --filter server build",
+    "dev:app": "pnpm --filter @any-code/app dev",
+    "build:agent": "pnpm --filter @any-code/agent build",
+    "build:server": "pnpm --filter @any-code/server build",
     "build": "pnpm -r build",
-    "start": "pnpm --filter @any-code/agent build && pnpm --filter app build && pnpm --filter any-code-server build && pnpm --filter any-code-server start"
+    "start": "pnpm --filter @any-code/agent build && pnpm --filter @any-code/app build && pnpm --filter @any-code/server build && pnpm --filter @any-code/server start"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["node-pty"]

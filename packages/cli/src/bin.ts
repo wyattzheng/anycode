@@ -209,7 +209,7 @@ function getPm2Process(): any | null {
 function getServerScript(): string {
     try {
         const serverPkg = path.dirname(
-            fileURLToPath(import.meta.resolve("any-code-server/package.json"))
+            fileURLToPath(import.meta.resolve("@any-code/server/package.json"))
         );
         return path.join(serverPkg, "dist", "cli.js");
     } catch {

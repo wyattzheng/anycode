@@ -1,5 +1,5 @@
 {
-    "name": "any-code-server",
+    "name": "@any-code/server",
     "version": "0.0.1",
     "type": "module",
     "main": "dist/index.js",
@@ -13,6 +13,7 @@
         "dev": "pnpm --filter @any-code/agent build && tsup && node dist/cli.js"
     },
     "dependencies": {
+        "@any-code/app": "workspace:*",
         "@any-code/agent": "workspace:*",
         "node-pty": "^1.1.0",
         "ws": "^8.19.0"
