@@ -6,7 +6,7 @@ import { generateObject, streamObject, type ModelMessage } from "ai"
 import { SystemPrompt } from "./prompt"
 import { Truncate } from "./tool/truncation"
 import { Auth } from "./util/auth"
-import { ProviderTransform } from "./provider/transform"
+import { VendorRegistry } from "./provider/vendors"
 
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
@@ -137,7 +137,7 @@ export namespace Agent {
       if (defaultModel.providerID === "openai" && (await Auth.get(defaultModel.providerID))?.type === "oauth") {
         const result = streamObject({
           ...params,
-          providerOptions: ProviderTransform.providerOptions(model, {
+          providerOptions: VendorRegistry.getVendorProvider({ model }).wrapProviderOptions({
             instructions: SystemPrompt.instructions(model),
             store: false,
           }),

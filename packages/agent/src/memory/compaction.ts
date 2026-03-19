@@ -3,7 +3,7 @@ import type { AgentContext } from "../context"
 import { SessionID, MessageID, PartID } from "../session/schema"
 import { MessageV2 } from "./message-v2"
 import { Provider } from "../provider/provider"
-import { ProviderTransform } from "../provider/transform"
+import { VendorRegistry } from "../provider/vendors"
 import { Log } from "../util/log"
 import { Token } from "../util/fn"
 import { LLMRunner } from "../llm-runner"
@@ -22,12 +22,13 @@ export namespace ContextCompaction {
     const count =
       input.tokens.total ||
       input.tokens.input + input.tokens.output + input.tokens.cache.read + input.tokens.cache.write
+    const vendorProvider = VendorRegistry.getVendorProvider({ model: input.model })
 
     const reserved =
-      config.compaction?.reserved ?? Math.min(COMPACTION_BUFFER, ProviderTransform.maxOutputTokens(input.model))
+      config.compaction?.reserved ?? Math.min(COMPACTION_BUFFER, vendorProvider.getMaxOutputTokens())
     const usable = input.model.limit.input
       ? input.model.limit.input - reserved
-      : contextLimit - ProviderTransform.maxOutputTokens(input.model)
+      : contextLimit - vendorProvider.getMaxOutputTokens()
     return count >= usable
   }
 

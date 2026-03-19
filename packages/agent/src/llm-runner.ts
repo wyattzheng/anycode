@@ -1,7 +1,6 @@
 import { tool, jsonSchema, wrapLanguageModel, type ModelMessage, type StreamTextResult, type ToolSet, streamText } from "ai"
 import { mergeDeep, pipe } from "remeda"
 import type { AgentContext } from "./context"
-import { ProviderTransform } from "./provider/transform"
 import { Provider } from "./provider/provider"
 import { VendorRegistry } from "./provider/vendors"
 import { Agent } from "./agent"
@@ -122,7 +121,7 @@ export namespace SessionRetry {
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
-  export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
+  export const OUTPUT_TOKEN_MAX = VendorRegistry.getVendorProvider().getOutputTokenMax()
 
   export type StreamInput = {
     user: MessageV2.User
@@ -161,8 +160,9 @@ export namespace LLM {
     ])
     const cfg = context.config
     const runtime = { model: input.model, provider, auth }
-    const useInstructions = VendorRegistry.shouldUseInstructionPrompt(runtime)
-    const includeProviderPrompt = VendorRegistry.shouldIncludeProviderSystemPrompt(runtime)
+    const vendorProvider = VendorRegistry.getVendorProvider(runtime)
+    const useInstructions = vendorProvider.shouldUseInstructionPrompt()
+    const includeProviderPrompt = vendorProvider.shouldIncludeProviderSystemPrompt()
 
     const system = []
     system.push(
@@ -188,8 +188,8 @@ export namespace LLM {
     }
 
     const base = input.small
-      ? ProviderTransform.smallOptions(input.model)
-      : ProviderTransform.options({
+      ? vendorProvider.getSmallOptions()
+      : vendorProvider.getOptions({
         model: input.model,
         sessionID: input.sessionID,
         providerOptions: provider.options,
@@ -205,10 +205,10 @@ export namespace LLM {
 
     const params = {
       temperature: input.model.capabilities.temperature
-        ? (input.agent.temperature ?? ProviderTransform.temperature(input.model))
+        ? (input.agent.temperature ?? vendorProvider.getTemperature())
         : undefined,
-      topP: input.agent.topP ?? ProviderTransform.topP(input.model),
-      topK: ProviderTransform.topK(input.model),
+      topP: input.agent.topP ?? vendorProvider.getTopP(),
+      topK: vendorProvider.getTopK(),
       options,
     }
 
@@ -216,9 +216,9 @@ export namespace LLM {
       headers: {},
     }
 
-    const maxOutputTokens = VendorRegistry.shouldDisableMaxOutputTokens(runtime)
+    const maxOutputTokens = vendorProvider.shouldDisableMaxOutputTokens()
       ? undefined
-      : ProviderTransform.maxOutputTokens(input.model)
+      : vendorProvider.getMaxOutputTokens()
 
     const tools = await resolveTools(input)
 
@@ -228,7 +228,7 @@ export namespace LLM {
     // This is enabled for:
     // 1. Providers with "litellm" in their ID or API ID (auto-detected)
     // 2. Providers with explicit "litellmProxy: true" option (opt-in for custom gateways)
-    const isLiteLLMProxy = VendorRegistry.shouldAddNoopToolFallback(runtime)
+    const isLiteLLMProxy = vendorProvider.shouldAddNoopToolFallback()
 
     if (isLiteLLMProxy && Object.keys(tools).length === 0 && hasToolCalls(input.messages)) {
       tools["_noop"] = tool({
@@ -269,7 +269,7 @@ export namespace LLM {
       temperature: params.temperature,
       topP: params.topP,
       topK: params.topK,
-      providerOptions: ProviderTransform.providerOptions(input.model, params.options),
+      providerOptions: vendorProvider.wrapProviderOptions(params.options),
       activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
       tools,
       toolChoice: input.toolChoice,
@@ -296,7 +296,7 @@ export namespace LLM {
             async transformParams(args) {
               if (args.type === "stream") {
                 // @ts-expect-error
-                args.params.prompt = ProviderTransform.message(args.params.prompt, input.model, options)
+                args.params.prompt = vendorProvider.applyMessageTransforms(args.params.prompt, options)
               }
               return args.params
             },

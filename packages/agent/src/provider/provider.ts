@@ -13,7 +13,6 @@ import { Flag } from "../util/flag"
 import { iife } from "../util/fn"
 
 import type { LanguageModelV2 } from "@ai-sdk/provider"
-import { ProviderTransform } from "./transform"
 import { ModelID, ProviderID } from "./schema"
 import { VendorRegistry } from "./vendors"
 import type { ProviderLoaderResult, ProviderModelLoader, ProviderVarsLoader } from "./vendors/types"
@@ -439,7 +438,7 @@ export namespace Provider {
           const combined = signals.length === 0 ? null : signals.length === 1 ? signals[0] : AbortSignal.any(signals)
           if (combined) opts.signal = combined
 
-          VendorRegistry.applyRequestPatch({ opts, model, provider })
+          VendorRegistry.getVendorProvider({ model }).applyRequestPatch({ opts, provider })
 
           const res = await fetchFn(input, {
             ...opts,
@@ -451,7 +450,7 @@ export namespace Provider {
           return wrapSSE(res, chunkTimeout, chunkAbortCtl)
         }
 
-        const bundledFn = VendorRegistry.getBundledProvider(model.api.npm)
+        const bundledFn = VendorRegistry.getVendorProvider({ npm: model.api.npm }).getBundledProvider()
         if (bundledFn) {
           log.info("using bundled provider", { providerID: model.providerID, pkg: model.api.npm })
           const loaded = bundledFn({
@@ -617,7 +616,7 @@ export namespace Provider {
 
 
 
-      for (const [id, fn] of Object.entries(VendorRegistry.customLoaders())) {
+      for (const [id, fn] of Object.entries(VendorRegistry.getVendorProvider().getCustomLoaders())) {
         const providerID = ProviderID.make(id)
         if (disabled.has(providerID)) continue
         const data = database[providerID]

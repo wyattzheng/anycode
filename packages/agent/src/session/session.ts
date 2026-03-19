@@ -14,7 +14,7 @@ import { ModelID, ProviderID } from "../provider/schema"
 import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, asSchema, wrapLanguageModel, type ModelMessage, type StreamTextResult, type ToolSet, streamText } from "ai"
 import { mergeDeep, pipe } from "remeda"
 
-import { ProviderTransform } from "../provider/transform"
+import { VendorRegistry } from "../provider/vendors"
 import { SystemPrompt } from "../prompt"
 
 import { type AgentContext } from "../context"
@@ -266,7 +266,7 @@ export namespace SessionPrompt {
       { modelID: ModelID.make(input.model.api.id), providerID: input.model.providerID },
       input.agent,
     )) {
-      const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters))
+      const schema = VendorRegistry.getVendorProvider({ model: input.model }).transformSchema(z.toJSONSchema(item.parameters))
       tools[item.id] = tool({
         id: item.id as any,
         description: item.description,
