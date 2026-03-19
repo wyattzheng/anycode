@@ -3,6 +3,12 @@ import { mergeDeep, pipe } from "remeda"
 import type { AgentContext } from "./context"
 import { ProviderTransform } from "./provider/transform"
 import { Provider } from "./provider/provider"
+import {
+  shouldAddNoopToolFallback,
+  shouldDisableMaxOutputTokens,
+  shouldIncludeProviderSystemPrompt,
+  shouldUseInstructionPrompt,
+} from "./provider/vendors"
 import { Agent } from "./agent"
 import { SystemPrompt } from "./prompt"
 import { Flag } from "./util/flag"
@@ -159,14 +165,16 @@ export namespace LLM {
       Auth.get(input.model.providerID),
     ])
     const cfg = context.config
-    const isCodex = provider.id === "openai" && auth?.type === "oauth"
+    const runtime = { model: input.model, provider, auth }
+    const useInstructions = shouldUseInstructionPrompt(runtime)
+    const includeProviderPrompt = shouldIncludeProviderSystemPrompt(runtime)
 
     const system = []
     system.push(
       [
         // use agent prompt otherwise provider prompt
-        // For Codex sessions, skip SystemPrompt.provider() since it's sent via options.instructions
-        ...(input.agent.prompt ? [input.agent.prompt] : isCodex ? [] : SystemPrompt.provider(input.model)),
+        // Some providers send their system prompt via vendor-specific instructions.
+        ...(input.agent.prompt ? [input.agent.prompt] : includeProviderPrompt ? SystemPrompt.provider(input.model) : []),
         // any custom prompt passed into this call
         ...input.system,
         // any custom prompt from last user message
@@ -196,8 +204,8 @@ export namespace LLM {
       mergeDeep(input.model.options),
       mergeDeep(input.agent.options),
     )
-    if (isCodex) {
-      options.instructions = SystemPrompt.instructions()
+    if (useInstructions) {
+      options.instructions = SystemPrompt.instructions(input.model)
     }
 
     const params = {
@@ -213,8 +221,7 @@ export namespace LLM {
       headers: {},
     }
 
-    const maxOutputTokens =
-      isCodex || provider.id.includes("github-copilot") ? undefined : ProviderTransform.maxOutputTokens(input.model)
+    const maxOutputTokens = shouldDisableMaxOutputTokens(runtime) ? undefined : ProviderTransform.maxOutputTokens(input.model)
 
     const tools = await resolveTools(input)
 
@@ -224,10 +231,7 @@ export namespace LLM {
     // This is enabled for:
     // 1. Providers with "litellm" in their ID or API ID (auto-detected)
     // 2. Providers with explicit "litellmProxy: true" option (opt-in for custom gateways)
-    const isLiteLLMProxy =
-      provider.options?.["litellmProxy"] === true ||
-      input.model.providerID.toLowerCase().includes("litellm") ||
-      input.model.api.id.toLowerCase().includes("litellm")
+    const isLiteLLMProxy = shouldAddNoopToolFallback(runtime)
 
     if (isLiteLLMProxy && Object.keys(tools).length === 0 && hasToolCalls(input.messages)) {
       tools["_noop"] = tool({

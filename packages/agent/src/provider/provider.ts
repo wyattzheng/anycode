@@ -1,7 +1,7 @@
 import type { AgentContext } from "../context"
 import z from "zod"
 import fuzzysort from "fuzzysort"
-import { mapValues, mergeDeep, omit, pickBy, sortBy } from "remeda"
+import { mapValues, mergeDeep, sortBy } from "remeda"
 import { NoSuchModelError, type Provider as SDK } from "ai"
 import { Log } from "../util/log"
 import { Hash } from "../util/hash"
@@ -11,98 +11,14 @@ import { Auth } from "../util/auth"
 
 import { Flag } from "../util/flag"
 import { iife } from "../util/fn"
-import * as path from "../util/path"
-import { Filesystem } from "../util/filesystem"
 
-// Direct imports for bundled providers (kept minimal)
-import { createAnthropic } from "@ai-sdk/anthropic"
-import { createGoogleGenerativeAI } from "@ai-sdk/google"
-import { createOpenAI } from "@ai-sdk/openai"
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import type { LanguageModelV2 } from "@ai-sdk/provider"
 import { ProviderTransform } from "./transform"
 import { ModelID, ProviderID } from "./schema"
-import { CLAUDE_CODE_SYSTEM } from "../prompt/prompt/anthropic.txt"
+import { applyProviderRequestPatch, BUNDLED_PROVIDERS, CUSTOM_LOADERS } from "./vendors"
+import type { ProviderLoaderResult, ProviderModelLoader, ProviderVarsLoader } from "./vendors/types"
 
 const DEFAULT_CHUNK_TIMEOUT = 120_000
-
-/**
- * Strip OpenAI item IDs from request body.
- * Codex uses #[serde(skip_serializing)] on id fields for all item types;
- * IDs are only kept for Azure with store=true.
- */
-function stripOpenAIItemIds(opts: Record<string, any>, model: { providerID?: string }) {
-  try {
-    const body = JSON.parse(opts.body as string)
-    const isAzure = model.providerID?.includes("azure")
-    const keepIds = isAzure && body.store === true
-    if (!keepIds && Array.isArray(body.input)) {
-      for (const item of body.input) {
-        if ("id" in item) delete item.id
-      }
-      opts.body = JSON.stringify(body)
-    }
-  } catch {
-    // Ignore parse errors
-  }
-}
-
-/**
- * Inject Claude Code client identity into an Anthropic request so it passes
- * upstream gateway checks (e.g. sub2api's Dice-coefficient system-prompt
- * validation and metadata.user_id format check).
- */
-function injectClaudeCodeIdentity(
-  opts: Record<string, any>,
-  model: { providerID?: string },
-  providerKey: string | undefined,
-) {
-  try {
-    const body = JSON.parse(opts.body as string)
-
-    // Ensure metadata.user_id matches the expected format:
-    // user_{64-hex}_account__session_{uuid}
-    if (!body.metadata?.user_id) {
-      if (!body.metadata) body.metadata = {}
-      const seed = [model.providerID ?? "", providerKey ?? ""].join(":")
-      const clientId = Hash.sha256(seed + ":claude-code-client")
-      const uuid = Hash.hexToUUID(Hash.sha256(seed + ":session"))
-      body.metadata.user_id = `user_${clientId}_account__session_${uuid}`
-    }
-
-    // Insert a standalone system entry so the short template string gets a
-    // Dice coefficient of 1.0 against the gateway check (>= 0.5 threshold).
-    // This must be a separate entry — embedding it inside a larger prompt
-    // text would dilute the score below the threshold.
-    if (Array.isArray(body.system)) {
-      const alreadyPresent = body.system.some(
-        (entry: any) => typeof entry.text === "string" && entry.text.startsWith(CLAUDE_CODE_SYSTEM),
-      )
-      if (!alreadyPresent) {
-        body.system.unshift({
-          type: "text",
-          text: CLAUDE_CODE_SYSTEM,
-          cache_control: { type: "ephemeral" },
-        })
-      }
-    }
-
-    opts.body = JSON.stringify(body)
-  } catch {
-    // Ignore parse errors
-  }
-}
-
-/** Set user-agent to look like the official Claude CLI client. */
-function setClaudeUserAgent(opts: Record<string, any>) {
-  if (opts.headers) {
-    const headers = new Headers(opts.headers as HeadersInit)
-    headers.set("user-agent", "claude-cli/2.1.77")
-    opts.headers = Object.fromEntries(headers.entries())
-  } else {
-    opts.headers = { "user-agent": "claude-cli/2.1.77" }
-  }
-}
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -155,57 +71,6 @@ export namespace Provider {
       statusText: res.statusText,
     })
   }
-
-  const BUNDLED_PROVIDERS: Record<string, (options: any) => SDK> = {
-    "@ai-sdk/anthropic": createAnthropic,
-    "@ai-sdk/google": createGoogleGenerativeAI,
-    "@ai-sdk/openai": createOpenAI,
-    "@ai-sdk/openai-compatible": createOpenAICompatible,
-  }
-
-  type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
-  type CustomVarsLoader = (options: Record<string, any>) => Record<string, string>
-  type CustomLoader = (context: AgentContext, provider: Info) => Promise<{
-    autoload: boolean
-    getModel?: CustomModelLoader
-    vars?: CustomVarsLoader
-    options?: Record<string, any>
-  }>
-
-
-  const CUSTOM_LOADERS: Record<string, CustomLoader> = {
-    async anthropic() {
-      return {
-        autoload: false,
-        options: {
-          headers: {
-            "anthropic-beta":
-              "claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
-            "X-App": "cli",
-            "X-Stainless-Lang": "js",
-            "X-Stainless-Package-Version": "0.70.0",
-            "X-Stainless-OS": process.platform === "darwin" ? "MacOS" : process.platform === "win32" ? "Windows" : "Linux",
-            "X-Stainless-Arch": process.arch === "arm64" ? "arm64" : "x64",
-            "X-Stainless-Runtime": "node",
-            "X-Stainless-Runtime-Version": process.version,
-            "X-Stainless-Retry-Count": "0",
-            "X-Stainless-Timeout": "600",
-            "Anthropic-Dangerous-Direct-Browser-Access": "true",
-          },
-        },
-      }
-    },
-    openai: async () => {
-      return {
-        autoload: false,
-        async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
-          return sdk.responses(modelID)
-        },
-        options: {},
-      }
-    },
-  }
-
   export const Model = z
     .object({
       id: ModelID.zod,
@@ -574,15 +439,7 @@ export namespace Provider {
           const combined = signals.length === 0 ? null : signals.length === 1 ? signals[0] : AbortSignal.any(signals)
           if (combined) opts.signal = combined
 
-          if (model.api.npm === "@ai-sdk/openai" && opts.body && opts.method === "POST") {
-            stripOpenAIItemIds(opts, model)
-          }
-
-          if (model.api.npm === "@ai-sdk/anthropic" && opts.body && opts.method === "POST") {
-            injectClaudeCodeIdentity(opts, model, provider.key)
-          }
-
-          setClaudeUserAgent(opts)
+          applyProviderRequestPatch({ opts, model, provider })
 
           const res = await fetchFn(input, {
             ...opts,
@@ -629,10 +486,10 @@ export namespace Provider {
       const providers: { [providerID: string]: Info } = {}
       const languages = new Map<string, LanguageModelV2>()
       const modelLoaders: {
-        [providerID: string]: CustomModelLoader
+        [providerID: string]: ProviderModelLoader
       } = {}
       const varsLoaders: {
-        [providerID: string]: CustomVarsLoader
+        [providerID: string]: ProviderVarsLoader
       } = {}
       const sdk = new Map<string, SDK>()
 
@@ -768,7 +625,7 @@ export namespace Provider {
           log.error("Provider does not exist in model list " + providerID)
           continue
         }
-        const result = await fn(context, data)
+        const result = (await fn(context, data)) as ProviderLoaderResult
         if (result && (result.autoload || providers[providerID])) {
           if (result.getModel) modelLoaders[providerID] = result.getModel
           if (result.vars) varsLoaders[providerID] = result.vars
