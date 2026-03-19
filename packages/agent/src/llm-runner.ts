@@ -121,7 +121,7 @@ export namespace SessionRetry {
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
-  export const OUTPUT_TOKEN_MAX = VendorRegistry.getVendorProvider().getOutputTokenMax()
+  export const OUTPUT_TOKEN_MAX = VendorRegistry.getModelProvider().getOutputTokenMax()
 
   export type StreamInput = {
     user: MessageV2.User
@@ -160,9 +160,9 @@ export namespace LLM {
     ])
     const cfg = context.config
     const runtime = { model: input.model, provider, auth }
-    const vendorProvider = VendorRegistry.getVendorProvider(runtime)
-    const useInstructions = vendorProvider.shouldUseInstructionPrompt()
-    const includeProviderPrompt = vendorProvider.shouldIncludeProviderSystemPrompt()
+    const modelProvider = VendorRegistry.getModelProvider(runtime)
+    const useInstructions = modelProvider.shouldUseInstructionPrompt()
+    const includeProviderPrompt = modelProvider.shouldIncludeProviderSystemPrompt()
 
     const system = []
     system.push(
@@ -188,8 +188,8 @@ export namespace LLM {
     }
 
     const base = input.small
-      ? vendorProvider.getSmallOptions()
-      : vendorProvider.getOptions({
+      ? modelProvider.getSmallOptions()
+      : modelProvider.getOptions({
         model: input.model,
         sessionID: input.sessionID,
         providerOptions: provider.options,
@@ -205,10 +205,10 @@ export namespace LLM {
 
     const params = {
       temperature: input.model.capabilities.temperature
-        ? (input.agent.temperature ?? vendorProvider.getTemperature())
+        ? (input.agent.temperature ?? modelProvider.getTemperature())
         : undefined,
-      topP: input.agent.topP ?? vendorProvider.getTopP(),
-      topK: vendorProvider.getTopK(),
+      topP: input.agent.topP ?? modelProvider.getTopP(),
+      topK: modelProvider.getTopK(),
       options,
     }
 
@@ -216,9 +216,9 @@ export namespace LLM {
       headers: {},
     }
 
-    const maxOutputTokens = vendorProvider.shouldDisableMaxOutputTokens()
+    const maxOutputTokens = modelProvider.shouldDisableMaxOutputTokens()
       ? undefined
-      : vendorProvider.getMaxOutputTokens()
+      : modelProvider.getMaxOutputTokens()
 
     const tools = await resolveTools(input)
 
@@ -228,7 +228,7 @@ export namespace LLM {
     // This is enabled for:
     // 1. Providers with "litellm" in their ID or API ID (auto-detected)
     // 2. Providers with explicit "litellmProxy: true" option (opt-in for custom gateways)
-    const isLiteLLMProxy = vendorProvider.shouldAddNoopToolFallback()
+    const isLiteLLMProxy = modelProvider.shouldAddNoopToolFallback()
 
     if (isLiteLLMProxy && Object.keys(tools).length === 0 && hasToolCalls(input.messages)) {
       tools["_noop"] = tool({
@@ -269,7 +269,7 @@ export namespace LLM {
       temperature: params.temperature,
       topP: params.topP,
       topK: params.topK,
-      providerOptions: vendorProvider.wrapProviderOptions(params.options),
+      providerOptions: modelProvider.wrapProviderOptions(params.options),
       activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
       tools,
       toolChoice: input.toolChoice,
@@ -296,7 +296,7 @@ export namespace LLM {
             async transformParams(args) {
               if (args.type === "stream") {
                 // @ts-expect-error
-                args.params.prompt = vendorProvider.applyMessageTransforms(args.params.prompt, options)
+                args.params.prompt = modelProvider.applyMessageTransforms(args.params.prompt, options)
               }
               return args.params
             },

@@ -6,11 +6,11 @@ import { Skill } from "../skill"
 
 export namespace SystemPrompt {
   export function instructions(model: Provider.Model) {
-    return VendorRegistry.getVendorProvider({ model }).getInstructionPrompt()
+    return VendorRegistry.getModelProvider({ model }).getInstructionPrompt()
   }
 
   export function provider(model: Provider.Model) {
-    return VendorRegistry.getVendorProvider({ model }).getProviderSystemPrompt()
+    return VendorRegistry.getModelProvider({ model }).getProviderSystemPrompt()
   }
 
   export async function environment(model: Provider.Model, context: AgentContext) {

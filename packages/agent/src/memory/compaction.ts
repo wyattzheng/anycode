@@ -22,13 +22,13 @@ export namespace ContextCompaction {
     const count =
       input.tokens.total ||
       input.tokens.input + input.tokens.output + input.tokens.cache.read + input.tokens.cache.write
-    const vendorProvider = VendorRegistry.getVendorProvider({ model: input.model })
+    const modelProvider = VendorRegistry.getModelProvider({ model: input.model })
 
     const reserved =
-      config.compaction?.reserved ?? Math.min(COMPACTION_BUFFER, vendorProvider.getMaxOutputTokens())
+      config.compaction?.reserved ?? Math.min(COMPACTION_BUFFER, modelProvider.getMaxOutputTokens())
     const usable = input.model.limit.input
       ? input.model.limit.input - reserved
-      : contextLimit - vendorProvider.getMaxOutputTokens()
+      : contextLimit - modelProvider.getMaxOutputTokens()
     return count >= usable
   }
 

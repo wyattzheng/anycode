@@ -137,7 +137,7 @@ export namespace Agent {
       if (defaultModel.providerID === "openai" && (await Auth.get(defaultModel.providerID))?.type === "oauth") {
         const result = streamObject({
           ...params,
-          providerOptions: VendorRegistry.getVendorProvider({ model }).wrapProviderOptions({
+          providerOptions: VendorRegistry.getModelProvider({ model }).wrapProviderOptions({
             instructions: SystemPrompt.instructions(model),
             store: false,
           }),

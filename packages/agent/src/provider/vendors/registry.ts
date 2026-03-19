@@ -9,14 +9,13 @@ import { googleVendor } from "./google"
 import { liteLLMVendor } from "./litellm"
 import { openAIVendor } from "./openai"
 import type {
+  ModelProvider,
+  ModelProviderAccessor,
   ProviderInfoLike,
   ProviderModelLike,
   ProviderRuntimeInput,
   ProviderTransformInput,
-  ProviderVarsLoader,
-  ProviderLoaderResult,
   ProviderRequestPatchInput,
-  VendorProvider,
 } from "./types"
 
 const OUTPUT_TOKEN_MAX = Flag.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX || 32_000
@@ -72,13 +71,13 @@ const VENDORS = [
   googleVendor,
   liteLLMVendor,
   openAIVendor,
-] satisfies VendorProvider[]
+] satisfies ModelProvider[]
 
 const VENDORS_BY_NPM = new Map(
   VENDORS.flatMap((vendor) => (vendor.npms ?? []).map((npm) => [npm, vendor] as const)),
 )
 
-type VendorSelector = {
+type ModelProviderSelector = {
   npm?: string
   model?: Provider.Model | ProviderModelLike
   provider?: ProviderInfoLike
@@ -86,7 +85,7 @@ type VendorSelector = {
   id?: string
 }
 
-function matchesRuntimeVendor(vendor: VendorProvider, input: ProviderRuntimeInput) {
+function matchesRuntimeVendor(vendor: ModelProvider, input: ProviderRuntimeInput) {
   return (
     vendor.matchesRuntime?.(input) ||
     vendor.id === input.provider.id ||
@@ -95,7 +94,7 @@ function matchesRuntimeVendor(vendor: VendorProvider, input: ProviderRuntimeInpu
   )
 }
 
-function getMatchingVendors(input: VendorSelector) {
+function getMatchingVendors(input: ModelProviderSelector) {
   if (input.id) return VENDORS.filter((vendor) => vendor.id === input.id)
   if (input.model && input.provider) {
     return VENDORS.filter((vendor) =>
@@ -123,12 +122,12 @@ function getMatchingVendors(input: VendorSelector) {
   return VENDORS
 }
 
-function getSelectorNpm(input: VendorSelector) {
+function getSelectorNpm(input: ModelProviderSelector) {
   return input.npm ?? input.model?.api.npm
 }
 
 export const VendorRegistry = {
-  getVendorProvider(input: VendorSelector = {}) {
+  getModelProvider(input: ModelProviderSelector = {}) {
     const vendors = getMatchingVendors(input)
     const npm = getSelectorNpm(input)
     const model = input.model as Provider.Model | undefined
@@ -140,7 +139,7 @@ export const VendorRegistry = {
         }
       : undefined
 
-    return {
+    const accessor: ModelProviderAccessor = {
       all() {
         return vendors
       },
@@ -295,5 +294,7 @@ export const VendorRegistry = {
         return vendors.some((vendor) => vendor.llm?.needsNoopToolFallback?.(runtime) === true)
       },
     }
+
+    return accessor
   },
 }

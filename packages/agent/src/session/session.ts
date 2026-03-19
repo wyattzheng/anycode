@@ -266,7 +266,7 @@ export namespace SessionPrompt {
       { modelID: ModelID.make(input.model.api.id), providerID: input.model.providerID },
       input.agent,
     )) {
-      const schema = VendorRegistry.getVendorProvider({ model: input.model }).transformSchema(z.toJSONSchema(item.parameters))
+      const schema = VendorRegistry.getModelProvider({ model: input.model }).transformSchema(z.toJSONSchema(item.parameters))
       tools[item.id] = tool({
         id: item.id as any,
         description: item.description,

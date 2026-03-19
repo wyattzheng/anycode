@@ -1,6 +1,6 @@
-import type { VendorProvider } from "./types"
+import type { ModelProvider } from "./types"
 
-export const githubCopilotVendor: VendorProvider = {
+export const githubCopilotVendor: ModelProvider = {
   id: "github-copilot",
   matchesRuntime({ model, provider }) {
     return provider.id?.includes("github-copilot") === true || model.providerID?.includes("github-copilot") === true

@@ -73,7 +73,7 @@ export interface VendorLLM {
   needsNoopToolFallback?: (input: ProviderRuntimeInput) => boolean
 }
 
-export interface VendorProvider {
+export interface ModelProvider {
   id: string
   npms?: string[]
   bundled?: Partial<Record<string, ProviderSDKFactory>>
@@ -84,4 +84,28 @@ export interface VendorProvider {
   transform?: VendorTransform
   llm?: VendorLLM
   prompt?: VendorPrompt
+}
+
+export interface ModelProviderAccessor {
+  all(): ModelProvider[]
+  getBundledProvider(): ProviderSDKFactory | undefined
+  getCustomLoaders(): Record<string, (context: AgentContext, provider: ProviderInfoLike) => Promise<ProviderLoaderResult>>
+  getOptionsKey(): string | undefined
+  applyRequestPatch(patchInput: Omit<ProviderRequestPatchInput, "model"> & { model?: ProviderModelLike }): void
+  applyMessageTransforms(msgs: ModelMessage[], options: Record<string, unknown>): ModelMessage[]
+  getOptions(transformInput: Omit<ProviderTransformInput, "model"> & { model?: Provider.Model }): Record<string, any>
+  getSmallOptions(): Record<string, any>
+  getTemperature(): number | undefined
+  getTopK(): number | undefined
+  getTopP(): number | undefined
+  getOutputTokenMax(): number
+  getMaxOutputTokens(): number
+  transformSchema(schema: JSONSchema.BaseSchema | JSONSchema7): JSONSchema7
+  getProviderSystemPrompt(): string[]
+  getInstructionPrompt(): string
+  wrapProviderOptions(options: { [x: string]: any }): Record<string, any>
+  shouldUseInstructionPrompt(): boolean
+  shouldIncludeProviderSystemPrompt(): boolean
+  shouldDisableMaxOutputTokens(): boolean
+  shouldAddNoopToolFallback(): boolean
 }

@@ -438,7 +438,7 @@ export namespace Provider {
           const combined = signals.length === 0 ? null : signals.length === 1 ? signals[0] : AbortSignal.any(signals)
           if (combined) opts.signal = combined
 
-          VendorRegistry.getVendorProvider({ model }).applyRequestPatch({ opts, provider })
+          VendorRegistry.getModelProvider({ model }).applyRequestPatch({ opts, provider })
 
           const res = await fetchFn(input, {
             ...opts,
@@ -450,7 +450,7 @@ export namespace Provider {
           return wrapSSE(res, chunkTimeout, chunkAbortCtl)
         }
 
-        const bundledFn = VendorRegistry.getVendorProvider({ npm: model.api.npm }).getBundledProvider()
+        const bundledFn = VendorRegistry.getModelProvider({ npm: model.api.npm }).getBundledProvider()
         if (bundledFn) {
           log.info("using bundled provider", { providerID: model.providerID, pkg: model.api.npm })
           const loaded = bundledFn({
@@ -616,7 +616,7 @@ export namespace Provider {
 
 
 
-      for (const [id, fn] of Object.entries(VendorRegistry.getVendorProvider().getCustomLoaders())) {
+      for (const [id, fn] of Object.entries(VendorRegistry.getModelProvider().getCustomLoaders())) {
         const providerID = ProviderID.make(id)
         if (disabled.has(providerID)) continue
         const data = database[providerID]
