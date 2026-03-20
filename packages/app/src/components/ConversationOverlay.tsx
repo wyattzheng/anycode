@@ -573,7 +573,6 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
                 onMouseDown={handleMouseDown}
                 onTouchStart={handleTouchStart}
             >
-                <ChatIcon />
                 {busy && <span className="co-docked-dot" />}
             </div>
         );

@@ -385,48 +385,69 @@
 
 /* ── Docked (collapsed) tab ── */
 .co-docked-tab {
-    width: 36px;
-    height: 80px;
+    width: 24px;
+    height: 72px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    background: rgba(26, 29, 39, 0.6);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--color-border);
+    background: rgba(40, 44, 52, 0.4);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     cursor: pointer;
     touch-action: none;
     -webkit-tap-highlight-color: transparent;
-    transition: background 0.15s;
+    transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     color: var(--color-text-dim);
-    font-size: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.co-docked-tab:hover {
+    background: rgba(50, 56, 66, 0.6);
 }
 
 .co-docked-tab:active {
-    background: rgba(26, 29, 39, 0.85);
+    background: rgba(60, 68, 80, 0.7);
+    transform: scale(0.96);
+}
+
+/* Inner groove line for aesthetic */
+.co-docked-tab::after {
+    content: '';
+    width: 2px;
+    height: 32px;
+    border-radius: 1px;
+    background: rgba(255, 255, 255, 0.2);
+    transition: background 0.2s;
+}
+
+.co-docked-tab:hover::after {
+    background: rgba(255, 255, 255, 0.4);
 }
 
 .co-docked-left {
     border-left: none;
-    border-radius: 0 var(--radius) var(--radius) 0;
+    border-radius: 0 12px 12px 0;
 }
 
 .co-docked-right {
     border-right: none;
-    border-radius: var(--radius) 0 0 var(--radius);
+    border-radius: 12px 0 0 12px;
 }
 
 .co-docked-dot {
-    width: 6px;
-    height: 6px;
+    position: absolute;
+    top: 12px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     background: var(--color-accent);
     animation: co-dot-pulse 1.2s ease-in-out infinite;
+    box-shadow: 0 0 6px var(--color-accent);
 }
 
 @keyframes co-dot-pulse {
-    0%, 100% { opacity: 0.4; transform: scale(0.8); }
-    50% { opacity: 1; transform: scale(1.2); }
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.3); }
 }
