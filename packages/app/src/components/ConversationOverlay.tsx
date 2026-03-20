@@ -552,104 +552,109 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
         }
     };
 
-    const panelClass = isSidebar ? "conversation-panel conversation-sidebar" : "conversation-panel conversation-floating";
-    const panelStyle = isSidebar
-        ? undefined
-        : { transform: `translate(${position.x}px, ${position.y}px)`, width: size.w, height: size.h };
+    const isDocked = !isSidebar && docked;
+    const panelClass = isSidebar
+        ? "conversation-panel conversation-sidebar"
+        : `conversation-panel conversation-floating ${isDocked ? `co-panel-docked co-docked-${docked}` : ""}`;
 
-    // ── Docked (collapsed) tab ──
-    if (!isSidebar && docked) {
-        const tabStyle: React.CSSProperties = {
-            position: "absolute",
-            top: Math.max(20, Math.min(position.y + 20, window.innerHeight - 120)),
-            [docked]: 0,
-            zIndex: 50,
-        };
-        return (
-            <div
-                className={`co-docked-tab co-docked-${docked}`}
-                style={tabStyle}
-                onClick={() => setDocked(null)}
-                onMouseDown={handleMouseDown}
-                onTouchStart={handleTouchStart}
-            >
-                {busy && <span className="co-docked-dot" />}
-            </div>
-        );
-    }
+    // Base position for floating
+    const panelStyle: React.CSSProperties | undefined = isSidebar ? undefined : {
+        transform: isDocked
+            ? `translate(${docked === "left" ? 0 : window.innerWidth - 24}px, ${Math.max(20, Math.min(position.y + 20, window.innerHeight - 120))}px)`
+            : `translate(${position.x}px, ${position.y}px)`,
+        width: isDocked ? 24 : size.w,
+        height: isDocked ? 72 : size.h,
+    };
 
     return (
-        <div className={panelClass} style={panelStyle}>
-            <div className="conversation-header" {...(!isSidebar ? { onMouseDown: handleMouseDown, onTouchStart: handleTouchStart } : {})}>
-                {!isSidebar && <div className="drag-grip" />}
-                <div className="conversation-header-content"><ChatIcon /> 对话</div>
-            </div>
-
-            <div className="conversation-messages" ref={msgsRef}>
-                {messages.length === 0 && (
-                    <div className="co-text" style={{ color: "var(--color-text-dim)" }}>
-                        你好！告诉我你想做什么
-                    </div>
-                )}
-                {messages.map((msg, i) =>
-                    msg.role === "user" ? (
-                        <div key={i} className="co-user">{msg.text}</div>
-                    ) : (
-                        <div key={i} className="co-response">
-                            {msg.parts.map(renderPart)}
-                        </div>
-                    )
-                )}
-            </div>
-
-            {fileContext && (
-                <div className="co-file-context">
-                    <span className="co-file-context-text">
-                        {fileContext.file.split("/").pop()} L{fileContext.lines[0]}–{fileContext.lines[fileContext.lines.length - 1]}
-                    </span>
+        <div 
+            className={panelClass} 
+            style={panelStyle}
+            // If docked, clicking anywhere on the panel undocks it. Otherwise only header drags.
+            onClick={isDocked ? () => setDocked(null) : undefined}
+            onMouseDown={isDocked ? handleMouseDown : undefined}
+            onTouchStart={isDocked ? handleTouchStart : undefined}
+        >
+            {/* ── Docked Groove (Only visible when docked) ── */}
+            {isDocked && (
+                <div className="co-docked-groove">
+                    {busy && <span className="co-docked-dot" />}
                 </div>
             )}
-            <div className="conversation-input">
-                {showTextInput ? (
-                    <>
-                        <input
-                            type="text"
-                            value={busy ? "" : input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder={busy ? "正在处理中..." : "输入消息..."}
-                            autoFocus
-                            disabled={busy}
-                        />
-                        {busy ? (
-                            <button className="text-send-btn text-stop-btn" onClick={handleStop}><StopIcon size={18} /></button>
-                        ) : (
-                            <button className="text-send-btn" onClick={handleSend}><SendIcon /></button>
-                        )}
-                        <button className="text-close-btn" onClick={() => setShowTextInput(false)}><CloseIcon /></button>
-                    </>
-                ) : (
-                    <>
-                        <div className="mic-wrapper">
-                            {recording && <div className="mic-tooltip">录音中 {elapsed}s</div>}
-                            <button
-                                className={`mic-btn ${recording ? "recording" : ""}`}
-                                onMouseDown={handleMicMouseDown}
-                                onTouchStart={handleMicTouchStart}
-                            >
-                                <MicIcon />
-                            </button>
+
+            {/* ── Expanded Content (Fades out when docked) ── */}
+            <div className="co-panel-content" style={{ opacity: isDocked ? 0 : 1, pointerEvents: isDocked ? "none" : "auto" }}>
+                <div className="conversation-header" {...(!isSidebar ? { onMouseDown: handleMouseDown, onTouchStart: handleTouchStart } : {})}>
+                    {!isSidebar && <div className="drag-grip" />}
+                    <div className="conversation-header-content"><ChatIcon /> 对话</div>
+                </div>
+
+                <div className="conversation-messages" ref={msgsRef}>
+                    {messages.length === 0 && (
+                        <div className="co-text" style={{ color: "var(--color-text-dim)" }}>
+                            你好！告诉我你想做什么
                         </div>
-                        <button className="text-toggle-btn" onClick={() => setShowTextInput(true)}><KeyboardIcon /></button>
+                    )}
+                    {messages.map((msg, i) =>
+                        msg.role === "user" ? (
+                            <div key={i} className="co-user">{msg.text}</div>
+                        ) : (
+                            <div key={i} className="co-response">
+                                {msg.parts.map(renderPart)}
+                            </div>
+                        )
+                    )}
+                </div>
+
+                {fileContext && (
+                    <div className="co-file-context">
+                        <span className="co-file-context-text">
+                            {fileContext.file.split("/").pop()} L{fileContext.lines[0]}–{fileContext.lines[fileContext.lines.length - 1]}
+                        </span>
+                    </div>
+                )}
+                <div className="conversation-input">
+                    {showTextInput ? (
+                        <>
+                            <input
+                                type="text"
+                                value={busy ? "" : input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                placeholder={busy ? "正在处理中..." : "输入消息..."}
+                                autoFocus
+                                disabled={busy}
+                            />
+                            {busy ? (
+                                <button className="text-send-btn text-stop-btn" onClick={handleStop}><StopIcon size={18} /></button>
+                            ) : (
+                                <button className="text-send-btn" onClick={handleSend}><SendIcon /></button>
+                            )}
+                            <button className="text-close-btn" onClick={() => setShowTextInput(false)}><CloseIcon /></button>
+                        </>
+                    ) : (
+                        <>
+                            <div className="mic-wrapper">
+                                {recording && <div className="mic-tooltip">录音中 {elapsed}s</div>}
+                                <button
+                                    className={`mic-btn ${recording ? "recording" : ""}`}
+                                    onMouseDown={handleMicMouseDown}
+                                    onTouchStart={handleMicTouchStart}
+                                >
+                                    <MicIcon />
+                                </button>
+                            </div>
+                            <button className="text-toggle-btn" onClick={() => setShowTextInput(true)}><KeyboardIcon /></button>
+                        </>
+                    )}
+                </div>
+                {!isSidebar && (
+                    <>
+                        <div className="co-resize-grip co-resize-bl" onMouseDown={makeResizeMouseDown("bl")} onTouchStart={makeResizeTouchStart("bl")} />
+                        <div className="co-resize-grip co-resize-br" onMouseDown={makeResizeMouseDown("br")} onTouchStart={makeResizeTouchStart("br")} />
                     </>
                 )}
             </div>
-            {!isSidebar && (
-                <>
-                    <div className="co-resize-grip co-resize-bl" onMouseDown={makeResizeMouseDown("bl")} onTouchStart={makeResizeTouchStart("bl")} />
-                    <div className="co-resize-grip co-resize-br" onMouseDown={makeResizeMouseDown("br")} onTouchStart={makeResizeTouchStart("br")} />
-                </>
-            )}
         </div>
     );
 }
