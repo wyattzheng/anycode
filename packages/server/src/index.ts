@@ -32,40 +32,42 @@ import { NodeSearchProvider } from "./search-node"
 
 const ANYCODE_DIR = path.join(os.homedir(), ".anycode")
 const DB_PATH = path.join(ANYCODE_DIR, "data.db")
-const userSettings = (() => {
+interface ServerConfig {
+  provider: string
+  model: string
+  apiKey: string
+  baseUrl: string
+  port: number
+  previewPort: number
+  appDist: string
+  userSettings: Record<string, any>
+}
+
+function loadConfig(): ServerConfig {
+  let userSettings: Record<string, any> = {}
   try {
-    return JSON.parse(fs.readFileSync(path.join(ANYCODE_DIR, "settings.json"), "utf-8"))
-  } catch {
-    return {}
+    userSettings = JSON.parse(fs.readFileSync(path.join(ANYCODE_DIR, "settings.json"), "utf-8"))
+  } catch {}
+  const provider = process.env.PROVIDER ?? ""
+  const model = process.env.MODEL ?? userSettings.MODEL ?? "claude-sonnet-4-20250514"
+  const apiKey = process.env.API_KEY ?? userSettings.API_KEY ?? ""
+  const baseUrl = process.env.BASE_URL ?? userSettings.BASE_URL ?? ""
+  const port = parseInt(process.env.PORT ?? "3210", 10)
+  const previewPort = parseInt(process.env.PREVIEW_PORT ?? String(port + 1), 10)
+  if (!provider || !model || !baseUrl) {
+    console.error("❌  Missing PROVIDER, MODEL, BASE_URL")
+    process.exit(1)
   }
-})()
-
-// ── Config (env vars > settings.json > defaults) ──────────────────────────
-
-const PROVIDER = process.env.PROVIDER ?? ""
-const MODEL = process.env.MODEL ?? userSettings.MODEL ?? "claude-sonnet-4-20250514"
-const API_KEY = process.env.API_KEY ?? userSettings.API_KEY
-const BASE_URL = process.env.BASE_URL ?? userSettings.BASE_URL
-const PORT = parseInt(process.env.PORT ?? "3210", 10)
-const PREVIEW_PORT = parseInt(process.env.PREVIEW_PORT ?? String(PORT + 1), 10)
-if (!PROVIDER || !MODEL || !BASE_URL) {
-  console.error("❌  Missing PROVIDER, MODEL, BASE_URL")
-  process.exit();
+  if (!apiKey) {
+    console.error("❌  Missing API_KEY")
+    console.error("Run 'anycode start' to configure, or set API_KEY env var.")
+    process.exit(1)
+  }
+  const appDist = resolveAppDist()
+  return { provider, model, apiKey, baseUrl, port, previewPort, appDist, userSettings }
 }
 
-if (!API_KEY) {
-  console.error("❌  Missing API_KEY")
-  console.error("Run 'anycode start' to configure, or set API_KEY env var.")
-  process.exit(1)
-}
-
-// ── Global error handlers — prevent crashes from unhandled rejections ──
-process.on("uncaughtException", (err) => {
-  console.error("⚠  Uncaught exception:", err.message)
-})
-process.on("unhandledRejection", (reason) => {
-  console.error("⚠  Unhandled rejection:", reason instanceof Error ? reason.message : reason)
-})
+// ── Global error handlers — registered inside startServer() ──
 
 function makePaths() {
   const dataPath = path.join(ANYCODE_DIR, "data")
@@ -155,13 +157,13 @@ interface SessionEntry {
 // In-memory agent cache, keyed by session ID
 const sessions = new Map<string, SessionEntry>()
 
-const PROVIDER_ID = PROVIDER
+// PROVIDER_ID removed — use cfg.provider
 
 // Shared storage & DB — initialised lazily inside startServer()
 let sharedStorage: SqlJsStorage
 let db: NoSqlDb
 
-function createAgentConfig(directory: string, sessionId?: string, terminal?: TerminalProvider, preview?: PreviewProvider) {
+function createAgentConfig(cfg: ServerConfig, directory: string, sessionId?: string, terminal?: TerminalProvider, preview?: PreviewProvider) {
   return {
     directory: directory,
     fs: new NodeFS(),
@@ -174,28 +176,26 @@ function createAgentConfig(directory: string, sessionId?: string, terminal?: Ter
     ...(terminal ? { terminal } : {}),
     ...(preview ? { preview } : {}),
     provider: {
-      id: PROVIDER_ID,
-      apiKey: API_KEY!,
-      model: MODEL,
-      ...(BASE_URL ? { baseUrl: BASE_URL } : {}),
+      id: cfg.provider,
+      apiKey: cfg.apiKey,
+      model: cfg.model,
+      ...(cfg.baseUrl ? { baseUrl: cfg.baseUrl } : {}),
     },
-    settings: userSettings,
+    settings: cfg.userSettings,
     config: {
-      model: `${PROVIDER_ID}/${MODEL}`,
-      small_model: `${PROVIDER_ID}/${MODEL}`,
+      model: `${cfg.provider}/${cfg.model}`,
+      small_model: `${cfg.provider}/${cfg.model}`,
       provider: {
-        [PROVIDER_ID]: {
-          // Use @ai-sdk/anthropic for Claude models — it natively handles
-          // thinking blocks and signatures. Other models use openai-compatible.
-          npm: /claude/i.test(MODEL) ? "@ai-sdk/anthropic" : "@ai-sdk/openai-compatible",
-          ...(BASE_URL ? { api: BASE_URL } : {}),
+        [cfg.provider]: {
+          npm: /claude/i.test(cfg.model) ? "@ai-sdk/anthropic" : "@ai-sdk/openai-compatible",
+          ...(cfg.baseUrl ? { api: cfg.baseUrl } : {}),
           options: {
-            apiKey: API_KEY,
-            ...(BASE_URL ? { baseURL: BASE_URL } : {}),
+            apiKey: cfg.apiKey,
+            ...(cfg.baseUrl ? { baseURL: cfg.baseUrl } : {}),
           },
           models: {
-            [MODEL]: {
-              name: MODEL,
+            [cfg.model]: {
+              name: cfg.model,
               attachment: true,
               tool_call: true,
               temperature: true,
@@ -211,7 +211,7 @@ function createAgentConfig(directory: string, sessionId?: string, terminal?: Ter
 }
 
 /** Wire up agent events and register in sessions map. */
-function registerSession(id: string, agent: InstanceType<typeof CodeAgent>, directory: string, createdAt: number): SessionEntry {
+function registerSession(cfg: ServerConfig, id: string, agent: InstanceType<typeof CodeAgent>, directory: string, createdAt: number): SessionEntry {
   const entry: SessionEntry = { id, agent, directory, createdAt }
   sessions.set(id, entry)
 
@@ -223,8 +223,8 @@ function registerSession(id: string, agent: InstanceType<typeof CodeAgent>, dire
     // Persist directory back to user_session mapping
     db.update("user_session", { op: "eq", field: "session_id", value: id }, { directory: dir })
     console.log(`📂  Session ${id} directory set to: ${dir}`)
-    pushState(id)
-    watchDirectory(id, dir)
+    pushState(cfg, id)
+    watchDirectory(cfg, id, dir)
   })
 
   return entry
@@ -233,20 +233,20 @@ function registerSession(id: string, agent: InstanceType<typeof CodeAgent>, dire
 /**
  * Resume a persisted session row into memory.
  */
-async function resumeSession(row: Record<string, unknown>): Promise<SessionEntry> {
+async function resumeSession(cfg: ServerConfig, row: Record<string, unknown>): Promise<SessionEntry> {
   const sessionId = row.session_id as string
   const cached = sessions.get(sessionId)
   if (cached) return cached
 
   const dir = (row.directory as string) || ""
   const tp = getOrCreateTerminalProvider(sessionId)
-  const pp = getOrCreatePreviewProvider(sessionId)
-  const agent = new CodeAgent(createAgentConfig(dir, sessionId, tp, pp))
+  const pp = getOrCreatePreviewProvider(cfg, sessionId)
+  const agent = new CodeAgent(createAgentConfig(cfg, dir, sessionId, tp, pp))
   await agent.init()
-  const entry = registerSession(sessionId, agent, dir, row.time_created as number)
+  const entry = registerSession(cfg, sessionId, agent, dir, row.time_created as number)
   if (dir) {
     try { agent.setWorkingDirectory(dir) } catch { /* already set */ }
-    watchDirectory(sessionId, dir)
+    watchDirectory(cfg, sessionId, dir)
   }
   console.log(`♻️  Session ${sessionId} resumed`)
   return entry
@@ -255,11 +255,11 @@ async function resumeSession(row: Record<string, unknown>): Promise<SessionEntry
 /**
  * Create a brand new session/window for a user.
  */
-async function createNewWindow(userId: string, isDefault = false): Promise<SessionEntry> {
+async function createNewWindow(cfg: ServerConfig, userId: string, isDefault = false): Promise<SessionEntry> {
   const tempId = `temp-${Date.now()}`
   const tp = getOrCreateTerminalProvider(tempId)
-  const pp = getOrCreatePreviewProvider(tempId)
-  const agent = new CodeAgent(createAgentConfig("", undefined, tp, pp))
+  const pp = getOrCreatePreviewProvider(cfg, tempId)
+  const agent = new CodeAgent(createAgentConfig(cfg, "", undefined, tp, pp))
   await agent.init()
   const sessionId = agent.sessionId
   const now = Date.now()
@@ -269,7 +269,7 @@ async function createNewWindow(userId: string, isDefault = false): Promise<Sessi
   previewProviders.set(sessionId, pp)
     ; (tp as any).sessionId = sessionId
     ; (pp as any).sessionId = sessionId
-  const entry = registerSession(sessionId, agent, "", now)
+  const entry = registerSession(cfg, sessionId, agent, "", now)
 
   db.insert("user_session", {
     user_id: userId,
@@ -287,7 +287,7 @@ async function createNewWindow(userId: string, isDefault = false): Promise<Sessi
  * Get or create the default window for a user.
  * Returns the default session; creates one if none exists.
  */
-async function getOrCreateSession(userId: string): Promise<SessionEntry> {
+async function getOrCreateSession(cfg: ServerConfig, userId: string): Promise<SessionEntry> {
   // Find default window
   const rows = db.findMany("user_session", { filter: { op: "eq", field: "user_id", value: userId } })
   const defaultRow = rows.find((r: any) => r.is_default === 1) || rows[0]
@@ -297,20 +297,20 @@ async function getOrCreateSession(userId: string): Promise<SessionEntry> {
     if (defaultRow.is_default !== 1) {
       db.update("user_session", { op: "eq", field: "session_id", value: defaultRow.session_id }, { is_default: 1 })
     }
-    return resumeSession(defaultRow)
+    return resumeSession(cfg, defaultRow)
   }
 
-  return createNewWindow(userId, true)
+  return createNewWindow(cfg, userId, true)
 }
 
 /**
  * Get all windows for a user. Resumes any that aren't in memory.
  */
-async function getAllWindows(userId: string): Promise<SessionEntry[]> {
+async function getAllWindows(cfg: ServerConfig, userId: string): Promise<SessionEntry[]> {
   const rows = db.findMany("user_session", { filter: { op: "eq", field: "user_id", value: userId } })
   const entries: SessionEntry[] = []
   for (const row of rows) {
-    entries.push(await resumeSession(row))
+    entries.push(await resumeSession(cfg, row))
   }
   return entries
 }
@@ -417,12 +417,12 @@ const sessionChatAbort = new Map<string, () => void>()
 const lastStateJson = new Map<string, string>()
 const statePushTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
-function scheduleStatePush(sessionId: string, delayMs = 300) {
+function scheduleStatePush(cfg: ServerConfig, sessionId: string, delayMs = 300) {
   const existing = statePushTimers.get(sessionId)
   if (existing) clearTimeout(existing)
   const timer = setTimeout(() => {
     statePushTimers.delete(sessionId)
-    void pushState(sessionId)
+    void pushState(cfg, sessionId)
   }, delayMs)
   statePushTimers.set(sessionId, timer)
 }
@@ -600,13 +600,13 @@ async function handleClientMessage(sessionId: string, client: ClientLike, msg: a
 
 const watchers = new Map<string, fs.FSWatcher>()
 
-function watchDirectory(sessionId: string, dir: string) {
+function watchDirectory(cfg: ServerConfig, sessionId: string, dir: string) {
   // Clean up existing watcher for this session
   const existing = watchers.get(sessionId)
   if (existing) existing.close()
 
   const debouncedPush = () => {
-    scheduleStatePush(sessionId, 500)
+    scheduleStatePush(cfg, sessionId, 500)
   }
 
   try {
@@ -624,7 +624,7 @@ function watchDirectory(sessionId: string, dir: string) {
 }
 
 /** Build current state payload for a session */
-async function buildState(sessionId: string): Promise<Record<string, unknown> | null> {
+async function buildState(cfg: ServerConfig, sessionId: string): Promise<Record<string, unknown> | null> {
   const session = getSession(sessionId)
   if (!session) return null
   const dir = session.directory
@@ -635,14 +635,14 @@ async function buildState(sessionId: string): Promise<Record<string, unknown> | 
     directory: dir,
     changes,
     topLevel,
-    previewPort: (previewSessionId === sessionId && previewTarget) ? PREVIEW_PORT : null,
+    previewPort: (previewSessionId === sessionId && previewTarget) ? cfg.previewPort : null,
   }
 }
 
 /** Push current state to all clients — only if data actually changed */
-async function pushState(sessionId: string) {
+async function pushState(cfg: ServerConfig, sessionId: string) {
   try {
-    const payload = await buildState(sessionId)
+    const payload = await buildState(cfg, sessionId)
     if (!payload) return
     const json = JSON.stringify(payload)
     const prev = lastStateJson.get(sessionId)
@@ -662,11 +662,11 @@ async function pushState(sessionId: string) {
 }
 
 /** Send cached state to a single client (for initial connect). If no cache, compute fresh. */
-async function sendStateTo(sessionId: string, client: ClientLike) {
+async function sendStateTo(cfg: ServerConfig, sessionId: string, client: ClientLike) {
   try {
     let json = lastStateJson.get(sessionId)
     if (!json) {
-      const payload = await buildState(sessionId)
+      const payload = await buildState(cfg, sessionId)
       if (!payload) return
       json = JSON.stringify(payload)
       lastStateJson.set(sessionId, json)
@@ -936,35 +936,38 @@ let previewSessionId: string | null = null
 class NodePreviewProvider implements PreviewProvider {
   sessionId: string
 
-  constructor(sessionId: string) {
+  private cfg: ServerConfig
+  constructor(cfg: ServerConfig, sessionId: string) {
+    this.cfg = cfg
     this.sessionId = sessionId
   }
 
   setPreviewTarget(forwardedLocalUrl: string): void {
     previewTarget = forwardedLocalUrl.replace(/\/+$/, "")
     previewSessionId = this.sessionId
-    console.log(`🔗  Preview proxy: :${PREVIEW_PORT} → ${previewTarget} (session ${this.sessionId})`)
+    console.log(`🔗  Preview proxy: :${this.cfg.previewPort} → ${previewTarget} (session ${this.sessionId})`)
 
     // Broadcast preview port to frontend
     broadcast(this.sessionId, {
       type: "preview",
-      port: PREVIEW_PORT,
+      port: this.cfg.previewPort,
     })
   }
 }
 
 const previewProviders = new Map<string, NodePreviewProvider>()
 
-function getOrCreatePreviewProvider(sessionId: string): NodePreviewProvider {
+function getOrCreatePreviewProvider(cfg: ServerConfig, sessionId: string): NodePreviewProvider {
   let pp = previewProviders.get(sessionId)
   if (!pp) {
-    pp = new NodePreviewProvider(sessionId)
+    pp = new NodePreviewProvider(cfg, sessionId)
     previewProviders.set(sessionId, pp)
   }
   return pp
 }
 
 /** Dedicated preview HTTP server — proxies all requests to the current target */
+function createPreviewServer(cfg: ServerConfig): http.Server {
 const previewServer = http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -1051,12 +1054,14 @@ previewServer.on("upgrade", (req, socket, head) => {
     socket.destroy()
   }
 })
+return previewServer
+}
 
 // ── HTTP Server ────────────────────────────────────────────────────────────
 
 // ── Admin UI ───────────────────────────────────────────────────────────────
 
-function adminHTML() {
+function adminHTML(cfg: ServerConfig) {
   return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1105,9 +1110,9 @@ function adminHTML() {
   <h1><span class="dot"></span> AnyCode Server</h1>
   <div class="card">
     <h2>⚙ Configuration</h2>
-    <div class="row"><span class="label">Provider</span><span class="value">${PROVIDER}</span></div>
-    <div class="row"><span class="label">Model</span><span class="value">${MODEL}</span></div>
-    <div class="row"><span class="label">Port</span><span class="value">${PORT}</span></div>
+    <div class="row"><span class="label">Provider</span><span class="value">${cfg.provider}</span></div>
+    <div class="row"><span class="label">Model</span><span class="value">${cfg.model}</span></div>
+    <div class="row"><span class="label">Port</span><span class="value">${cfg.port}</span></div>
     <div class="row"><span class="label">Sessions</span><span class="value" id="session-count">0</span></div>
   </div>
   <div class="card">
@@ -1174,11 +1179,11 @@ function resolveAppDist(): string {
   return bundled // fallback (will show "App dist not found" warning)
 }
 
-const APP_DIST = resolveAppDist()
+// APP_DIST removed from module scope — use cfg.appDist
 
-function serveStatic(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+function serveStatic(cfg: ServerConfig, req: http.IncomingMessage, res: http.ServerResponse): boolean {
   const url = req.url || "/"
-  const filePath = path.join(APP_DIST, url)
+  const filePath = path.join(cfg.appDist, url)
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     const ext = path.extname(filePath)
     res.writeHead(200, { "Content-Type": MIME_TYPES[ext] || "application/octet-stream" })
@@ -1188,10 +1193,10 @@ function serveStatic(req: http.IncomingMessage, res: http.ServerResponse): boole
   return false
 }
 
-function serveAppIndex(res: http.ServerResponse): boolean {
-  const indexPath = path.join(APP_DIST, "index.html")
+function serveAppIndex(cfg: ServerConfig, res: http.ServerResponse): boolean {
+  const indexPath = path.join(cfg.appDist, "index.html")
   if (fs.existsSync(indexPath)) {
-    const webSocket = userSettings.webSocket === true // default false → polling
+    const webSocket = cfg.userSettings.webSocket === true // default false → polling
     const configScript = `<script>window.__ANYCODE_CONFIG__=${JSON.stringify({ webSocket })}</script>`
     let html = fs.readFileSync(indexPath, "utf-8")
     html = html.replace("</head>", `${configScript}</head>`)
@@ -1204,6 +1209,7 @@ function serveAppIndex(res: http.ServerResponse): boolean {
 
 // ── HTTP Server ────────────────────────────────────────────────────────────
 
+function createMainServer(cfg: ServerConfig): http.Server {
 const server = http.createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -1228,7 +1234,7 @@ const server = http.createServer(async (req, res) => {
     pollingClients.set(channelId, client)
     getSessionClients(sessionId).add(client)
     console.log(`🔌  Poll client connected to session ${sessionId} (channel=${channelId})`)
-    sendStateTo(sessionId, client)
+    sendStateTo(cfg, sessionId, client)
     res.writeHead(200, { "Content-Type": "application/json" })
     res.end(JSON.stringify({ channelId }))
     return
@@ -1236,7 +1242,7 @@ const server = http.createServer(async (req, res) => {
 
   // GET /api/poll?channelId=xxx — long poll for messages
   if (req.method === "GET" && req.url?.startsWith("/api/poll?")) {
-    const url = new URL(req.url, `http://localhost:${PORT}`)
+    const url = new URL(req.url, `http://localhost:${cfg.port}`)
     const channelId = url.searchParams.get("channelId")
     const client = channelId ? pollingClients.get(channelId) : undefined
     if (!client || client.readyState !== 1) {
@@ -1295,7 +1301,7 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ error: "userId is required" }))
         return
       }
-      getOrCreateSession(userId).then((entry) => {
+      getOrCreateSession(cfg, userId).then((entry) => {
         res.writeHead(200, { "Content-Type": "application/json" })
         res.end(JSON.stringify({ id: entry.id, directory: entry.directory }))
       }).catch((err: any) => {
@@ -1318,14 +1324,14 @@ const server = http.createServer(async (req, res) => {
   // ── Window management APIs ───────────────────────────────────────────
   // GET /api/windows?userId=xxx — list all windows
   if (req.method === "GET" && req.url?.startsWith("/api/windows")) {
-    const url = new URL(req.url, `http://localhost:${PORT}`)
+    const url = new URL(req.url, `http://localhost:${cfg.port}`)
     const userId = url.searchParams.get("userId")
     if (!userId) {
       res.writeHead(400, { "Content-Type": "application/json" })
       res.end(JSON.stringify({ error: "userId is required" }))
       return
     }
-    getAllWindows(userId).then((entries) => {
+    getAllWindows(cfg, userId).then((entries) => {
       const rows = db.findMany("user_session", { filter: { op: "eq", field: "user_id", value: userId } })
       const defaultMap = new Map(rows.map((r: any) => [r.session_id, r.is_default === 1]))
       const list = entries.map((e) => ({
@@ -1354,7 +1360,7 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ error: "userId is required" }))
         return
       }
-      createNewWindow(userId, false).then((entry) => {
+      createNewWindow(cfg, userId, false).then((entry) => {
         res.writeHead(200, { "Content-Type": "application/json" })
         res.end(JSON.stringify({ id: entry.id, directory: entry.directory, isDefault: false }))
       }).catch((err: any) => {
@@ -1390,7 +1396,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     const sub = sessionMatch[2]
-    const url = new URL(req.url!, `http://localhost:${PORT}`)
+    const url = new URL(req.url!, `http://localhost:${cfg.port}`)
 
     // GET /api/sessions/:id/state — polling endpoint for topLevel + changes
     if (sub === "state") {
@@ -1401,7 +1407,7 @@ const server = http.createServer(async (req, res) => {
       ])
       const hasPreview = previewSessionId === session.id && previewTarget
       res.writeHead(200, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ directory: dir, topLevel, changes, previewPort: hasPreview ? PREVIEW_PORT : null }))
+      res.end(JSON.stringify({ directory: dir, topLevel, changes, previewPort: hasPreview ? cfg.previewPort : null }))
       return
     }
 
@@ -1529,7 +1535,7 @@ const server = http.createServer(async (req, res) => {
 
   // GET /api/messages?sessionId=xxx
   if (req.method === "GET" && req.url?.startsWith("/api/messages")) {
-    const url = new URL(req.url, `http://localhost:${PORT}`)
+    const url = new URL(req.url, `http://localhost:${cfg.port}`)
     const sessionId = url.searchParams.get("sessionId")
     const session = sessionId ? getSession(sessionId) : undefined
     if (!session) {
@@ -1550,23 +1556,34 @@ const server = http.createServer(async (req, res) => {
   // ── Admin UI ──
   if (req.method === "GET" && req.url === "/admin") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
-    res.end(adminHTML())
+    res.end(adminHTML(cfg))
     return
   }
 
   // ── Static files from app/dist ──
   if (req.method === "GET") {
-    if (serveStatic(req, res)) return
-    if (serveAppIndex(res)) return
+    if (serveStatic(cfg, req, res)) return
+    if (serveAppIndex(cfg, res)) return
   }
 
   res.writeHead(404, { "Content-Type": "application/json" })
   res.end(JSON.stringify({ error: "Not found" }))
 })
+return server
+}
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
 export async function startServer() {
+  const cfg = loadConfig()
+  process.on("uncaughtException", (err) => {
+    console.error("⚠  Uncaught exception:", err.message)
+  })
+  process.on("unhandledRejection", (reason) => {
+    console.error("⚠  Unhandled rejection:", reason instanceof Error ? reason.message : reason)
+  })
+  const previewServer = createPreviewServer(cfg)
+  const server = createMainServer(cfg)
   console.log("🚀  Starting @any-code/server…")
 
   // ── Initialise shared storage ──
@@ -1620,7 +1637,7 @@ export async function startServer() {
     `)
   }
 
-  const appDistExists = fs.existsSync(APP_DIST)
+  const appDistExists = fs.existsSync(cfg.appDist)
 
   // ── Stale polling client cleanup (every 30s) ──
   setInterval(() => {
@@ -1638,7 +1655,7 @@ export async function startServer() {
   // ── WebSocket server on same HTTP server ──
   const wss = new WebSocketServer({ server })
   wss.on("connection", (ws, req) => {
-    const url = new URL(req.url || "/", `http://localhost:${PORT}`)
+    const url = new URL(req.url || "/", `http://localhost:${cfg.port}`)
     const sessionId = url.searchParams.get("sessionId")
     if (!sessionId || !getSession(sessionId)) {
       ws.close(4001, "Invalid session")
@@ -1656,7 +1673,7 @@ export async function startServer() {
     console.log(`🔌  WS client connected to session ${sessionId} (${clients.size} total)`)
 
     // Send current state to this client only (no broadcast)
-    sendStateTo(sessionId, ws as ClientLike)
+    sendStateTo(cfg, sessionId, ws as ClientLike)
 
     ws.on("message", async (raw) => {
       try {
@@ -1672,21 +1689,21 @@ export async function startServer() {
 
   const HOST = process.env.HOST ?? "0.0.0.0"
 
-  previewServer.listen(PREVIEW_PORT, HOST, () => {
-    console.log(`👁  Preview proxy: http://${HOST}:${PREVIEW_PORT}`)
+  previewServer.listen(cfg.previewPort, HOST, () => {
+    console.log(`👁  Preview proxy: http://${HOST}:${cfg.previewPort}`)
   })
 
-  server.listen(PORT, HOST, () => {
-    console.log(`🌐  http://${HOST}:${PORT}`)
-    console.log(`🤖  Provider: ${PROVIDER} / ${MODEL}`)
-    console.log(`🖥  Admin: http://${HOST}:${PORT}/admin`)
+  server.listen(cfg.port, HOST, () => {
+    console.log(`🌐  http://${HOST}:${cfg.port}`)
+    console.log(`🤖  Provider: ${cfg.provider} / ${cfg.model}`)
+    console.log(`🖥  Admin: http://${HOST}:${cfg.port}/admin`)
     if (appDistExists) {
-      console.log(`📱  App: http://${HOST}:${PORT}`)
+      console.log(`📱  App: http://${HOST}:${cfg.port}`)
     } else {
-      console.log(`⚠  App dist not found at ${APP_DIST} — run 'pnpm --filter @any-code/app build' first`)
+      console.log(`⚠  App dist not found at ${cfg.appDist} — run 'pnpm --filter @any-code/app build' first`)
     }
     console.log(`📋  Sessions: POST /api/sessions to create`)
-    console.log(`🔌  WebSocket: ws://${HOST}:${PORT}?sessionId=xxx`)
+    console.log(`🔌  WebSocket: ws://${HOST}:${cfg.port}?sessionId=xxx`)
   })
 }
 
