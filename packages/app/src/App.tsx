@@ -163,13 +163,15 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                         onFileContext={setFileContext}
                     />
                 ) : (
-                    <div className="main-view" style={{ display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "16px" }}>
-                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-dim)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}>
-                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                        </svg>
-                        <p style={{ color: "var(--color-text-dim)", fontSize: "13px", opacity: 0.5, textAlign: "center", lineHeight: 1.6, maxWidth: "220px" }}>
-                            通过对话面板<br />打开一个项目开始编辑
-                        </p>
+                    <div className="main-view" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <div style={{ textAlign: "center" }}>
+                            <p style={{ color: "var(--color-text-dim)", fontSize: "14px", opacity: 0.4, fontWeight: 500 }}>
+                                通过对话面板
+                            </p>
+                            <p style={{ color: "var(--color-text-dim)", fontSize: "11px", opacity: 0.3, marginTop: "6px" }}>
+                                打开一个项目并开始
+                            </p>
+                        </div>
                     </div>
                 )}
                 <TabBar activeTab={activeTab} onTabChange={setActiveTab} changeCount={changes.length} />
