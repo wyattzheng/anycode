@@ -462,10 +462,13 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
     const onDragEnd = useCallback(() => {
         if (!dragRef.current) return;
         dragRef.current = null;
-        // Check if panel is near edge → auto-dock
+        // The panel's base CSS is `right: 20px`, meaning `position.x = 0` is near the right edge.
+        // x gets negative as you move left.
         setPosition(pos => {
-            const panelRight = pos.x + size.w + 20; // 20 = conversation-floating right offset
-            const panelLeft = pos.x + 20;
+            const baseRight = 20;
+            const panelRight = window.innerWidth - baseRight + pos.x; // true screen right edge of panel
+            const panelLeft = panelRight - size.w;                    // true screen left edge of panel
+            
             if (panelLeft < DOCK_THRESHOLD) {
                 setDocked("left");
             } else if (window.innerWidth - panelRight < DOCK_THRESHOLD) {
