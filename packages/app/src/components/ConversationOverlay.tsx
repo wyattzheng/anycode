@@ -143,14 +143,17 @@ const DOCK_THRESHOLD = 40; // px from edge to auto-dock
 
 function loadStoredRect() {
     try {
+        const defaultW = 280;
+        const defaultH = 320;
+        const defaultX = typeof window !== "undefined" ? window.innerWidth - defaultW - 20 : 0;
         const pos = JSON.parse(localStorage.getItem(STORAGE_KEY_POS) || "null");
         const size = JSON.parse(localStorage.getItem(STORAGE_KEY_SIZE) || "null");
         return {
-            pos: pos && typeof pos.x === "number" ? pos as { x: number; y: number } : { x: 0, y: 0 },
-            size: size && typeof size.w === "number" ? size as { w: number; h: number } : { w: 220, h: 280 },
+            pos: pos && typeof pos.x === "number" ? pos as { x: number; y: number } : { x: defaultX, y: 20 },
+            size: size && typeof size.w === "number" ? size as { w: number; h: number } : { w: defaultW, h: defaultH },
         };
     } catch {
-        return { pos: { x: 0, y: 0 }, size: { w: 220, h: 280 } };
+        return { pos: { x: 0, y: 20 }, size: { w: 280, h: 320 } };
     }
 }
 
@@ -462,17 +465,21 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
     const onDragEnd = useCallback(() => {
         if (!dragRef.current) return;
         dragRef.current = null;
-        // The panel's base CSS is `right: 20px`, meaning `position.x = 0` is near the right edge.
-        // x gets negative as you move left.
+        // Panel base is now left: 0, top: 0. pos.x is exact screen X.
         setPosition(pos => {
-            const baseRight = 20;
-            const panelRight = window.innerWidth - baseRight + pos.x; // true screen right edge of panel
-            const panelLeft = panelRight - size.w;                    // true screen left edge of panel
+            const panelRight = pos.x + size.w; 
+            const panelLeft = pos.x; 
             
             if (panelLeft < DOCK_THRESHOLD) {
                 setDocked("left");
             } else if (window.innerWidth - panelRight < DOCK_THRESHOLD) {
                 setDocked("right");
+            } else {
+                // Ensure it stays reasonably on screen
+                return {
+                    x: Math.max(0, Math.min(pos.x, window.innerWidth - size.w)),
+                    y: Math.max(0, Math.min(pos.y, window.innerHeight - 40))
+                };
             }
             return pos;
         });
@@ -557,10 +564,10 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
         ? "conversation-panel conversation-sidebar"
         : `conversation-panel conversation-floating ${isDocked ? `co-panel-docked co-docked-${docked}` : ""}`;
 
-    // Base position for floating
+    // Base position for floating (top: 0, left: 0)
     const panelStyle: React.CSSProperties | undefined = isSidebar ? undefined : {
         transform: isDocked
-            ? `translate(${docked === "left" ? 0 : window.innerWidth - 24}px, ${Math.max(20, Math.min(position.y + 20, window.innerHeight - 120))}px)`
+            ? `translate(${docked === "left" ? 0 : window.innerWidth - 24}px, ${Math.max(20, Math.min(position.y, window.innerHeight - 120))}px)`
             : `translate(${position.x}px, ${position.y}px)`,
         width: isDocked ? 24 : size.w,
         height: isDocked ? 72 : size.h,

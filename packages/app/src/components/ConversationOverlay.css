@@ -7,10 +7,10 @@
 /* ── Floating mode (narrow screens) ── */
 .conversation-floating {
     position: absolute;
-    top: 20px;
-    right: 20px;
+    top: 0;
+    left: 0;
     z-index: 50;
-    background: rgba(26, 29, 39, 0.35);
+    background: rgba(26, 29, 39, 0.5); /* increased base opacity slightly */
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--color-border);
@@ -402,16 +402,14 @@
 }
 
 .co-panel-docked {
-    background: rgba(40, 44, 52, 0.3);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: transparent;
+    border: none;
+    box-shadow: none;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .co-panel-docked:hover {
-    background: rgba(50, 56, 66, 0.5);
+    background: transparent;
 }
 
 .co-panel-docked:active {
@@ -419,32 +417,32 @@
 }
 
 .co-docked-left {
-    border-left: none;
-    border-radius: 0 12px 12px 0 !important;
+    border-radius: 0 !important;
 }
 
 .co-docked-right {
-    border-right: none;
-    border-radius: 12px 0 0 12px !important;
+    border-radius: 0 !important;
 }
 
-/* Inner groove line for aesthetic */
+/* Inner groove line for ultra-minimalist aesthetic */
 .co-panel-docked::after {
     content: '';
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 2px;
-    height: 32px;
-    border-radius: 1px;
-    background: rgba(255, 255, 255, 0.2);
-    transition: background 0.2s;
+    width: 3px;
+    height: 48px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.15);
+    transition: background 0.2s, height 0.2s, width 0.2s;
     pointer-events: none;
 }
 
 .co-panel-docked:hover::after {
-    background: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.5);
+    height: 54px;
+    width: 4px;
 }
 
 .co-docked-dot {
