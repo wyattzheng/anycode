@@ -396,6 +396,17 @@
     width: 100%;
 }
 
+/* Subtle visual feedback when dragging towards the dock zone */
+.co-dock-target-left {
+    border-left: 2px solid var(--color-accent) !important;
+    transition: border-color 0.15s ease-out;
+}
+
+.co-dock-target-right {
+    border-right: 2px solid var(--color-accent) !important;
+    transition: border-color 0.15s ease-out;
+}
+
 .co-panel-docked {
     background: transparent;
     border: none;

@@ -139,7 +139,7 @@ const SIDEBAR_BREAKPOINT = 768;
 const STORAGE_KEY_POS = "anycode-conv-pos";
 const STORAGE_KEY_SIZE = "anycode-conv-size";
 const STORAGE_KEY_DOCKED = "anycode-conv-docked";
-const DOCK_THRESHOLD = 80; // px from edge to auto-dock
+const DOCK_THRESHOLD = 20; // px from edge to auto-dock
 
 function loadStoredRect() {
     try {
@@ -186,6 +186,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
             return v === "left" || v === "right" ? v : null;
         } catch { return null; }
     });
+    const [isDockTarget, setIsDockTarget] = useState<"left" | "right" | null>(null);
 
     // Persist floating position/size to localStorage
     useEffect(() => {
@@ -462,33 +463,56 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
     }, [position, docked]);
     const onDragMove = useCallback((cx: number, cy: number) => {
         if (!dragRef.current) return;
-        setPosition({ x: dragRef.current.origX + cx - dragRef.current.startX, y: dragRef.current.origY + cy - dragRef.current.startY });
-    }, []);
+        const newX = dragRef.current.origX + cx - dragRef.current.startX;
+        const newY = dragRef.current.origY + cy - dragRef.current.startY;
+        setPosition({ x: newX, y: newY });
+
+        // Calculate dock target feedback
+        if (!dragRef.current.wasDocked) {
+            const panelRight = newX + size.w;
+            const panelLeft = newX;
+            const VISIBLE_AMOUNT = size.w / 2;
+
+            if (panelRight < VISIBLE_AMOUNT) {
+                setIsDockTarget("left");
+            } else if (panelLeft > window.innerWidth - VISIBLE_AMOUNT) {
+                setIsDockTarget("right");
+            } else {
+                setIsDockTarget(null);
+            }
+        }
+    }, [size.w]);
     const onDragEnd = useCallback(() => {
         if (!dragRef.current) return;
         const wasDocked = dragRef.current.wasDocked;
         dragRef.current = null;
+        setIsDockTarget(null);
         
         // Panel base is now left: 0, top: 0. pos.x is exact screen X.
         setPosition(pos => {
             const panelRight = pos.x + size.w; 
             const panelLeft = pos.x; 
             
+            // To dock, the user must drag the panel mostly off the screen, leaving half of it visible
+            const VISIBLE_AMOUNT = size.w / 2;
+
             // If the user just started dragging from a docked state, DO NOT re-dock immediately
             // This forces them to drag it out toward the middle, then next time they can drag to edge to dock
             if (!wasDocked) {
-                if (panelLeft < DOCK_THRESHOLD) {
+                if (panelRight < VISIBLE_AMOUNT) {
+                    // Pushed far off the left side
                     setDocked("left");
                     return pos;
-                } else if (window.innerWidth - panelRight < DOCK_THRESHOLD) {
+                } else if (panelLeft > window.innerWidth - VISIBLE_AMOUNT) {
+                    // Pushed far off the right side
                     setDocked("right");
                     return pos;
                 }
             }
 
-            // Ensure it stays reasonably on screen
+            // Ensure it stays reasonably on screen when dropped normally
             return {
-                x: Math.max(0, Math.min(pos.x, window.innerWidth - size.w)),
+                x: Math.max(20 - size.w, Math.min(pos.x, window.innerWidth - 20)),
                 y: Math.max(0, Math.min(pos.y, window.innerHeight - 40))
             };
         });
@@ -569,9 +593,13 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
     };
 
     const isDocked = !isSidebar && docked;
-    const panelClass = isSidebar
+    let panelClass = isSidebar
         ? "conversation-panel conversation-sidebar"
         : `conversation-panel conversation-floating ${isDocked ? `co-panel-docked co-docked-${docked}` : ""}`;
+    
+    if (isDockTarget) {
+        panelClass += ` co-dock-target-${isDockTarget}`;
+    }
 
     // Base position for floating (top: 0, left: 0)
     const panelStyle: React.CSSProperties | undefined = isSidebar ? undefined : {
