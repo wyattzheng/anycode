@@ -81,6 +81,7 @@ function keyValue(key: string, value: string, pad = 12) {
 // ── Settings ──────────────────────────────────────────────────────────────
 
 interface Settings {
+    PROVIDER?: string;
     API_KEY?: string;
     MODEL?: string;
     BASE_URL?: string;
@@ -118,12 +119,25 @@ async function ensureSettings(): Promise<Settings> {
     const settings = loadSettings();
     let changed = false;
 
-    if (!settings.API_KEY) {
+    if (!settings.PROVIDER) {
         blank();
         console.log(`  ${c.bold}${c.white}Welcome! Let's configure your LLM provider.${c.reset}`);
         blank();
         divider();
         blank();
+        const val = await prompt(`  ${c.cyan}?${c.reset} ${c.bold}Provider${c.reset} ${c.gray}(anthropic, openai)${c.reset}: `);
+        settings.PROVIDER = val || "anthropic";
+        changed = true;
+    }
+
+    if (!settings.API_KEY) {
+        if (!changed) {
+            blank();
+            console.log(`  ${c.bold}${c.white}Welcome! Let's configure your LLM provider.${c.reset}`);
+            blank();
+            divider();
+            blank();
+        }
         settings.API_KEY = await prompt(`  ${c.cyan}?${c.reset} ${c.bold}API Key${c.reset} ${c.gray}(required)${c.reset}: `);
         if (!settings.API_KEY) {
             fail("API Key is required to continue.");

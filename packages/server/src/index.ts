@@ -47,8 +47,8 @@ function loadConfig(): ServerConfig {
   let userSettings: Record<string, any> = {}
   try {
     userSettings = JSON.parse(fs.readFileSync(path.join(ANYCODE_DIR, "settings.json"), "utf-8"))
-  } catch {}
-  const provider = process.env.PROVIDER ?? ""
+  } catch { }
+  const provider = process.env.PROVIDER ?? userSettings.PROVIDER ?? "anthropic";
   const model = process.env.MODEL ?? userSettings.MODEL ?? "claude-sonnet-4-20250514"
   const apiKey = process.env.API_KEY ?? userSettings.API_KEY ?? ""
   const baseUrl = process.env.BASE_URL ?? userSettings.BASE_URL ?? ""
@@ -968,93 +968,93 @@ function getOrCreatePreviewProvider(cfg: ServerConfig, sessionId: string): NodeP
 
 /** Dedicated preview HTTP server — proxies all requests to the current target */
 function createPreviewServer(cfg: ServerConfig): http.Server {
-const previewServer = http.createServer((req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*")
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-  res.setHeader("Access-Control-Allow-Headers", "*")
-  if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return }
+  const previewServer = http.createServer((req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*")
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+    res.setHeader("Access-Control-Allow-Headers", "*")
+    if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return }
 
-  if (!previewTarget) {
-    res.writeHead(502, { "Content-Type": "text/plain" })
-    res.end("No preview target configured")
-    return
-  }
-
-  try {
-    const targetUrl = previewTarget + (req.url || "/")
-    const parsed = new URL(targetUrl)
-    const options: http.RequestOptions = {
-      hostname: parsed.hostname,
-      port: parsed.port,
-      path: parsed.pathname + parsed.search,
-      method: req.method,
-      headers: { ...req.headers, host: parsed.host },
+    if (!previewTarget) {
+      res.writeHead(502, { "Content-Type": "text/plain" })
+      res.end("No preview target configured")
+      return
     }
 
-    const proxyReq = http.request(options, (proxyRes) => {
-      res.writeHead(proxyRes.statusCode || 502, proxyRes.headers)
-      proxyRes.pipe(res)
-    })
+    try {
+      const targetUrl = previewTarget + (req.url || "/")
+      const parsed = new URL(targetUrl)
+      const options: http.RequestOptions = {
+        hostname: parsed.hostname,
+        port: parsed.port,
+        path: parsed.pathname + parsed.search,
+        method: req.method,
+        headers: { ...req.headers, host: parsed.host },
+      }
 
-    proxyReq.on("error", (err) => {
-      if (!res.headersSent) res.writeHead(502, { "Content-Type": "text/plain" })
-      res.end(`Preview proxy error: ${err.message}`)
-    })
+      const proxyReq = http.request(options, (proxyRes) => {
+        res.writeHead(proxyRes.statusCode || 502, proxyRes.headers)
+        proxyRes.pipe(res)
+      })
 
-    req.pipe(proxyReq)
-  } catch (err: any) {
-    res.writeHead(502, { "Content-Type": "text/plain" })
-    res.end(`Invalid proxy target: ${err.message}`)
-  }
-})
+      proxyReq.on("error", (err) => {
+        if (!res.headersSent) res.writeHead(502, { "Content-Type": "text/plain" })
+        res.end(`Preview proxy error: ${err.message}`)
+      })
 
-// WebSocket upgrade proxy — needed for HMR (Vite, webpack, etc.)
-previewServer.on("upgrade", (req, socket, head) => {
-  if (!previewTarget) {
-    socket.destroy()
-    return
-  }
+      req.pipe(proxyReq)
+    } catch (err: any) {
+      res.writeHead(502, { "Content-Type": "text/plain" })
+      res.end(`Invalid proxy target: ${err.message}`)
+    }
+  })
 
-  try {
-    const parsed = new URL(previewTarget)
-    const targetWs = `ws://${parsed.hostname}:${parsed.port}${req.url || "/"}`
-    const wsTarget = new URL(targetWs)
-
-    const options: http.RequestOptions = {
-      hostname: wsTarget.hostname,
-      port: wsTarget.port,
-      path: wsTarget.pathname + wsTarget.search,
-      method: "GET",
-      headers: { ...req.headers, host: wsTarget.host },
+  // WebSocket upgrade proxy — needed for HMR (Vite, webpack, etc.)
+  previewServer.on("upgrade", (req, socket, head) => {
+    if (!previewTarget) {
+      socket.destroy()
+      return
     }
 
-    const proxyReq = http.request(options)
+    try {
+      const parsed = new URL(previewTarget)
+      const targetWs = `ws://${parsed.hostname}:${parsed.port}${req.url || "/"}`
+      const wsTarget = new URL(targetWs)
 
-    proxyReq.on("upgrade", (_proxyRes, proxySocket, proxyHead) => {
-      socket.write(
-        "HTTP/1.1 101 Switching Protocols\r\n" +
-        "Upgrade: websocket\r\n" +
-        "Connection: Upgrade\r\n" +
-        Object.entries(_proxyRes.headers)
-          .filter(([k]) => !["upgrade", "connection"].includes(k.toLowerCase()))
-          .map(([k, v]) => `${k}: ${v}`)
-          .join("\r\n") +
-        "\r\n\r\n"
-      )
-      if (proxyHead.length > 0) socket.write(proxyHead)
-      proxySocket.pipe(socket)
-      socket.pipe(proxySocket)
-    })
+      const options: http.RequestOptions = {
+        hostname: wsTarget.hostname,
+        port: wsTarget.port,
+        path: wsTarget.pathname + wsTarget.search,
+        method: "GET",
+        headers: { ...req.headers, host: wsTarget.host },
+      }
 
-    proxyReq.on("error", () => socket.destroy())
-    socket.on("error", () => proxyReq.destroy())
+      const proxyReq = http.request(options)
 
-    proxyReq.end()
-  } catch {
-    socket.destroy()
-  }
-})
-return previewServer
+      proxyReq.on("upgrade", (_proxyRes, proxySocket, proxyHead) => {
+        socket.write(
+          "HTTP/1.1 101 Switching Protocols\r\n" +
+          "Upgrade: websocket\r\n" +
+          "Connection: Upgrade\r\n" +
+          Object.entries(_proxyRes.headers)
+            .filter(([k]) => !["upgrade", "connection"].includes(k.toLowerCase()))
+            .map(([k, v]) => `${k}: ${v}`)
+            .join("\r\n") +
+          "\r\n\r\n"
+        )
+        if (proxyHead.length > 0) socket.write(proxyHead)
+        proxySocket.pipe(socket)
+        socket.pipe(proxySocket)
+      })
+
+      proxyReq.on("error", () => socket.destroy())
+      socket.on("error", () => proxyReq.destroy())
+
+      proxyReq.end()
+    } catch {
+      socket.destroy()
+    }
+  })
+  return previewServer
 }
 
 // ── HTTP Server ────────────────────────────────────────────────────────────
@@ -1174,7 +1174,7 @@ function resolveAppDist(): string {
   try {
     const resolved = path.dirname(fileURLToPath(import.meta.resolve("@any-code/app/index.html")))
     if (fs.existsSync(path.join(resolved, "index.html"))) return resolved
-  } catch {}
+  } catch { }
 
   return bundled // fallback (will show "App dist not found" warning)
 }
@@ -1210,366 +1210,366 @@ function serveAppIndex(cfg: ServerConfig, res: http.ServerResponse): boolean {
 // ── HTTP Server ────────────────────────────────────────────────────────────
 
 function createMainServer(cfg: ServerConfig): http.Server {
-const server = http.createServer(async (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*")
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type")
-  if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return }
+  const server = http.createServer(async (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*")
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type")
+    if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return }
 
-  // ── HTTP Long-Polling endpoints ──
+    // ── HTTP Long-Polling endpoints ──
 
-  // POST /api/poll/connect — create a polling channel
-  if (req.method === "POST" && req.url === "/api/poll/connect") {
-    let body = ""
-    for await (const chunk of req) body += chunk
-    const { sessionId } = body ? JSON.parse(body) : {} as any
-    const session = sessionId ? getSession(sessionId) : undefined
-    if (!session) {
-      res.writeHead(404, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ error: "Session not found" }))
-      return
-    }
-    const channelId = Math.random().toString(36).slice(2) + Date.now().toString(36)
-    const client = new PollingClient(channelId, sessionId)
-    pollingClients.set(channelId, client)
-    getSessionClients(sessionId).add(client)
-    console.log(`🔌  Poll client connected to session ${sessionId} (channel=${channelId})`)
-    sendStateTo(cfg, sessionId, client)
-    res.writeHead(200, { "Content-Type": "application/json" })
-    res.end(JSON.stringify({ channelId }))
-    return
-  }
-
-  // GET /api/poll?channelId=xxx — long poll for messages
-  if (req.method === "GET" && req.url?.startsWith("/api/poll?")) {
-    const url = new URL(req.url, `http://localhost:${cfg.port}`)
-    const channelId = url.searchParams.get("channelId")
-    const client = channelId ? pollingClients.get(channelId) : undefined
-    if (!client || client.readyState !== 1) {
-      res.writeHead(404, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ error: "Channel not found" }))
-      return
-    }
-    client.hold(res)
-    return
-  }
-
-  // POST /api/poll/send — send a message from client to server
-  if (req.method === "POST" && req.url === "/api/poll/send") {
-    let body = ""
-    for await (const chunk of req) body += chunk
-    const { channelId, data } = body ? JSON.parse(body) : {} as any
-    const client = channelId ? pollingClients.get(channelId) : undefined
-    if (!client || client.readyState !== 1) {
-      res.writeHead(404, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ error: "Channel not found" }))
-      return
-    }
-    client.lastActivity = Date.now()
-    // Fire-and-forget — response goes through poll, not this request
-    handleClientMessage(client.sessionId, client, data).catch(() => { })
-    res.writeHead(200, { "Content-Type": "application/json" })
-    res.end(JSON.stringify({ ok: true }))
-    return
-  }
-
-  // POST /api/poll/close — close a polling channel
-  if (req.method === "POST" && req.url === "/api/poll/close") {
-    let body = ""
-    for await (const chunk of req) body += chunk
-    const { channelId } = body ? JSON.parse(body) : {} as any
-    const client = channelId ? pollingClients.get(channelId) : undefined
-    if (client) {
-      client.close()
-      removeClient(client.sessionId, client)
-      pollingClients.delete(channelId!)
-      console.log(`🔌  Poll client disconnected (channel=${channelId})`)
-    }
-    res.writeHead(200, { "Content-Type": "application/json" })
-    res.end(JSON.stringify({ ok: true }))
-    return
-  }
-
-  // ── Session management ──
-  if (req.method === "POST" && req.url === "/api/sessions") {
-    (async () => {
+    // POST /api/poll/connect — create a polling channel
+    if (req.method === "POST" && req.url === "/api/poll/connect") {
       let body = ""
       for await (const chunk of req) body += chunk
-      const { userId } = body ? JSON.parse(body) : {} as any
-      if (!userId) {
-        res.writeHead(400, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ error: "userId is required" }))
+      const { sessionId } = body ? JSON.parse(body) : {} as any
+      const session = sessionId ? getSession(sessionId) : undefined
+      if (!session) {
+        res.writeHead(404, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ error: "Session not found" }))
         return
       }
-      getOrCreateSession(cfg, userId).then((entry) => {
-        res.writeHead(200, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ id: entry.id, directory: entry.directory }))
-      }).catch((err: any) => {
-        res.writeHead(500, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ error: err.message }))
-      })
-    })()
-    return
-  }
-
-  if (req.method === "GET" && req.url === "/api/sessions") {
-    const list = Array.from(sessions.values()).map((s) => ({
-      id: s.id, directory: s.directory, createdAt: s.createdAt,
-    }))
-    res.writeHead(200, { "Content-Type": "application/json" })
-    res.end(JSON.stringify(list))
-    return
-  }
-
-  // ── Window management APIs ───────────────────────────────────────────
-  // GET /api/windows?userId=xxx — list all windows
-  if (req.method === "GET" && req.url?.startsWith("/api/windows")) {
-    const url = new URL(req.url, `http://localhost:${cfg.port}`)
-    const userId = url.searchParams.get("userId")
-    if (!userId) {
-      res.writeHead(400, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ error: "userId is required" }))
+      const channelId = Math.random().toString(36).slice(2) + Date.now().toString(36)
+      const client = new PollingClient(channelId, sessionId)
+      pollingClients.set(channelId, client)
+      getSessionClients(sessionId).add(client)
+      console.log(`🔌  Poll client connected to session ${sessionId} (channel=${channelId})`)
+      sendStateTo(cfg, sessionId, client)
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ channelId }))
       return
     }
-    getAllWindows(cfg, userId).then((entries) => {
-      const rows = db.findMany("user_session", { filter: { op: "eq", field: "user_id", value: userId } })
-      const defaultMap = new Map(rows.map((r: any) => [r.session_id, r.is_default === 1]))
-      const list = entries.map((e) => ({
-        id: e.id,
-        directory: e.directory,
-        createdAt: e.createdAt,
-        isDefault: defaultMap.get(e.id) ?? false,
+
+    // GET /api/poll?channelId=xxx — long poll for messages
+    if (req.method === "GET" && req.url?.startsWith("/api/poll?")) {
+      const url = new URL(req.url, `http://localhost:${cfg.port}`)
+      const channelId = url.searchParams.get("channelId")
+      const client = channelId ? pollingClients.get(channelId) : undefined
+      if (!client || client.readyState !== 1) {
+        res.writeHead(404, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ error: "Channel not found" }))
+        return
+      }
+      client.hold(res)
+      return
+    }
+
+    // POST /api/poll/send — send a message from client to server
+    if (req.method === "POST" && req.url === "/api/poll/send") {
+      let body = ""
+      for await (const chunk of req) body += chunk
+      const { channelId, data } = body ? JSON.parse(body) : {} as any
+      const client = channelId ? pollingClients.get(channelId) : undefined
+      if (!client || client.readyState !== 1) {
+        res.writeHead(404, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ error: "Channel not found" }))
+        return
+      }
+      client.lastActivity = Date.now()
+      // Fire-and-forget — response goes through poll, not this request
+      handleClientMessage(client.sessionId, client, data).catch(() => { })
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ ok: true }))
+      return
+    }
+
+    // POST /api/poll/close — close a polling channel
+    if (req.method === "POST" && req.url === "/api/poll/close") {
+      let body = ""
+      for await (const chunk of req) body += chunk
+      const { channelId } = body ? JSON.parse(body) : {} as any
+      const client = channelId ? pollingClients.get(channelId) : undefined
+      if (client) {
+        client.close()
+        removeClient(client.sessionId, client)
+        pollingClients.delete(channelId!)
+        console.log(`🔌  Poll client disconnected (channel=${channelId})`)
+      }
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ ok: true }))
+      return
+    }
+
+    // ── Session management ──
+    if (req.method === "POST" && req.url === "/api/sessions") {
+      (async () => {
+        let body = ""
+        for await (const chunk of req) body += chunk
+        const { userId } = body ? JSON.parse(body) : {} as any
+        if (!userId) {
+          res.writeHead(400, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ error: "userId is required" }))
+          return
+        }
+        getOrCreateSession(cfg, userId).then((entry) => {
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ id: entry.id, directory: entry.directory }))
+        }).catch((err: any) => {
+          res.writeHead(500, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ error: err.message }))
+        })
+      })()
+      return
+    }
+
+    if (req.method === "GET" && req.url === "/api/sessions") {
+      const list = Array.from(sessions.values()).map((s) => ({
+        id: s.id, directory: s.directory, createdAt: s.createdAt,
       }))
       res.writeHead(200, { "Content-Type": "application/json" })
       res.end(JSON.stringify(list))
-    }).catch((err: any) => {
-      res.writeHead(500, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ error: err.message }))
-    })
-    return
-  }
+      return
+    }
 
-  // POST /api/windows — create new window
-  if (req.method === "POST" && req.url === "/api/windows") {
-    (async () => {
-      let body = ""
-      for await (const chunk of req) body += chunk
-      const { userId } = body ? JSON.parse(body) : {} as any
+    // ── Window management APIs ───────────────────────────────────────────
+    // GET /api/windows?userId=xxx — list all windows
+    if (req.method === "GET" && req.url?.startsWith("/api/windows")) {
+      const url = new URL(req.url, `http://localhost:${cfg.port}`)
+      const userId = url.searchParams.get("userId")
       if (!userId) {
         res.writeHead(400, { "Content-Type": "application/json" })
         res.end(JSON.stringify({ error: "userId is required" }))
         return
       }
-      createNewWindow(cfg, userId, false).then((entry) => {
+      getAllWindows(cfg, userId).then((entries) => {
+        const rows = db.findMany("user_session", { filter: { op: "eq", field: "user_id", value: userId } })
+        const defaultMap = new Map(rows.map((r: any) => [r.session_id, r.is_default === 1]))
+        const list = entries.map((e) => ({
+          id: e.id,
+          directory: e.directory,
+          createdAt: e.createdAt,
+          isDefault: defaultMap.get(e.id) ?? false,
+        }))
         res.writeHead(200, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ id: entry.id, directory: entry.directory, isDefault: false }))
+        res.end(JSON.stringify(list))
       }).catch((err: any) => {
         res.writeHead(500, { "Content-Type": "application/json" })
         res.end(JSON.stringify({ error: err.message }))
       })
-    })()
-    return
-  }
-
-  // DELETE /api/windows/:id — delete non-default window
-  const windowDeleteMatch = req.url?.match(/^\/api\/windows\/([^/?]+)$/)
-  if (req.method === "DELETE" && windowDeleteMatch) {
-    const ok = deleteWindow(windowDeleteMatch[1])
-    if (ok) {
-      res.writeHead(200, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ ok: true }))
-    } else {
-      res.writeHead(400, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ error: "Cannot delete default window or window not found" }))
-    }
-    return
-  }
-
-  // GET /api/sessions/:id
-  const sessionMatch = req.url?.match(/^\/api\/sessions\/([^/?]+)(?:\/([a-z]+))?/)
-  if (req.method === "GET" && sessionMatch) {
-    const session = getSession(sessionMatch[1])
-    if (!session) {
-      res.writeHead(404, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ error: "Session not found" }))
       return
     }
 
-    const sub = sessionMatch[2]
-    const url = new URL(req.url!, `http://localhost:${cfg.port}`)
-
-    // GET /api/sessions/:id/state — polling endpoint for topLevel + changes
-    if (sub === "state") {
-      const dir = session.directory
-      const [topLevel, changes] = await Promise.all([
-        dir ? listDir(dir) : Promise.resolve([]),
-        dir ? getGitChanges(dir) : Promise.resolve([]),
-      ])
-      const hasPreview = previewSessionId === session.id && previewTarget
-      res.writeHead(200, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ directory: dir, topLevel, changes, previewPort: hasPreview ? cfg.previewPort : null }))
+    // POST /api/windows — create new window
+    if (req.method === "POST" && req.url === "/api/windows") {
+      (async () => {
+        let body = ""
+        for await (const chunk of req) body += chunk
+        const { userId } = body ? JSON.parse(body) : {} as any
+        if (!userId) {
+          res.writeHead(400, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ error: "userId is required" }))
+          return
+        }
+        createNewWindow(cfg, userId, false).then((entry) => {
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ id: entry.id, directory: entry.directory, isDefault: false }))
+        }).catch((err: any) => {
+          res.writeHead(500, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ error: err.message }))
+        })
+      })()
       return
     }
 
-    // GET /api/sessions/:id/ls?path=xxx — lazy directory listing
-    if (sub === "ls") {
-      const subPath = url.searchParams.get("path") || ""
-      const dir = session.directory
-      if (!dir) {
+    // DELETE /api/windows/:id — delete non-default window
+    const windowDeleteMatch = req.url?.match(/^\/api\/windows\/([^/?]+)$/)
+    if (req.method === "DELETE" && windowDeleteMatch) {
+      const ok = deleteWindow(windowDeleteMatch[1])
+      if (ok) {
         res.writeHead(200, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ entries: [] }))
-        return
-      }
-      const target = path.resolve(dir, subPath)
-      if (!target.startsWith(path.resolve(dir))) {
-        res.writeHead(403, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ error: "Forbidden" }))
-        return
-      }
-      const entries = await listDir(target)
-      res.writeHead(200, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ entries }))
-      return
-    }
-
-    // GET /api/sessions/:id/file?path=xxx — read file content
-    if (sub === "file") {
-      const filePath = url.searchParams.get("path") || ""
-      const dir = session.directory
-      if (!dir) {
-        res.writeHead(200, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ content: null, error: "No directory" }))
-        return
-      }
-      const target = path.resolve(dir, filePath)
-      if (!target.startsWith(path.resolve(dir))) {
-        res.writeHead(403, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ error: "Forbidden" }))
-        return
-      }
-      try {
-        const content = await fsPromises.readFile(target, "utf-8")
-        res.writeHead(200, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ content }))
-      } catch {
-        res.writeHead(200, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ content: null, error: "读取失败" }))
+        res.end(JSON.stringify({ ok: true }))
+      } else {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ error: "Cannot delete default window or window not found" }))
       }
       return
     }
 
-    // GET /api/sessions/:id/diff?path=xxx — changed line numbers for a file
-    if (sub === "diff") {
-      const filePath = url.searchParams.get("path") || ""
-      const dir = session.directory
-      if (!dir) {
-        res.writeHead(200, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ added: [], removed: [] }))
+    // GET /api/sessions/:id
+    const sessionMatch = req.url?.match(/^\/api\/sessions\/([^/?]+)(?:\/([a-z]+))?/)
+    if (req.method === "GET" && sessionMatch) {
+      const session = getSession(sessionMatch[1])
+      if (!session) {
+        res.writeHead(404, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ error: "Session not found" }))
         return
       }
-      try {
-        const added: number[] = []
-        const removed: number[] = []
-        // Try tracked diff first, then fall back to untracked (new file)
-        let result = await gitProvider.run(
-          ["diff", "--unified=0", "--", filePath],
-          { cwd: dir },
-        )
-        if (result.exitCode !== 0 || !result.text().trim()) {
-          // Untracked or staged-only — try diff against empty tree
-          result = await gitProvider.run(
-            ["diff", "--unified=0", "--cached", "--", filePath],
+
+      const sub = sessionMatch[2]
+      const url = new URL(req.url!, `http://localhost:${cfg.port}`)
+
+      // GET /api/sessions/:id/state — polling endpoint for topLevel + changes
+      if (sub === "state") {
+        const dir = session.directory
+        const [topLevel, changes] = await Promise.all([
+          dir ? listDir(dir) : Promise.resolve([]),
+          dir ? getGitChanges(dir) : Promise.resolve([]),
+        ])
+        const hasPreview = previewSessionId === session.id && previewTarget
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ directory: dir, topLevel, changes, previewPort: hasPreview ? cfg.previewPort : null }))
+        return
+      }
+
+      // GET /api/sessions/:id/ls?path=xxx — lazy directory listing
+      if (sub === "ls") {
+        const subPath = url.searchParams.get("path") || ""
+        const dir = session.directory
+        if (!dir) {
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ entries: [] }))
+          return
+        }
+        const target = path.resolve(dir, subPath)
+        if (!target.startsWith(path.resolve(dir))) {
+          res.writeHead(403, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ error: "Forbidden" }))
+          return
+        }
+        const entries = await listDir(target)
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ entries }))
+        return
+      }
+
+      // GET /api/sessions/:id/file?path=xxx — read file content
+      if (sub === "file") {
+        const filePath = url.searchParams.get("path") || ""
+        const dir = session.directory
+        if (!dir) {
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ content: null, error: "No directory" }))
+          return
+        }
+        const target = path.resolve(dir, filePath)
+        if (!target.startsWith(path.resolve(dir))) {
+          res.writeHead(403, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ error: "Forbidden" }))
+          return
+        }
+        try {
+          const content = await fsPromises.readFile(target, "utf-8")
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ content }))
+        } catch {
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ content: null, error: "读取失败" }))
+        }
+        return
+      }
+
+      // GET /api/sessions/:id/diff?path=xxx — changed line numbers for a file
+      if (sub === "diff") {
+        const filePath = url.searchParams.get("path") || ""
+        const dir = session.directory
+        if (!dir) {
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ added: [], removed: [] }))
+          return
+        }
+        try {
+          const added: number[] = []
+          const removed: number[] = []
+          // Try tracked diff first, then fall back to untracked (new file)
+          let result = await gitProvider.run(
+            ["diff", "--unified=0", "--", filePath],
             { cwd: dir },
           )
+          if (result.exitCode !== 0 || !result.text().trim()) {
+            // Untracked or staged-only — try diff against empty tree
+            result = await gitProvider.run(
+              ["diff", "--unified=0", "--cached", "--", filePath],
+              { cwd: dir },
+            )
+          }
+          const diffText = result.text()
+          // Parse unified diff hunk headers: @@ -old,count +new,count @@
+          const hunkRe = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm
+          let m: RegExpExecArray | null
+          while ((m = hunkRe.exec(diffText))) {
+            const oldStart = parseInt(m[1], 10)
+            const oldCount = parseInt(m[2] ?? "1", 10)
+            const newStart = parseInt(m[3], 10)
+            const newCount = parseInt(m[4] ?? "1", 10)
+            for (let i = 0; i < oldCount; i++) removed.push(oldStart + i)
+            for (let i = 0; i < newCount; i++) added.push(newStart + i)
+          }
+          // For completely untracked files, mark all lines as added
+          if (!diffText.trim()) {
+            try {
+              const target = path.resolve(dir, filePath)
+              if (target.startsWith(path.resolve(dir))) {
+                const content = await fsPromises.readFile(target, "utf-8")
+                const lineCount = content.split("\n").length
+                for (let i = 1; i <= lineCount; i++) added.push(i)
+              }
+            } catch { /* ignore */ }
+          }
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ added, removed }))
+        } catch {
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ added: [], removed: [] }))
         }
-        const diffText = result.text()
-        // Parse unified diff hunk headers: @@ -old,count +new,count @@
-        const hunkRe = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm
-        let m: RegExpExecArray | null
-        while ((m = hunkRe.exec(diffText))) {
-          const oldStart = parseInt(m[1], 10)
-          const oldCount = parseInt(m[2] ?? "1", 10)
-          const newStart = parseInt(m[3], 10)
-          const newCount = parseInt(m[4] ?? "1", 10)
-          for (let i = 0; i < oldCount; i++) removed.push(oldStart + i)
-          for (let i = 0; i < newCount; i++) added.push(newStart + i)
-        }
-        // For completely untracked files, mark all lines as added
-        if (!diffText.trim()) {
-          try {
-            const target = path.resolve(dir, filePath)
-            if (target.startsWith(path.resolve(dir))) {
-              const content = await fsPromises.readFile(target, "utf-8")
-              const lineCount = content.split("\n").length
-              for (let i = 1; i <= lineCount; i++) added.push(i)
-            }
-          } catch { /* ignore */ }
-        }
-        res.writeHead(200, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ added, removed }))
-      } catch {
-        res.writeHead(200, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ added: [], removed: [] }))
+        return
       }
-      return
-    }
 
-    // GET /api/sessions/:id (no sub-route) — basic session info
-    res.writeHead(200, { "Content-Type": "application/json" })
-    res.end(JSON.stringify({
-      id: session.id, directory: session.directory, createdAt: session.createdAt,
-    }))
-    return
-  }
-
-  if (req.method === "GET" && req.url === "/api/status") {
-    const list = Array.from(sessions.values()).map((s) => ({
-      id: s.id, directory: s.directory,
-      stats: s.agent.getStats(),
-      sessionId: s.agent.sessionId,
-    }))
-    res.writeHead(200, { "Content-Type": "application/json" })
-    res.end(JSON.stringify({ sessions: list }))
-    return
-  }
-
-  // GET /api/messages?sessionId=xxx
-  if (req.method === "GET" && req.url?.startsWith("/api/messages")) {
-    const url = new URL(req.url, `http://localhost:${cfg.port}`)
-    const sessionId = url.searchParams.get("sessionId")
-    const session = sessionId ? getSession(sessionId) : undefined
-    if (!session) {
-      res.writeHead(404, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ error: "Session not found" }))
-      return
-    }
-    session.agent.getSessionMessages({ limit: 30 }).then((messages: any) => {
+      // GET /api/sessions/:id (no sub-route) — basic session info
       res.writeHead(200, { "Content-Type": "application/json" })
-      res.end(JSON.stringify(messages))
-    }).catch((err: any) => {
-      res.writeHead(500, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ error: err.message }))
-    })
-    return
-  }
+      res.end(JSON.stringify({
+        id: session.id, directory: session.directory, createdAt: session.createdAt,
+      }))
+      return
+    }
 
-  // ── Admin UI ──
-  if (req.method === "GET" && req.url === "/admin") {
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
-    res.end(adminHTML(cfg))
-    return
-  }
+    if (req.method === "GET" && req.url === "/api/status") {
+      const list = Array.from(sessions.values()).map((s) => ({
+        id: s.id, directory: s.directory,
+        stats: s.agent.getStats(),
+        sessionId: s.agent.sessionId,
+      }))
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ sessions: list }))
+      return
+    }
 
-  // ── Static files from app/dist ──
-  if (req.method === "GET") {
-    if (serveStatic(cfg, req, res)) return
-    if (serveAppIndex(cfg, res)) return
-  }
+    // GET /api/messages?sessionId=xxx
+    if (req.method === "GET" && req.url?.startsWith("/api/messages")) {
+      const url = new URL(req.url, `http://localhost:${cfg.port}`)
+      const sessionId = url.searchParams.get("sessionId")
+      const session = sessionId ? getSession(sessionId) : undefined
+      if (!session) {
+        res.writeHead(404, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ error: "Session not found" }))
+        return
+      }
+      session.agent.getSessionMessages({ limit: 30 }).then((messages: any) => {
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify(messages))
+      }).catch((err: any) => {
+        res.writeHead(500, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ error: err.message }))
+      })
+      return
+    }
 
-  res.writeHead(404, { "Content-Type": "application/json" })
-  res.end(JSON.stringify({ error: "Not found" }))
-})
-return server
+    // ── Admin UI ──
+    if (req.method === "GET" && req.url === "/admin") {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
+      res.end(adminHTML(cfg))
+      return
+    }
+
+    // ── Static files from app/dist ──
+    if (req.method === "GET") {
+      if (serveStatic(cfg, req, res)) return
+      if (serveAppIndex(cfg, res)) return
+    }
+
+    res.writeHead(404, { "Content-Type": "application/json" })
+    res.end(JSON.stringify({ error: "Not found" }))
+  })
+  return server
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
