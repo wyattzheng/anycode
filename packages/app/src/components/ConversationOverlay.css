@@ -7,10 +7,10 @@
 /* ── Floating mode (narrow screens) ── */
 .conversation-floating {
     position: absolute;
-    top: 0;
-    left: 0;
+    top: 20px;
+    right: 20px;
     z-index: 50;
-    background: rgba(26, 29, 39, 0.5); /* increased base opacity slightly */
+    background: rgba(26, 29, 39, 0.35);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--color-border);
@@ -381,92 +381,4 @@
 .co-resize-br {
     right: 0;
     cursor: nw-resize;
-}
-
-/* ── Docked (collapsed) State ── */
-.conversation-panel {
-    /* No transitions for snapping instanly without flashy morphing */
-    will-change: transform, width, height;
-}
-
-.co-panel-content {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    width: 100%;
-}
-
-/* Subtle visual feedback when dragging towards the dock zone */
-.co-dock-target-left {
-    border-right: 2px solid var(--color-accent) !important;
-    box-shadow: 4px 0 16px rgba(0, 0, 0, 0.4) !important;
-    transition: box-shadow 0.2s, border-color 0.2s;
-}
-
-.co-dock-target-right {
-    border-left: 2px solid var(--color-accent) !important;
-    box-shadow: -4px 0 16px rgba(0, 0, 0, 0.4) !important;
-    transition: box-shadow 0.2s, border-color 0.2s;
-}
-
-.co-panel-docked {
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    cursor: pointer;
-}
-
-.co-panel-docked:hover {
-    background: transparent;
-}
-
-.co-panel-docked:active {
-    transform: scale(0.96) !important;
-}
-
-.co-docked-left {
-    border-radius: 0 !important;
-}
-
-.co-docked-right {
-    border-radius: 0 !important;
-}
-
-/* Inner groove line for ultra-minimalist aesthetic */
-.co-panel-docked::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 3px;
-    height: 48px;
-    border-radius: 2px;
-    background: rgba(255, 255, 255, 0.15);
-    transition: background 0.2s, height 0.2s, width 0.2s;
-    pointer-events: none;
-}
-
-.co-panel-docked:hover::after {
-    background: rgba(255, 255, 255, 0.5);
-    height: 54px;
-    width: 4px;
-}
-
-.co-docked-dot {
-    position: absolute;
-    top: 8px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: var(--color-accent);
-    animation: co-dot-pulse 1.2s ease-in-out infinite;
-    box-shadow: 0 0 6px var(--color-accent);
-}
-
-@keyframes co-dot-pulse {
-    0%, 100% { opacity: 0.3; transform: translateX(-50%) scale(0.8); }
-    50% { opacity: 1; transform: translateX(-50%) scale(1.3); }
 }

@@ -138,22 +138,17 @@ interface ConversationOverlayProps {
 const SIDEBAR_BREAKPOINT = 768;
 const STORAGE_KEY_POS = "anycode-conv-pos";
 const STORAGE_KEY_SIZE = "anycode-conv-size";
-const STORAGE_KEY_DOCKED = "anycode-conv-docked";
-const DOCK_THRESHOLD = 20; // px from edge to auto-dock
 
 function loadStoredRect() {
     try {
-        const defaultW = 280;
-        const defaultH = 320;
-        const defaultX = typeof window !== "undefined" ? window.innerWidth - defaultW - 20 : 0;
         const pos = JSON.parse(localStorage.getItem(STORAGE_KEY_POS) || "null");
         const size = JSON.parse(localStorage.getItem(STORAGE_KEY_SIZE) || "null");
         return {
-            pos: pos && typeof pos.x === "number" ? pos as { x: number; y: number } : { x: defaultX, y: 20 },
-            size: size && typeof size.w === "number" ? size as { w: number; h: number } : { w: defaultW, h: defaultH },
+            pos: pos && typeof pos.x === "number" ? pos as { x: number; y: number } : { x: 0, y: 0 },
+            size: size && typeof size.w === "number" ? size as { w: number; h: number } : { w: 220, h: 280 },
         };
     } catch {
-        return { pos: { x: 0, y: 20 }, size: { w: 280, h: 320 } };
+        return { pos: { x: 0, y: 0 }, size: { w: 220, h: 280 } };
     }
 }
 
@@ -180,13 +175,6 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
     const stored = useRef(loadStoredRect());
     const [position, setPosition] = useState(stored.current.pos);
     const [size, setSize] = useState(stored.current.size);
-    const [docked, setDocked] = useState<"left" | "right" | null>(() => {
-        try {
-            const v = localStorage.getItem(STORAGE_KEY_DOCKED);
-            return v === "left" || v === "right" ? v : null;
-        } catch { return null; }
-    });
-    const [isDockTarget, setIsDockTarget] = useState<"left" | "right" | null>(null);
 
     // Persist floating position/size to localStorage
     useEffect(() => {
@@ -197,12 +185,8 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
         if (isSidebar) return;
         localStorage.setItem(STORAGE_KEY_SIZE, JSON.stringify(size));
     }, [size, isSidebar]);
-    useEffect(() => {
-        if (isSidebar) return;
-        localStorage.setItem(STORAGE_KEY_DOCKED, docked || "");
-    }, [docked, isSidebar]);
 
-    const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number; wasDocked: boolean; lastCx: number } | null>(null);
+    const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
     const resizeRef = useRef<{ startX: number; startY: number; origW: number; origH: number } | null>(null);
     const recordStartTime = useRef<number>(0);
     const [elapsed, setElapsed] = useState(0);
@@ -453,72 +437,13 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
 
     // ── Drag ──
     const onDragStart = useCallback((cx: number, cy: number) => {
-        let originatedFromDock = false;
-        if (docked) {
-            originatedFromDock = true;
-            setDocked(null);
-        }
-        dragRef.current = { startX: cx, startY: cy, origX: position.x, origY: position.y, wasDocked: originatedFromDock, lastCx: cx };
-    }, [position, docked]);
+        dragRef.current = { startX: cx, startY: cy, origX: position.x, origY: position.y };
+    }, [position]);
     const onDragMove = useCallback((cx: number, cy: number) => {
         if (!dragRef.current) return;
-        dragRef.current.lastCx = cx;
-        const newX = dragRef.current.origX + cx - dragRef.current.startX;
-        const newY = dragRef.current.origY + cy - dragRef.current.startY;
-        setPosition({ x: newX, y: newY });
-
-        // Calculate dock target feedback
-        if (!dragRef.current.wasDocked) {
-            const panelRight = newX + size.w;
-            const panelLeft = newX;
-            const VISIBLE_AMOUNT = size.w / 2;
-
-            if (cx <= 20 || panelRight < VISIBLE_AMOUNT) {
-                setIsDockTarget("left");
-            } else if (cx >= window.innerWidth - 20 || panelLeft > window.innerWidth - VISIBLE_AMOUNT) {
-                setIsDockTarget("right");
-            } else {
-                setIsDockTarget(null);
-            }
-        }
-    }, [size.w]);
-    const onDragEnd = useCallback(() => {
-        if (!dragRef.current) return;
-        const wasDocked = dragRef.current.wasDocked;
-        const lastCx = dragRef.current.lastCx;
-        dragRef.current = null;
-        setIsDockTarget(null);
-        
-        // Panel base is now left: 0, top: 0. pos.x is exact screen X.
-        setPosition(pos => {
-            const panelRight = pos.x + size.w; 
-            const panelLeft = pos.x; 
-            
-            // To dock, the user must drag the panel mostly off the screen, leaving half of it visible,
-            // OR pull their pointer directly to the screen edge.
-            const VISIBLE_AMOUNT = size.w / 2;
-
-            // If the user just started dragging from a docked state, DO NOT re-dock immediately
-            // This forces them to drag it out toward the middle, then next time they can drag to edge to dock
-            if (!wasDocked) {
-                if (lastCx <= 20 || panelRight < VISIBLE_AMOUNT) {
-                    // Pushed far off the left side or cursor pinned to left edge
-                    setDocked("left");
-                    return pos;
-                } else if (lastCx >= window.innerWidth - 20 || panelLeft > window.innerWidth - VISIBLE_AMOUNT) {
-                    // Pushed far off the right side or cursor pinned to right edge
-                    setDocked("right");
-                    return pos;
-                }
-            }
-
-            // Ensure it stays reasonably on screen when dropped normally
-            return {
-                x: Math.max(20 - size.w, Math.min(pos.x, window.innerWidth - 20)),
-                y: Math.max(0, Math.min(pos.y, window.innerHeight - 40))
-            };
-        });
-    }, [size.w]);
+        setPosition({ x: dragRef.current.origX + cx - dragRef.current.startX, y: dragRef.current.origY + cy - dragRef.current.startY });
+    }, []);
+    const onDragEnd = useCallback(() => { dragRef.current = null; }, []);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         e.preventDefault(); onDragStart(e.clientX, e.clientY);
@@ -594,113 +519,83 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
         }
     };
 
-    const isDocked = !isSidebar && docked;
-    let panelClass = isSidebar
-        ? "conversation-panel conversation-sidebar"
-        : `conversation-panel conversation-floating ${isDocked ? `co-panel-docked co-docked-${docked}` : ""}`;
-    
-    if (isDockTarget) {
-        panelClass += ` co-dock-target-${isDockTarget}`;
-    }
-
-    // Base position for floating (top: 0, left: 0)
-    const panelStyle: React.CSSProperties | undefined = isSidebar ? undefined : {
-        transform: isDocked
-            ? `translate(${docked === "left" ? 0 : window.innerWidth - 24}px, ${Math.max(20, Math.min(position.y, window.innerHeight - 120))}px)`
-            : `translate(${position.x}px, ${position.y}px)`,
-        width: isDocked ? 24 : size.w,
-        height: isDocked ? 72 : size.h,
-    };
+    const panelClass = isSidebar ? "conversation-panel conversation-sidebar" : "conversation-panel conversation-floating";
+    const panelStyle = isSidebar
+        ? undefined
+        : { transform: `translate(${position.x}px, ${position.y}px)`, width: size.w, height: size.h };
 
     return (
-        <div 
-            className={panelClass} 
-            style={panelStyle}
-            // If docked, clicking anywhere on the panel undocks it. Otherwise only header drags.
-            onClick={isDocked ? () => setDocked(null) : undefined}
-            onMouseDown={isDocked ? handleMouseDown : undefined}
-            onTouchStart={isDocked ? handleTouchStart : undefined}
-        >
-            {/* ── Docked Groove (Only visible when docked) ── */}
-            {isDocked && (
-                <div className="co-docked-groove">
-                    {busy && <span className="co-docked-dot" />}
-                </div>
-            )}
+        <div className={panelClass} style={panelStyle}>
+            <div className="conversation-header" {...(!isSidebar ? { onMouseDown: handleMouseDown, onTouchStart: handleTouchStart } : {})}>
+                {!isSidebar && <div className="drag-grip" />}
+                <div className="conversation-header-content"><ChatIcon /> 对话</div>
+            </div>
 
-            {/* ── Expanded Content (Fades out when docked) ── */}
-            <div className="co-panel-content" style={{ opacity: isDocked ? 0 : 1, pointerEvents: isDocked ? "none" : "auto" }}>
-                <div className="conversation-header" {...(!isSidebar ? { onMouseDown: handleMouseDown, onTouchStart: handleTouchStart } : {})}>
-                    {!isSidebar && <div className="drag-grip" />}
-                    <div className="conversation-header-content"><ChatIcon /> 对话</div>
-                </div>
-
-                <div className="conversation-messages" ref={msgsRef}>
-                    {messages.length === 0 && (
-                        <div className="co-text" style={{ color: "var(--color-text-dim)" }}>
-                            你好！告诉我你想做什么
-                        </div>
-                    )}
-                    {messages.map((msg, i) =>
-                        msg.role === "user" ? (
-                            <div key={i} className="co-user">{msg.text}</div>
-                        ) : (
-                            <div key={i} className="co-response">
-                                {msg.parts.map(renderPart)}
-                            </div>
-                        )
-                    )}
-                </div>
-
-                {fileContext && (
-                    <div className="co-file-context">
-                        <span className="co-file-context-text">
-                            {fileContext.file.split("/").pop()} L{fileContext.lines[0]}–{fileContext.lines[fileContext.lines.length - 1]}
-                        </span>
+            <div className="conversation-messages" ref={msgsRef}>
+                {messages.length === 0 && (
+                    <div className="co-text" style={{ color: "var(--color-text-dim)" }}>
+                        你好！告诉我你想做什么
                     </div>
                 )}
-                <div className="conversation-input">
-                    {showTextInput ? (
-                        <>
-                            <input
-                                type="text"
-                                value={busy ? "" : input}
-                                onChange={(e) => setInput(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                                placeholder={busy ? "正在处理中..." : "输入消息..."}
-                                autoFocus
-                                disabled={busy}
-                            />
-                            {busy ? (
-                                <button className="text-send-btn text-stop-btn" onClick={handleStop}><StopIcon size={18} /></button>
-                            ) : (
-                                <button className="text-send-btn" onClick={handleSend}><SendIcon /></button>
-                            )}
-                            <button className="text-close-btn" onClick={() => setShowTextInput(false)}><CloseIcon /></button>
-                        </>
+                {messages.map((msg, i) =>
+                    msg.role === "user" ? (
+                        <div key={i} className="co-user">{msg.text}</div>
                     ) : (
-                        <>
-                            <div className="mic-wrapper">
-                                {recording && <div className="mic-tooltip">录音中 {elapsed}s</div>}
-                                <button
-                                    className={`mic-btn ${recording ? "recording" : ""}`}
-                                    onMouseDown={handleMicMouseDown}
-                                    onTouchStart={handleMicTouchStart}
-                                >
-                                    <MicIcon />
-                                </button>
-                            </div>
-                            <button className="text-toggle-btn" onClick={() => setShowTextInput(true)}><KeyboardIcon /></button>
-                        </>
-                    )}
+                        <div key={i} className="co-response">
+                            {msg.parts.map(renderPart)}
+                        </div>
+                    )
+                )}
+            </div>
+
+            {fileContext && (
+                <div className="co-file-context">
+                    <span className="co-file-context-text">
+                        {fileContext.file.split("/").pop()} L{fileContext.lines[0]}–{fileContext.lines[fileContext.lines.length - 1]}
+                    </span>
                 </div>
-                {!isSidebar && (
+            )}
+            <div className="conversation-input">
+                {showTextInput ? (
                     <>
-                        <div className="co-resize-grip co-resize-bl" onMouseDown={makeResizeMouseDown("bl")} onTouchStart={makeResizeTouchStart("bl")} />
-                        <div className="co-resize-grip co-resize-br" onMouseDown={makeResizeMouseDown("br")} onTouchStart={makeResizeTouchStart("br")} />
+                        <input
+                            type="text"
+                            value={busy ? "" : input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder={busy ? "正在处理中..." : "输入消息..."}
+                            autoFocus
+                            disabled={busy}
+                        />
+                        {busy ? (
+                            <button className="text-send-btn text-stop-btn" onClick={handleStop}><StopIcon size={18} /></button>
+                        ) : (
+                            <button className="text-send-btn" onClick={handleSend}><SendIcon /></button>
+                        )}
+                        <button className="text-close-btn" onClick={() => setShowTextInput(false)}><CloseIcon /></button>
+                    </>
+                ) : (
+                    <>
+                        <div className="mic-wrapper">
+                            {recording && <div className="mic-tooltip">录音中 {elapsed}s</div>}
+                            <button
+                                className={`mic-btn ${recording ? "recording" : ""}`}
+                                onMouseDown={handleMicMouseDown}
+                                onTouchStart={handleMicTouchStart}
+                            >
+                                <MicIcon />
+                            </button>
+                        </div>
+                        <button className="text-toggle-btn" onClick={() => setShowTextInput(true)}><KeyboardIcon /></button>
                     </>
                 )}
             </div>
+            {!isSidebar && (
+                <>
+                    <div className="co-resize-grip co-resize-bl" onMouseDown={makeResizeMouseDown("bl")} onTouchStart={makeResizeTouchStart("bl")} />
+                    <div className="co-resize-grip co-resize-br" onMouseDown={makeResizeMouseDown("br")} onTouchStart={makeResizeTouchStart("br")} />
+                </>
+            )}
         </div>
     );
 }
