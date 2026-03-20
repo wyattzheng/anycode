@@ -402,7 +402,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
         const text = input.trim();
         if (!text || busy) return;
         setInput("");
-        setBusy(true); // Prevent double-send; server will broadcast chat.userMessage back
+        setBusy(true);
 
         const payload: Record<string, unknown> = { type: "chat.send", message: text };
         if (fileContext) payload.fileContext = fileContext;

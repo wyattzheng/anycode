@@ -16,6 +16,7 @@
         "ws": "^8.19.0"
     },
     "devDependencies": {
+        "@any-code/app": "workspace:*",
         "@any-code/server": "workspace:*",
         "@types/node": "^25.5.0",
         "tsup": "^8.4.0",

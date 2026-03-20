@@ -25,18 +25,6 @@ export interface FileContext {
 
 const API_BASE = "";
 
-function getUserId(): string {
-    const KEY = "anycode-user-id";
-    let id = localStorage.getItem(KEY);
-    if (!id) {
-        id = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-            const r = (Math.random() * 16) | 0;
-            return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
-        });
-        localStorage.setItem(KEY, id);
-    }
-    return id;
-}
 
 // ── Per-window view — each instance keeps its own DOM and state alive ────
 
@@ -60,7 +48,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
         channelRef.current?.send(data);
     }, []);
 
-    // Real-time sync via Channel (WebSocket or HTTP polling)
+    // Real-time sync via WebSocket Channel
     useEffect(() => {
         let disposed = false;
         let retryDelay = 1000;
@@ -188,11 +176,10 @@ export function App() {
     const [windows, setWindows] = useState<WindowInfo[]>([]);
     const [error, setError] = useState<string | null>(null);
 
-    const userId = useRef(getUserId());
 
     const fetchWindows = useCallback(async () => {
         try {
-            const res = await fetch(`${API_BASE}/api/windows?userId=${userId.current}`);
+            const res = await fetch(`${API_BASE}/api/windows`);
             if (res.ok) {
                 const list = await res.json();
                 setWindows(list);
@@ -207,7 +194,7 @@ export function App() {
                 const res = await fetch(`${API_BASE}/api/sessions`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ userId: userId.current }),
+                    body: JSON.stringify({}),
                 });
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
@@ -228,7 +215,7 @@ export function App() {
             const res = await fetch(`${API_BASE}/api/windows`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ userId: userId.current }),
+                body: JSON.stringify({}),
             });
             const data = await res.json();
             if (data.error) return;

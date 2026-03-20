@@ -253,9 +253,9 @@ async function resumeSession(cfg: ServerConfig, row: Record<string, unknown>): P
 }
 
 /**
- * Create a brand new session/window for a user.
+ * Create a brand new session/window.
  */
-async function createNewWindow(cfg: ServerConfig, userId: string, isDefault = false): Promise<SessionEntry> {
+async function createNewWindow(cfg: ServerConfig, isDefault = false): Promise<SessionEntry> {
   const tempId = `temp-${Date.now()}`
   const tp = getOrCreateTerminalProvider(tempId)
   const pp = getOrCreatePreviewProvider(cfg, tempId)
@@ -272,42 +272,39 @@ async function createNewWindow(cfg: ServerConfig, userId: string, isDefault = fa
   const entry = registerSession(cfg, sessionId, agent, "", now)
 
   db.insert("user_session", {
-    user_id: userId,
     session_id: sessionId,
     directory: "",
     time_created: now,
     is_default: isDefault ? 1 : 0,
   })
 
-  console.log(`✅  Window ${sessionId} created for user ${userId}${isDefault ? " (default)" : ""}`)
+  console.log(`✅  Window ${sessionId} created${isDefault ? " (default)" : ""}`)
   return entry
 }
 
 /**
- * Get or create the default window for a user.
+ * Get or create the default window.
  * Returns the default session; creates one if none exists.
  */
-async function getOrCreateSession(cfg: ServerConfig, userId: string): Promise<SessionEntry> {
-  // Find default window
-  const rows = db.findMany("user_session", { filter: { op: "eq", field: "user_id", value: userId } })
+async function getOrCreateSession(cfg: ServerConfig): Promise<SessionEntry> {
+  const rows = db.findMany("user_session", {})
   const defaultRow = rows.find((r: any) => r.is_default === 1) || rows[0]
 
   if (defaultRow) {
-    // Ensure is_default is set on the row if it was a legacy row without it
     if (defaultRow.is_default !== 1) {
       db.update("user_session", { op: "eq", field: "session_id", value: defaultRow.session_id }, { is_default: 1 })
     }
     return resumeSession(cfg, defaultRow)
   }
 
-  return createNewWindow(cfg, userId, true)
+  return createNewWindow(cfg, true)
 }
 
 /**
- * Get all windows for a user. Resumes any that aren't in memory.
+ * Get all windows. Resumes any that aren't in memory.
  */
-async function getAllWindows(cfg: ServerConfig, userId: string): Promise<SessionEntry[]> {
-  const rows = db.findMany("user_session", { filter: { op: "eq", field: "user_id", value: userId } })
+async function getAllWindows(cfg: ServerConfig): Promise<SessionEntry[]> {
+  const rows = db.findMany("user_session", {})
   const entries: SessionEntry[] = []
   for (const row of rows) {
     entries.push(await resumeSession(cfg, row))
@@ -401,13 +398,13 @@ async function getGitChanges(dir: string): Promise<GitChange[]> {
 
 // ── Channel abstraction ───────────────────────────────────────────────────
 
-/** Minimal interface shared by WebSocket and PollingClient */
+/** Minimal interface for WebSocket clients */
 interface ClientLike {
   readyState: number
   send(data: string): void
 }
 
-// Track clients per session (WebSocket or PollingClient)
+// Track WebSocket clients per session
 const sessionClients = new Map<string, Set<ClientLike>>()
 
 // Track active chat abort functions per session
@@ -453,83 +450,9 @@ function broadcast(sessionId: string, data: Record<string, unknown>) {
   }
 }
 
-// ── HTTP Long-Polling server-side client ──────────────────────────────────
 
-class PollingClient implements ClientLike {
-  readyState = 1 // OPEN
-  readonly id: string
-  readonly sessionId: string
-  lastActivity: number
 
-  private queue: string[] = []
-  private pendingRes: http.ServerResponse | null = null
-  private pollTimer: ReturnType<typeof setTimeout> | null = null
-
-  constructor(id: string, sessionId: string) {
-    this.id = id
-    this.sessionId = sessionId
-    this.lastActivity = Date.now()
-  }
-
-  /** Called by broadcast — queues a JSON string for the next poll */
-  send(data: string) {
-    this.queue.push(data)
-    this.tryFlush()
-  }
-
-  /** Attach a long-poll response. Flushes immediately if messages are queued. */
-  hold(res: http.ServerResponse, timeoutMs = 30000) {
-    this.lastActivity = Date.now()
-    this.abortPoll()
-    this.pendingRes = res
-    this.pollTimer = setTimeout(() => {
-      this.pollTimer = null
-      this.flush()
-    }, timeoutMs)
-    // Handle client disconnect mid-poll
-    res.on("close", () => {
-      if (this.pendingRes === res) {
-        if (this.pollTimer) { clearTimeout(this.pollTimer); this.pollTimer = null }
-        this.pendingRes = null
-      }
-    })
-    this.tryFlush()
-  }
-
-  close() {
-    this.readyState = 3 // CLOSED
-    this.abortPoll()
-    this.queue = []
-  }
-
-  private tryFlush() {
-    if (!this.pendingRes || this.queue.length === 0) return
-    this.flush()
-  }
-
-  private flush() {
-    if (!this.pendingRes) return
-    if (this.pollTimer) { clearTimeout(this.pollTimer); this.pollTimer = null }
-    const messages = this.queue.splice(0)
-    this.pendingRes.writeHead(200, { "Content-Type": "application/json" })
-    // Each item is already a JSON string — construct array without re-serializing
-    this.pendingRes.end(`[${messages.join(",")}]`)
-    this.pendingRes = null
-  }
-
-  private abortPoll() {
-    if (this.pollTimer) { clearTimeout(this.pollTimer); this.pollTimer = null }
-    if (this.pendingRes) {
-      this.pendingRes.writeHead(200, { "Content-Type": "application/json" })
-      this.pendingRes.end("[]")
-      this.pendingRes = null
-    }
-  }
-}
-
-const pollingClients = new Map<string, PollingClient>() // channelId → PollingClient
-
-/** Shared message handler — used by both WebSocket and HTTP polling */
+/** Handle incoming client message from WebSocket */
 async function handleClientMessage(sessionId: string, client: ClientLike, msg: any) {
   if (msg.type === "ls") {
     const session = getSession(sessionId)!
@@ -1196,10 +1119,7 @@ function serveStatic(cfg: ServerConfig, req: http.IncomingMessage, res: http.Ser
 function serveAppIndex(cfg: ServerConfig, res: http.ServerResponse): boolean {
   const indexPath = path.join(cfg.appDist, "index.html")
   if (fs.existsSync(indexPath)) {
-    const webSocket = cfg.userSettings.webSocket === true // default false → polling
-    const configScript = `<script>window.__ANYCODE_CONFIG__=${JSON.stringify({ webSocket })}</script>`
-    let html = fs.readFileSync(indexPath, "utf-8")
-    html = html.replace("</head>", `${configScript}</head>`)
+    const html = fs.readFileSync(indexPath, "utf-8")
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
     res.end(html)
     return true
@@ -1216,99 +1136,17 @@ function createMainServer(cfg: ServerConfig): http.Server {
     res.setHeader("Access-Control-Allow-Headers", "Content-Type")
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return }
 
-    // ── HTTP Long-Polling endpoints ──
 
-    // POST /api/poll/connect — create a polling channel
-    if (req.method === "POST" && req.url === "/api/poll/connect") {
-      let body = ""
-      for await (const chunk of req) body += chunk
-      const { sessionId } = body ? JSON.parse(body) : {} as any
-      const session = sessionId ? getSession(sessionId) : undefined
-      if (!session) {
-        res.writeHead(404, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ error: "Session not found" }))
-        return
-      }
-      const channelId = Math.random().toString(36).slice(2) + Date.now().toString(36)
-      const client = new PollingClient(channelId, sessionId)
-      pollingClients.set(channelId, client)
-      getSessionClients(sessionId).add(client)
-      console.log(`🔌  Poll client connected to session ${sessionId} (channel=${channelId})`)
-      sendStateTo(cfg, sessionId, client)
-      res.writeHead(200, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ channelId }))
-      return
-    }
-
-    // GET /api/poll?channelId=xxx — long poll for messages
-    if (req.method === "GET" && req.url?.startsWith("/api/poll?")) {
-      const url = new URL(req.url, `http://localhost:${cfg.port}`)
-      const channelId = url.searchParams.get("channelId")
-      const client = channelId ? pollingClients.get(channelId) : undefined
-      if (!client || client.readyState !== 1) {
-        res.writeHead(404, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ error: "Channel not found" }))
-        return
-      }
-      client.hold(res)
-      return
-    }
-
-    // POST /api/poll/send — send a message from client to server
-    if (req.method === "POST" && req.url === "/api/poll/send") {
-      let body = ""
-      for await (const chunk of req) body += chunk
-      const { channelId, data } = body ? JSON.parse(body) : {} as any
-      const client = channelId ? pollingClients.get(channelId) : undefined
-      if (!client || client.readyState !== 1) {
-        res.writeHead(404, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ error: "Channel not found" }))
-        return
-      }
-      client.lastActivity = Date.now()
-      // Fire-and-forget — response goes through poll, not this request
-      handleClientMessage(client.sessionId, client, data).catch(() => { })
-      res.writeHead(200, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ ok: true }))
-      return
-    }
-
-    // POST /api/poll/close — close a polling channel
-    if (req.method === "POST" && req.url === "/api/poll/close") {
-      let body = ""
-      for await (const chunk of req) body += chunk
-      const { channelId } = body ? JSON.parse(body) : {} as any
-      const client = channelId ? pollingClients.get(channelId) : undefined
-      if (client) {
-        client.close()
-        removeClient(client.sessionId, client)
-        pollingClients.delete(channelId!)
-        console.log(`🔌  Poll client disconnected (channel=${channelId})`)
-      }
-      res.writeHead(200, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ ok: true }))
-      return
-    }
 
     // ── Session management ──
     if (req.method === "POST" && req.url === "/api/sessions") {
-      (async () => {
-        let body = ""
-        for await (const chunk of req) body += chunk
-        const { userId } = body ? JSON.parse(body) : {} as any
-        if (!userId) {
-          res.writeHead(400, { "Content-Type": "application/json" })
-          res.end(JSON.stringify({ error: "userId is required" }))
-          return
-        }
-        getOrCreateSession(cfg, userId).then((entry) => {
-          res.writeHead(200, { "Content-Type": "application/json" })
-          res.end(JSON.stringify({ id: entry.id, directory: entry.directory }))
-        }).catch((err: any) => {
-          res.writeHead(500, { "Content-Type": "application/json" })
-          res.end(JSON.stringify({ error: err.message }))
-        })
-      })()
+      getOrCreateSession(cfg).then((entry) => {
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ id: entry.id, directory: entry.directory }))
+      }).catch((err: any) => {
+        res.writeHead(500, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ error: err.message }))
+      })
       return
     }
 
@@ -1322,17 +1160,10 @@ function createMainServer(cfg: ServerConfig): http.Server {
     }
 
     // ── Window management APIs ───────────────────────────────────────────
-    // GET /api/windows?userId=xxx — list all windows
+    // GET /api/windows — list all windows
     if (req.method === "GET" && req.url?.startsWith("/api/windows")) {
-      const url = new URL(req.url, `http://localhost:${cfg.port}`)
-      const userId = url.searchParams.get("userId")
-      if (!userId) {
-        res.writeHead(400, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ error: "userId is required" }))
-        return
-      }
-      getAllWindows(cfg, userId).then((entries) => {
-        const rows = db.findMany("user_session", { filter: { op: "eq", field: "user_id", value: userId } })
+      getAllWindows(cfg).then((entries) => {
+        const rows = db.findMany("user_session", {})
         const defaultMap = new Map(rows.map((r: any) => [r.session_id, r.is_default === 1]))
         const list = entries.map((e) => ({
           id: e.id,
@@ -1351,23 +1182,13 @@ function createMainServer(cfg: ServerConfig): http.Server {
 
     // POST /api/windows — create new window
     if (req.method === "POST" && req.url === "/api/windows") {
-      (async () => {
-        let body = ""
-        for await (const chunk of req) body += chunk
-        const { userId } = body ? JSON.parse(body) : {} as any
-        if (!userId) {
-          res.writeHead(400, { "Content-Type": "application/json" })
-          res.end(JSON.stringify({ error: "userId is required" }))
-          return
-        }
-        createNewWindow(cfg, userId, false).then((entry) => {
-          res.writeHead(200, { "Content-Type": "application/json" })
-          res.end(JSON.stringify({ id: entry.id, directory: entry.directory, isDefault: false }))
-        }).catch((err: any) => {
-          res.writeHead(500, { "Content-Type": "application/json" })
-          res.end(JSON.stringify({ error: err.message }))
-        })
-      })()
+      createNewWindow(cfg, false).then((entry) => {
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ id: entry.id, directory: entry.directory, isDefault: false }))
+      }).catch((err: any) => {
+        res.writeHead(500, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ error: err.message }))
+      })
       return
     }
 
@@ -1639,18 +1460,7 @@ export async function startServer() {
 
   const appDistExists = fs.existsSync(cfg.appDist)
 
-  // ── Stale polling client cleanup (every 30s) ──
-  setInterval(() => {
-    const now = Date.now()
-    for (const [id, client] of pollingClients) {
-      if (now - client.lastActivity > 60000) {
-        console.log(`🧹  Cleaning up stale poll client (channel=${id})`)
-        client.close()
-        removeClient(client.sessionId, client)
-        pollingClients.delete(id)
-      }
-    }
-  }, 30000)
+
 
   // ── WebSocket server on same HTTP server ──
   const wss = new WebSocketServer({ server })
