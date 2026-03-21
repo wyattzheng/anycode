@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, type MutableRefObject } from "react";
+import { flushSync } from "react-dom";
 import type { FileContext } from "../App";
 import { MicIcon, KeyboardIcon, SendIcon, CloseIcon, ChatIcon, StopIcon, PinIcon, UndockIcon } from "./Icons";
 import "./ConversationOverlay.css";
@@ -182,9 +183,11 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
     }, []);
 
     // Click on messages area -> enter text input mode and focus
+    // flushSync is required for iOS: .focus() must be in the synchronous
+    // user-gesture chain or Safari won't open the keyboard.
     const handleMessagesClick = useCallback(() => {
-        setShowTextInput(true);
-        setTimeout(() => textInputRef.current?.focus(), 50);
+        flushSync(() => setShowTextInput(true));
+        textInputRef.current?.focus();
     }, []);
 
     // Floating mode toggle — defaults to false (sidebar)
