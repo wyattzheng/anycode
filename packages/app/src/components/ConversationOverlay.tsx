@@ -337,6 +337,19 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
         }
     }, [messages]);
 
+    // Also scroll to bottom when the container is resized (e.g. sidebar drag)
+    useEffect(() => {
+        const el = msgsRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver(() => {
+            if (scrollLocked.current) {
+                el.scrollTo(0, el.scrollHeight);
+            }
+        });
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+
     // Recording timer
     useEffect(() => {
         if (!recording) { setElapsed(0); return; }
