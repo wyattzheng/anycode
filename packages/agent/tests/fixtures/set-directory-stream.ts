@@ -1,8 +1,8 @@
 /**
- * SSE fixtures: set_project_directory tool call flow
+ * SSE fixtures: set_user_watch_project tool call flow
  * OpenAI Responses API format (/v1/responses)
  *
- * Round 1: Model calls "set_project_directory" tool with {directory: <path>}
+ * Round 1: Model calls "set_user_watch_project" tool with {directory: <path>}
  * Round 2: After tool result, model responds with confirmation text
  */
 
@@ -13,13 +13,13 @@ export function buildSetDirectoryFixtures(directory: string) {
     const CONFIRMATION_TEXT =
         `已将工作目录设置为 ${directory}。开发环境已就绪。`
 
-    // ── Round 1: Model calls "set_project_directory" tool ─────────────
+    // ── Round 1: Model calls "set_user_watch_project" tool ─────────────
     const toolCallBody = [
         `data: {"type":"response.created","response":{"id":"resp_sd001","object":"response","created_at":1700000000,"model":"gpt-4o","status":"in_progress","output":[]}}\n\n`,
-        `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_sd001","call_id":"call_setdir","name":"set_project_directory","arguments":"","status":"in_progress"}}\n\n`,
+        `data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_sd001","call_id":"call_setdir","name":"set_user_watch_project","arguments":"","status":"in_progress"}}\n\n`,
         `data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_sd001","delta":"${escaped}"}\n\n`,
-        `data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_sd001","call_id":"call_setdir","name":"set_project_directory","arguments":"${escaped}","status":"completed"}}\n\n`,
-        `data: {"type":"response.completed","response":{"id":"resp_sd001","object":"response","created_at":1700000000,"model":"gpt-4o","status":"completed","output":[{"type":"function_call","id":"fc_sd001","call_id":"call_setdir","name":"set_project_directory","arguments":"${escaped}","status":"completed"}],"usage":{"input_tokens":80,"output_tokens":30,"total_tokens":110,"output_tokens_details":{"reasoning_tokens":0},"input_tokens_details":{"cached_tokens":0}}}}\n\n`,
+        `data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_sd001","call_id":"call_setdir","name":"set_user_watch_project","arguments":"${escaped}","status":"completed"}}\n\n`,
+        `data: {"type":"response.completed","response":{"id":"resp_sd001","object":"response","created_at":1700000000,"model":"gpt-4o","status":"completed","output":[{"type":"function_call","id":"fc_sd001","call_id":"call_setdir","name":"set_user_watch_project","arguments":"${escaped}","status":"completed"}],"usage":{"input_tokens":80,"output_tokens":30,"total_tokens":110,"output_tokens_details":{"reasoning_tokens":0},"input_tokens_details":{"cached_tokens":0}}}}\n\n`,
     ].join("")
 
     // ── Round 2: Confirmation text ────────────────────────────────────

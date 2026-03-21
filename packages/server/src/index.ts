@@ -236,7 +236,7 @@ function registerSession(cfg: ServerConfig, id: string, agent: InstanceType<type
   // Kick off initial state compute
   entry.state.updateFileSystem(directory)
 
-  // Listen for directory.set events from the agent's set_project_directory tool
+  // Listen for directory.set events from the agent's set_user_watch_project tool
   agent.on("directory.set", (data: any) => {
     const dir = data.directory
     entry.directory = dir

@@ -1,12 +1,14 @@
 import z from "zod"
 import { Tool } from "./tool"
 
-export const SetWorkingDirectoryTool = Tool.define("set_project_directory", {
-  description: `Set the working directory for this session. The typical usage is to open a project repository's root directory so the full development environment (file browser, diff viewer, terminal, etc.) becomes available.
+export const SetWorkingDirectoryTool = Tool.define("set_user_watch_project", {
+  description: `Let the user's frontend UI watch a project directory. This activates the file browser, diff viewer, and other project-related UI panels for the user to see and interact with.
 
-The directory must be an absolute path to an existing directory on the file system.
+This is NOT required before you can start working — you can read, write, and execute files without calling this tool. It only controls what the user sees in their interface.
 
-To switch to a different project, first call this tool with directory set to null to clear the current directory, then call it again with the new path. After clearing, you can freely set a new directory.`,
+Typical usage: after the user tells you which project to work on, call this with the project's root directory path so they can see the files and changes in their UI.
+
+The directory must be an absolute path to an existing directory. To switch projects, first call with null to clear, then call again with the new path.`,
   parameters: z.object({
     directory: z.string().nullable().describe("Absolute path to the project directory. Pass null to clear the current directory."),
   }),
