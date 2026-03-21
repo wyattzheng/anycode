@@ -6,6 +6,7 @@ export default defineConfig({
         cli: "bin/cli.ts",
     },
     format: ["esm"],
+    platform: "node",
     dts: true,
     clean: true,
     external: ["sql.js", "@lydell/node-pty"],
