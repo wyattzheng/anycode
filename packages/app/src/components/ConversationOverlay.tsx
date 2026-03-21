@@ -169,7 +169,6 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
     const [inputNarrow, setInputNarrow] = useState(false);
     const inputBarRef = useRef<HTMLDivElement>(null);
     const textInputRef = useRef<HTMLInputElement>(null);
-    const lastTapRef = useRef(0);
 
     // Detect narrow input bar for stacked layout
     useEffect(() => {
@@ -182,17 +181,10 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
         return () => ro.disconnect();
     }, []);
 
-    // Double-tap handler (works on both mobile touch and desktop click)
-    const handleMessagesTap = useCallback(() => {
-        const now = Date.now();
-        if (now - lastTapRef.current < 400) {
-            lastTapRef.current = 0;
-            setShowTextInput(true);
-            // Wait for React to render the input, then focus
-            setTimeout(() => textInputRef.current?.focus(), 50);
-        } else {
-            lastTapRef.current = now;
-        }
+    // Click on messages area -> enter text input mode and focus
+    const handleMessagesClick = useCallback(() => {
+        setShowTextInput(true);
+        setTimeout(() => textInputRef.current?.focus(), 50);
     }, []);
 
     // Floating mode toggle — defaults to false (sidebar)
@@ -662,7 +654,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
                 </div>
             </div>
 
-            <div className="conversation-messages" ref={msgsRef} onClick={handleMessagesTap}>
+            <div className="conversation-messages" ref={msgsRef} onClick={handleMessagesClick}>
                 {messages.length === 0 && (
                     <div className="co-text" style={{ color: "var(--color-text-dim)" }}>
                         你好！告诉我你想做什么
@@ -701,7 +693,6 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
                                 disabled={busy}
                             />
                             <div className="text-buttons-row">
-                                <span className="co-dblclick-hint"><svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor"><path d="M7.5 1.5a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-1.5 0v-5.5a.75.75 0 0 1 .75-.75Z"/><path d="M4.5 9.5V8a.75.75 0 0 1 1.5 0v1.25c0 .08.017.153.047.22l.703 1.54a2.25 2.25 0 0 0 2.05 1.32h.7a2.25 2.25 0 0 0 2.25-2.25V8a.75.75 0 0 1 1.5 0v2.08A3.75 3.75 0 0 1 9.5 13.83h-.7a3.75 3.75 0 0 1-3.416-2.2L4.68 10.09A1.75 1.75 0 0 1 4.5 9.5Z"/><circle cx="7.5" cy="14.5" r="1" opacity=".45"/></svg>双击列表</span>
                                 <button className="text-close-btn" onClick={() => setShowTextInput(false)}><CloseIcon /></button>
                                 {busy ? (
                                     <button className="text-send-btn text-stop-btn" onClick={handleStop}><StopIcon size={18} /></button>
