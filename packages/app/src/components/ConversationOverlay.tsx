@@ -168,6 +168,8 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
     const [busy, setBusy] = useState(false);
     const [inputNarrow, setInputNarrow] = useState(false);
     const inputBarRef = useRef<HTMLDivElement>(null);
+    const textInputRef = useRef<HTMLInputElement>(null);
+    const [focusTrigger, setFocusTrigger] = useState(0);
 
     // Detect narrow input bar for stacked layout
     useEffect(() => {
@@ -179,6 +181,13 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
         ro.observe(el);
         return () => ro.disconnect();
     }, []);
+
+    // Focus text input when triggered by double-click
+    useEffect(() => {
+        if (focusTrigger > 0) {
+            textInputRef.current?.focus();
+        }
+    }, [focusTrigger]);
 
     // Floating mode toggle — defaults to false (sidebar)
     const [floating, setFloating] = useState(() => {
@@ -224,7 +233,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
     const onSidebarResizeEnd = useCallback(() => {
         if (sidebarDragRef.current) {
             hasUserWidth.current = true;
-            setSidebarWidth((w: number) => { try { localStorage.setItem(STORAGE_KEY_SIDEBAR_W, String(w)); } catch {} return w; });
+            setSidebarWidth((w: number) => { try { localStorage.setItem(STORAGE_KEY_SIDEBAR_W, String(w)); } catch { } return w; });
         }
         sidebarDragRef.current = null;
     }, []);
@@ -647,7 +656,10 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
                 </div>
             </div>
 
-            <div className="conversation-messages" ref={msgsRef}>
+            <div className="conversation-messages" ref={msgsRef} onDoubleClick={() => {
+                setShowTextInput(true);
+                setFocusTrigger(n => n + 1);
+            }}>
                 {messages.length === 0 && (
                     <div className="co-text" style={{ color: "var(--color-text-dim)" }}>
                         你好！告诉我你想做什么
@@ -676,6 +688,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
                     inputNarrow ? (
                         <>
                             <input
+                                ref={textInputRef}
                                 type="text"
                                 value={busy ? "" : input}
                                 onChange={(e) => setInput(e.target.value)}
@@ -696,6 +709,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
                     ) : (
                         <>
                             <input
+                                ref={textInputRef}
                                 type="text"
                                 value={busy ? "" : input}
                                 onChange={(e) => setInput(e.target.value)}

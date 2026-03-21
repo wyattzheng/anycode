@@ -107,6 +107,7 @@
     -webkit-user-select: text;
     user-select: text;
 }
+
 .conversation-messages * {
     -webkit-user-select: text;
     user-select: text;
@@ -336,6 +337,30 @@
     display: flex;
     gap: 6px;
     flex-shrink: 0;
+}
+
+/* ── Double-click hint ── */
+.co-dblclick-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.02em;
+    color: var(--color-text-dim);
+    opacity: 0.45;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    pointer-events: none;
+    margin-right: auto;
+    height: 36px;
+}
+
+.co-dblclick-hint svg {
+    opacity: 0.6;
 }
 
 /* ── Stacked mode (narrow panel) ── */
