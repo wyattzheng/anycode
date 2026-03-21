@@ -166,6 +166,19 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
     const [recording, setRecording] = useState(false);
     const [showTextInput, setShowTextInput] = useState(false);
     const [busy, setBusy] = useState(false);
+    const [inputNarrow, setInputNarrow] = useState(false);
+    const inputBarRef = useRef<HTMLDivElement>(null);
+
+    // Detect narrow input bar for stacked layout
+    useEffect(() => {
+        const el = inputBarRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver(([entry]) => {
+            setInputNarrow(entry.contentRect.width < 200);
+        });
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
 
     // Floating mode toggle — defaults to false (sidebar)
     const [floating, setFloating] = useState(() => {
@@ -643,25 +656,47 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
                     </span>
                 </div>
             )}
-            <div className="conversation-input">
+            <div className={`conversation-input${inputNarrow && showTextInput ? ' conversation-input--stacked' : ''}`} ref={inputBarRef}>
                 {showTextInput ? (
-                    <>
-                        <input
-                            type="text"
-                            value={busy ? "" : input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder={busy ? "正在处理中..." : "输入消息..."}
-                            autoFocus
-                            disabled={busy}
-                        />
-                        {busy ? (
-                            <button className="text-send-btn text-stop-btn" onClick={handleStop}><StopIcon size={18} /></button>
-                        ) : (
-                            <button className="text-send-btn" onClick={handleSend}><SendIcon /></button>
-                        )}
-                        <button className="text-close-btn" onClick={() => setShowTextInput(false)}><CloseIcon /></button>
-                    </>
+                    inputNarrow ? (
+                        <>
+                            <input
+                                type="text"
+                                value={busy ? "" : input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                placeholder={busy ? "正在处理中..." : "输入消息..."}
+                                autoFocus
+                                disabled={busy}
+                            />
+                            <div className="text-buttons-row">
+                                <button className="text-close-btn" onClick={() => setShowTextInput(false)}><CloseIcon /></button>
+                                {busy ? (
+                                    <button className="text-send-btn text-stop-btn" onClick={handleStop}><StopIcon size={18} /></button>
+                                ) : (
+                                    <button className="text-send-btn" onClick={handleSend}><SendIcon /></button>
+                                )}
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <input
+                                type="text"
+                                value={busy ? "" : input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                placeholder={busy ? "正在处理中..." : "输入消息..."}
+                                autoFocus
+                                disabled={busy}
+                            />
+                            {busy ? (
+                                <button className="text-send-btn text-stop-btn" onClick={handleStop}><StopIcon size={18} /></button>
+                            ) : (
+                                <button className="text-send-btn" onClick={handleSend}><SendIcon /></button>
+                            )}
+                            <button className="text-close-btn" onClick={() => setShowTextInput(false)}><CloseIcon /></button>
+                        </>
+                    )
                 ) : (
                     <>
                         <div className="mic-wrapper">

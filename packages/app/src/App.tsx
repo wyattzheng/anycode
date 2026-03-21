@@ -35,7 +35,17 @@ interface WindowViewProps {
 }
 
 function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
-    const [activeTab, setActiveTab] = useState<TabId>("files");
+    const [activeTab, setActiveTab] = useState<TabId>(() => {
+        try {
+            const saved = localStorage.getItem(`anycode:tab:${sessionId}`);
+            return (saved as TabId) || "files";
+        } catch { return "files"; }
+    });
+
+    // Persist active tab per window
+    useEffect(() => {
+        try { localStorage.setItem(`anycode:tab:${sessionId}`, activeTab); } catch {}
+    }, [sessionId, activeTab]);
     const [directory, setDirectory] = useState("");
     const [topLevel, setTopLevel] = useState<DirEntry[]>([]);
     const [changes, setChanges] = useState<GitChange[]>([]);
@@ -205,7 +215,9 @@ export function App() {
                 });
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
-                setActiveWindowId(data.id);
+                // Restore last window from localStorage, fallback to returned id
+                const savedWindowId = localStorage.getItem('anycode:lastWindow');
+                setActiveWindowId(savedWindowId || data.id);
                 fetchWindows();
             } catch (e: any) {
                 setError(e.message);
@@ -213,8 +225,21 @@ export function App() {
         })();
     }, [fetchWindows]);
 
+    // If saved window doesn't exist in the list, fall back
+    useEffect(() => {
+        if (!activeWindowId || windows.length === 0) return;
+        if (!windows.some(w => w.id === activeWindowId)) {
+            const fallback = windows.find(w => w.isDefault) || windows[0];
+            if (fallback) {
+                setActiveWindowId(fallback.id);
+                try { localStorage.setItem('anycode:lastWindow', fallback.id); } catch {}
+            }
+        }
+    }, [activeWindowId, windows]);
+
     const handleWindowSwitch = useCallback((id: string) => {
         setActiveWindowId(id);
+        try { localStorage.setItem('anycode:lastWindow', id); } catch {}
     }, []);
 
     const handleWindowCreate = useCallback(async () => {
@@ -227,6 +252,7 @@ export function App() {
             const data = await res.json();
             if (data.error) return;
             setActiveWindowId(data.id);
+            try { localStorage.setItem('anycode:lastWindow', data.id); } catch {}
             fetchWindows();
         } catch { /* ignore */ }
     }, [fetchWindows]);

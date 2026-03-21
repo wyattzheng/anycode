@@ -314,6 +314,40 @@
     height: 36px;
 }
 
+.text-input-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.text-input-row input {
+    flex: 1;
+    min-width: 0;
+    background: var(--color-surface-hover);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    font-size: 11px;
+    height: 36px;
+}
+
+.text-buttons-row {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+/* ── Stacked mode (narrow panel) ── */
+.conversation-input--stacked {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.conversation-input--stacked .text-buttons-row {
+    justify-content: flex-end;
+}
+
 .mic-btn {
     flex: 1;
     height: 36px;
