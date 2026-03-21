@@ -4,9 +4,12 @@ import { Tool } from "./tool"
 export const SetWorkingDirectoryTool = Tool.define("set_user_watch_project", {
   description: `Let the user's frontend UI watch a project directory. This activates the file browser, diff viewer, and other project-related UI panels for the user to see and interact with.
 
-This is NOT required before you can start working — you can read, write, and execute files without calling this tool. It only controls what the user sees in their interface.
+This is NOT required before you can start working — you can read, write, and execute files without calling this tool. It only controls what the user sees in their interface. Do NOT call this tool unnecessarily.
 
-Typical usage: after the user tells you which project to work on, call this with the project's root directory path so they can see the files and changes in their UI.
+When to call:
+- After you create a new project (e.g. scaffolded with a CLI tool)
+- After you clone a repository
+- When the user asks to open or switch to a specific project
 
 The directory must be an absolute path to an existing directory. To switch projects, first call with null to clear, then call again with the new path.`,
   parameters: z.object({
