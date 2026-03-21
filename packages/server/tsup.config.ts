@@ -9,5 +9,6 @@ export default defineConfig({
     platform: "node",
     dts: true,
     clean: true,
+    skipNodeModulesBundle: true,
     external: ["sql.js", "@lydell/node-pty"],
 });
