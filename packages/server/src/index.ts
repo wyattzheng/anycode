@@ -931,18 +931,33 @@ function handleTerminalWs(ws: WS, sessionId: string) {
   const tp = getOrCreateTerminalProvider(sessionId)
   tp.addClient(ws)
 
-  // Notify client of current terminal state and replay buffer
+  // Notify client of current terminal state (replay deferred until after resize)
   if (tp.exists()) {
     ws.send(JSON.stringify({ type: "terminal.ready" }))
-    // Replay buffered output so late-connecting clients see prior output
-    for (const chunk of tp.getRawBuffer()) {
-      ws.send(JSON.stringify({ type: "terminal.output", data: chunk }))
-    }
   } else {
     ws.send(JSON.stringify({ type: "terminal.none" }))
   }
 
-  ws.on("message", (raw: Buffer | string) => tp.handleWsMessage(raw))
+  // Track whether we've replayed the buffer for this client.
+  // Replay is deferred until the first resize so that the PTY size matches
+  // the client's xterm.js — replaying with a mismatched size causes blank lines.
+  let replayed = false
+
+  ws.on("message", (raw: Buffer | string) => {
+    try {
+      const msg = JSON.parse(raw.toString())
+      if (msg.type === "terminal.resize" && !replayed) {
+        replayed = true
+        tp.resize(msg.cols, msg.rows)
+        // Now replay buffer after the terminal is correctly sized
+        for (const chunk of tp.getRawBuffer()) {
+          ws.send(JSON.stringify({ type: "terminal.output", data: chunk }))
+        }
+        return
+      }
+    } catch { /* ignore */ }
+    tp.handleWsMessage(raw)
+  })
 
   ws.on("close", () => {
     tp.removeClient(ws)
