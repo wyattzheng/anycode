@@ -21,6 +21,6 @@ COPY . .
 # build all packages
 RUN pnpm build
 
-EXPOSE 3210 3211
+EXPOSE 2223 2224
 
 CMD ["node", "packages/server/dist/cli.js"]
