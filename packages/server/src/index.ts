@@ -162,6 +162,7 @@ interface SessionEntry {
   id: string
   agent: InstanceType<typeof CodeAgent>
   directory: string  // empty = no project directory set yet
+  title: string      // session title (populated when agent generates it)
   createdAt: number
   state: SessionStateModel
 }
@@ -229,6 +230,7 @@ function registerSession(cfg: ServerConfig, id: string, agent: InstanceType<type
     agent, 
     directory, 
     createdAt,
+    title: "",
     state: new SessionStateModel(id, cfg) 
   }
   sessions.set(id, entry)
@@ -246,6 +248,17 @@ function registerSession(cfg: ServerConfig, id: string, agent: InstanceType<type
     console.log(`📂  Session ${id} directory set to: ${dir}`)
     entry.state.updateFileSystem(dir)
     watchDirectory(cfg, id, dir)
+    // Notify all clients that window list changed (directory updated)
+    broadcastAll({ type: "windows.updated" })
+  })
+
+  // Listen for session title changes to push window list updates
+  agent.on("session.updated", (data: any) => {
+    const title = data?.info?.title
+    if (title && title !== entry.title) {
+      entry.title = title
+      broadcastAll({ type: "windows.updated" })
+    }
   })
 
   return entry
@@ -483,6 +496,16 @@ function broadcast(sessionId: string, data: Record<string, unknown>) {
   const json = JSON.stringify(data)
   for (const c of clients) {
     if (c.readyState === WS.OPEN) c.send(json)
+  }
+}
+
+/** Broadcast to ALL connected WebSocket clients across all sessions */
+function broadcastAll(data: Record<string, unknown>) {
+  const json = JSON.stringify(data)
+  for (const clients of sessionClients.values()) {
+    for (const c of clients) {
+      if (c.readyState === WS.OPEN) c.send(json)
+    }
   }
 }
 
@@ -1247,11 +1270,12 @@ function createMainServer(cfg: ServerConfig): http.Server {
     // ── Window management APIs ───────────────────────────────────────────
     // GET /api/windows — list all windows
     if (req.method === "GET" && req.url?.startsWith("/api/windows")) {
-      getAllWindows(cfg).then((entries) => {
+      getAllWindows(cfg).then(async (entries) => {
         const rows = db.findMany("user_session", {})
         const defaultMap = new Map(rows.map((r: any) => [r.session_id, r.is_default === 1]))
         const list = entries.map((e) => ({
           id: e.id,
+          title: e.title || "",
           directory: e.directory,
           createdAt: e.createdAt,
           isDefault: defaultMap.get(e.id) ?? false,

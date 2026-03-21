@@ -80,6 +80,8 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                     setTopLevel(data.topLevel || []);
                     setChanges(data.changes || []);
                     if (data.previewPort !== undefined) setPreviewPort(data.previewPort);
+                } else if (data.type === "windows.updated") {
+                    onWindowsChanged();
                 } else if (data.type?.startsWith("chat.")) {
                     chatHandlerRef.current?.(data);
                 }

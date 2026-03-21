@@ -3,6 +3,7 @@ import "./WindowSwitcher.css";
 
 export interface WindowInfo {
     id: string;
+    title: string;
     directory: string;
     isDefault: boolean;
     createdAt: number;
@@ -17,6 +18,7 @@ interface WindowSwitcherProps {
 }
 
 function windowLabel(w: WindowInfo): string {
+    if (w.title) return w.title;
     if (w.directory) {
         const parts = w.directory.split("/");
         return parts[parts.length - 1] || w.directory;
