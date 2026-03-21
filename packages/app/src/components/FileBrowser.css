@@ -159,6 +159,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    direction: rtl;
+    text-align: left;
     color: var(--color-text);
     font-weight: 400;
     font-family: var(--font-mono);
