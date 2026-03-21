@@ -151,6 +151,8 @@
     position: sticky;
     top: 0;
     z-index: 1;
+    cursor: row-resize;
+    touch-action: none;
 }
 
 .file-content-path {

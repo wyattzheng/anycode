@@ -100,8 +100,8 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
     const onDragMove = useCallback((clientY: number) => {
         if (!dragRef.current || !containerRef.current) return;
         const containerRect = containerRef.current.getBoundingClientRect();
-        const topY = containerRect.top;
-        const newHeight = Math.max(60, Math.min(clientY - topY, containerRect.height - 60));
+        const delta = clientY - dragRef.current.startY;
+        const newHeight = Math.max(60, Math.min(dragRef.current.startHeight + delta, containerRect.height - 60));
         setSidebarHeight(newHeight);
     }, []);
 
@@ -178,7 +178,7 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
             <div className="file-browser-content">
                 {selectedFile ? (
                     <>
-                        <div className="file-content-header">
+                        <div className="file-content-header" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart}>
                             <FileDocIcon />
                             <span className="file-content-path">{selectedFile}</span>
                             <div className="file-content-menu">
