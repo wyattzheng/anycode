@@ -8,14 +8,24 @@
     user-select: none;
 }
 
+/* Word wrap mode */
+.code-viewer--wrap {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
 
 .code-viewer pre {
     margin: 0;
     padding: 12px 0;
     overflow: visible;
-    width: fit-content;
     min-width: 100%;
     background: transparent !important;
+}
+
+.code-viewer--wrap pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
 }
 
 .code-viewer code {
@@ -28,6 +38,11 @@
     width: 100%;
     padding: 0 12px 0 0;
     min-height: 1.5em;
+}
+
+.code-viewer--wrap .line {
+    padding-left: 4.5em;
+    text-indent: -4.5em;
 }
 
 /* Line number via ::before */
@@ -96,12 +111,13 @@
 
 .cv-drag-handle {
     position: absolute;
-    left: 50%;
     transform: translateX(-50%);
-    width: 36px;
-    height: 24px;
+    width: 80px;
+    height: 44px;
     display: flex;
     flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
     touch-action: none;
     z-index: 10;
     cursor: row-resize;
@@ -119,7 +135,7 @@
 }
 
 .cv-drag-handle-pill {
-    width: 36px;
+    width: 50px;
     height: 10px;
     display: flex;
     align-items: center;
@@ -133,7 +149,7 @@
 
 .cv-drag-handle-pill::after {
     content: '';
-    width: 14px;
+    width: 20px;
     height: 1px;
     background: rgba(0, 120, 212, 0.5);
     border-radius: 0.5px;

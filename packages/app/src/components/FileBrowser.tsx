@@ -146,6 +146,9 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
         }
     }, [selectedFile, onFileContext]);
 
+    const [wordWrap, setWordWrap] = useState(true);
+    const [menuOpen, setMenuOpen] = useState(false);
+
     const isEmpty = topLevel.length === 0;
 
     return (
@@ -156,12 +159,27 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
                         <div className="file-content-header">
                             <FileDocIcon />
                             <span className="file-content-path">{selectedFile}</span>
+                            <div className="file-content-menu">
+                                <button className="file-content-menu-btn" onClick={() => setMenuOpen(!menuOpen)}>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                                        <circle cx="12" cy="4" r="1.5" fill="currentColor" /><circle cx="12" cy="12" r="1.5" fill="currentColor" /><circle cx="12" cy="20" r="1.5" fill="currentColor" />
+                                    </svg>
+                                </button>
+                                {menuOpen && (
+                                    <div className="file-content-dropdown">
+                                        <div className="file-content-dropdown-item" onClick={() => { setWordWrap(!wordWrap); setMenuOpen(false); }}>
+                                            <input type="checkbox" checked={wordWrap} readOnly />
+                                            <span>自动换行</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                         <div className="file-content-body">
                             {fileLoading ? (
                                 <div className="file-content-loading">加载中…</div>
                             ) : fileContent !== null ? (
-                                <CodeViewer code={fileContent} filePath={selectedFile} onSelectionChange={handleSelectionChange} />
+                                <CodeViewer code={fileContent} filePath={selectedFile} onSelectionChange={handleSelectionChange} wordWrap={wordWrap} />
                             ) : (
                                 <div className="file-content-error">无法读取文件</div>
                             )}

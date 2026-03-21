@@ -83,9 +83,11 @@ export interface CodeViewerProps {
     onSelectionChange?: (lines: number[]) => void;
     /** Scroll to this line once Shiki rendering completes (one-shot) */
     scrollToLine?: number | null;
+    /** Enable word wrap */
+    wordWrap?: boolean;
 }
 
-export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines, removedLines, onSelectionChange, scrollToLine }: CodeViewerProps) {
+export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines, removedLines, onSelectionChange, scrollToLine, wordWrap }: CodeViewerProps) {
     const [rawHtml, setRawHtml] = useState<string | null>(null);
     const [error, setError] = useState(false);
     const [selectedLines, setSelectedLines] = useState<Set<number>>(new Set());
@@ -95,6 +97,10 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
     // Stable ref for onSelectionChange (used in native listeners)
     const onSelectionChangeRef = useRef(onSelectionChange);
     onSelectionChangeRef.current = onSelectionChange;
+
+    // Ref to track selection without causing effect re-runs
+    const selectedLinesRef = useRef(selectedLines);
+    selectedLinesRef.current = selectedLines;
 
     // Mouse drag state (desktop)
     const mouseDragRef = useRef<{ anchor: number; dragged: boolean; startX: number; startY: number } | null>(null);
@@ -213,6 +219,7 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
     }, []);
 
     const handleMouseUp = useCallback(() => {
+        if (touchActiveRef.current) return;
         if (!mouseDragRef.current) return;
         const wasDrag = mouseDragRef.current.dragged;
         mouseDragRef.current = null;
@@ -230,6 +237,7 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
     // Global mouseup to catch drag release outside container
     useEffect(() => {
         const onUp = () => {
+            if (touchActiveRef.current) return;
             if (!mouseDragRef.current) return;
             const wasDrag = mouseDragRef.current.dragged;
             mouseDragRef.current = null;
@@ -247,24 +255,22 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
         return () => window.removeEventListener("mouseup", onUp);
     }, [clearSelection]);
 
-    // ── Touch: long-press 300ms to select line ──
+    // ── Touch: tap to select line (if no selection) or clear (if has selection) ──
     // No touch-action:none on the code viewer — native scrolling works.
     // Only the drag handle has touch-action:none.
-    // Long-press (hold still 300ms) selects a line.
-    // Second long-press extends range from anchor.
-    // Quick tap clears selection.
+    // Tap selects a line if nothing selected; tap clears if already selected.
     useEffect(() => {
         if (!containerRef.current) return;
         const el = containerRef.current;
 
-        const LONG_PRESS_MS = 300;
         const MOVE_THRESHOLD = 10;
+        const TAP_COOLDOWN = 300;
 
-        let timer: ReturnType<typeof setTimeout> | null = null;
         let startX = 0;
         let startY = 0;
         let activePointerId = -1;
-        let longPressCompleted = false;
+        let moved = false;
+        let lastTapTime = 0;
 
         const onPointerDown = (e: PointerEvent) => {
             if (e.pointerType === 'mouse') return;
@@ -274,49 +280,42 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
             activePointerId = e.pointerId;
             startX = e.clientX;
             startY = e.clientY;
-            longPressCompleted = false;
+            moved = false;
             touchActiveRef.current = true;
-
-            timer = setTimeout(() => {
-                timer = null;
-                longPressCompleted = true;
-                const line = getLineFromEvent(el, { clientY: startY });
-                if (line === null) return;
-
-                // Always start fresh: set anchor, select single line
-                anchorRef.current = line;
-                setRange(line, line);
-                navigator.vibrate?.(50);
-            }, LONG_PRESS_MS);
         };
 
         const onPointerMove = (e: PointerEvent) => {
-            if (e.pointerId !== activePointerId || !timer) return;
+            if (e.pointerId !== activePointerId) return;
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
             if (dx * dx + dy * dy > MOVE_THRESHOLD * MOVE_THRESHOLD) {
-                clearTimeout(timer);
-                timer = null;
+                moved = true;
             }
         };
 
         const onPointerUp = (e: PointerEvent) => {
             if (e.pointerId !== activePointerId) return;
             activePointerId = -1;
-            if (timer) {
-                // Quick tap — clear selection
-                clearTimeout(timer);
-                timer = null;
-                clearSelection();
+            const now = Date.now();
+            if (!moved && now - lastTapTime > TAP_COOLDOWN) {
+                lastTapTime = now;
+                // Tap: if has selection → clear; if no selection → select tapped line
+                if (selectedLinesRef.current.size > 0) {
+                    clearSelection();
+                } else {
+                    const line = getLineFromEvent(el, { clientY: startY });
+                    if (line !== null) {
+                        anchorRef.current = line;
+                        setRange(line, line);
+                    }
+                }
             }
-            // If longPressCompleted, selection was already set
             setTimeout(() => { touchActiveRef.current = false; }, 400);
         };
 
         const onPointerCancel = (e: PointerEvent) => {
             if (e.pointerId !== activePointerId) return;
             activePointerId = -1;
-            if (timer) { clearTimeout(timer); timer = null; }
             setTimeout(() => { touchActiveRef.current = false; }, 400);
         };
 
@@ -336,7 +335,6 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
             document.removeEventListener("pointerup", onPointerUp);
             document.removeEventListener("pointercancel", onPointerCancel);
             document.removeEventListener("contextmenu", onContextMenu);
-            if (timer) clearTimeout(timer);
         };
     }, [rawHtml, setRange, clearSelection]);
 
@@ -377,6 +375,12 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
             if (edgeEl) {
                 const wrapperRect = wrapperRef.current.getBoundingClientRect();
                 const lineRect = edgeEl.getBoundingClientRect();
+                // Horizontal: center in scroll parent viewport
+                const scrollParent = containerRef.current.closest('.file-content-body') as HTMLElement;
+                const vpCenterX = scrollParent
+                    ? scrollParent.scrollLeft + scrollParent.clientWidth / 2
+                    : wrapperRef.current.clientWidth / 2;
+                handleElRef.current.style.left = `${vpCenterX}px`;
                 if (atTop) {
                     handleElRef.current.style.top = `${lineRect.top - wrapperRect.top - handleElRef.current.offsetHeight}px`;
                     handleElRef.current.classList.add('cv-drag-handle--top');
@@ -417,6 +421,12 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
         if (handleElRef.current && wrapperRef.current && selectedLines.size > 0) {
             const sorted = Array.from(selectedLines).sort((a, b) => a - b);
             const wrapperRect = wrapperRef.current.getBoundingClientRect();
+            // Horizontal: center in scroll parent viewport
+            const scrollParent = containerRef.current.closest('.file-content-body') as HTMLElement;
+            const vpCenterX = scrollParent
+                ? scrollParent.scrollLeft + scrollParent.clientWidth / 2
+                : wrapperRef.current.clientWidth / 2;
+            handleElRef.current.style.left = `${vpCenterX}px`;
 
             if (handleAtTopRef.current) {
                 const firstLineEl = containerRef.current.querySelector(`[data-line="${sorted[0]}"]`) as HTMLElement;
@@ -436,6 +446,24 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
         }
     }, [selectedLines, rawHtml]);
 
+    // Keep handle horizontally centered when scroll parent scrolls or window resizes
+    useEffect(() => {
+        if (!containerRef.current) return;
+        const scrollParent = containerRef.current.closest('.file-content-body') as HTMLElement;
+        if (!scrollParent) return;
+        const updateLeft = () => {
+            if (!handleElRef.current || selectedLines.size === 0) return;
+            const vpCenterX = scrollParent.scrollLeft + scrollParent.clientWidth / 2;
+            handleElRef.current.style.left = `${vpCenterX}px`;
+        };
+        scrollParent.addEventListener('scroll', updateLeft, { passive: true });
+        window.addEventListener('resize', updateLeft);
+        return () => {
+            scrollParent.removeEventListener('scroll', updateLeft);
+            window.removeEventListener('resize', updateLeft);
+        };
+    }, [selectedLines, rawHtml]);
+
     if (error) {
         return <pre className="code-viewer-fallback">{code}</pre>;
     }
@@ -452,7 +480,7 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
              style={scrollPending ? { visibility: 'hidden' } : undefined}>
             <div
                 ref={containerRef}
-                className="code-viewer"
+                className={`code-viewer${wordWrap ? ' code-viewer--wrap' : ''}`}
                 dangerouslySetInnerHTML={{ __html: finalHtml }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}

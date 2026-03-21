@@ -104,6 +104,12 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+    -webkit-user-select: text;
+    user-select: text;
+}
+.conversation-messages * {
+    -webkit-user-select: text;
+    user-select: text;
 }
 
 .conversation-messages::-webkit-scrollbar {
