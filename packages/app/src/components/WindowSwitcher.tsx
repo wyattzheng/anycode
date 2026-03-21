@@ -18,11 +18,11 @@ interface WindowSwitcherProps {
 }
 
 function windowLabel(w: WindowInfo): string {
-    if (w.title) return w.title;
     if (w.directory) {
         const parts = w.directory.split("/");
         return parts[parts.length - 1] || w.directory;
     }
+    if (w.title) return w.title;
     return w.isDefault ? "默认" : "新窗口";
 }
 
