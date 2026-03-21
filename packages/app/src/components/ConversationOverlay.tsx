@@ -186,6 +186,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
     // flushSync is required for iOS: .focus() must be in the synchronous
     // user-gesture chain or Safari won't open the keyboard.
     const handleMessagesClick = useCallback(() => {
+        flushSync(() => setShowTextInput(false));
         flushSync(() => setShowTextInput(true));
         textInputRef.current?.focus();
     }, []);
