@@ -1,6 +1,6 @@
 {
     "name": "@any-code/server",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "type": "module",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
@@ -13,12 +13,12 @@
         "dev": "pnpm --filter @any-code/agent build && tsup && node dist/cli.js"
     },
     "dependencies": {
-        "@any-code/agent": "workspace:*",
-        "@any-code/app": "workspace:*",
         "@lydell/node-pty": "1.2.0-beta.3",
         "ws": "^8.19.0"
     },
     "devDependencies": {
+        "@any-code/agent": "workspace:*",
+        "@any-code/app": "workspace:*",
         "@types/node": "^25.5.0",
         "@types/ws": "^8.18.1",
         "sql.js": "^1.12.0",
