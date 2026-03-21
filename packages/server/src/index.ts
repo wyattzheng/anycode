@@ -711,127 +711,51 @@ function stripAnsi(s: string): string {
 const MAX_BUFFER_LINES = 5000
 
 /**
- * NodeTerminalProvider — per-session shared terminal.
+ * TerminalStateModel — manages terminal state and client sync.
  *
- * Manages a single PTY process, a scrollback buffer (for agent reads),
- * and a set of WebSocket clients (for user UI).
+ * Follows the same pattern as SessionStateModel:
+ *  - Holds the state (rawBuffer, alive)
+ *  - notify(): broadcast incremental updates to all clients
+ *  - syncClient(): full-state replay for newly connected clients
+ *  - handleClient(): register WS + lifecycle management
  */
 const MAX_RAW_BUFFER = 200
 
-class NodeTerminalProvider implements TerminalProvider {
-  private proc: pty.IPty | null = null
-  private lines: string[] = []
-  private currentLine = ""
+class TerminalStateModel {
   private rawBuffer: string[] = []
+  private alive = false
   private wsClients = new Set<WS>()
-  private sessionId: string
-  // Track which clients have received their initial full sync
   private syncedClients = new WeakSet<WS>()
 
-  constructor(sessionId: string) {
-    this.sessionId = sessionId
+  // Callbacks set by NodeTerminalProvider for user input
+  onInput: ((data: string) => void) | null = null
+  onResize: ((cols: number, rows: number) => void) | null = null
+
+  /** Update alive state and notify clients */
+  setAlive(alive: boolean): void {
+    this.alive = alive
+    this.notify({ type: alive ? "terminal.ready" : "terminal.none" })
   }
 
-  exists(): boolean {
-    return this.proc !== null
-  }
-
-  create(): void {
-    if (this.proc) throw new Error("Terminal already exists. Destroy it first.")
-    const session = getSession(this.sessionId)
-    const cwd = session?.directory || os.homedir()
-    const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "/bin/bash")
-
-    // Validate cwd exists
-    if (!fs.existsSync(cwd)) {
-      throw new Error(`Terminal cwd does not exist: ${cwd}`)
+  /** Append raw output data — cache and push to clients */
+  pushOutput(data: string): void {
+    this.rawBuffer.push(data)
+    if (this.rawBuffer.length > MAX_RAW_BUFFER) {
+      this.rawBuffer.splice(0, this.rawBuffer.length - MAX_RAW_BUFFER)
     }
+    this.notify({ type: "terminal.output", data })
+  }
 
-    console.log(`🖥  Terminal creating: shell=${shell}, cwd=${cwd}, sessionId=${this.sessionId}`)
+  /** Push a terminal exited event */
+  pushExited(exitCode: number): void {
+    this.notify({ type: "terminal.exited", exitCode })
+  }
 
-    this.lines = []
-    this.currentLine = ""
+  /** Clear all buffered state */
+  reset(): void {
     this.rawBuffer = []
-
-    // Filter out undefined env values (node-pty requires string values)
-    const env: Record<string, string> = {}
-    for (const [k, v] of Object.entries(process.env)) {
-      if (v !== undefined) env[k] = v
-    }
-    env.PROMPT_EOL_MARK = ""  // suppress zsh partial-line marker
-    env.CLICOLOR = "1"        // enable colored ls output on macOS
-    env.CLICOLOR_FORCE = "1"  // force colors even if not a tty
-    env.LSCOLORS = "GxFxCxDxBxegedabagaced"  // default macOS ls colors
-
-    const proc = pty.spawn(shell, [], {
-      name: "xterm-256color",
-      cols: 80,
-      rows: 24,
-      cwd,
-      env,
-    })
-
-    console.log(`🖥  Terminal created for session ${this.sessionId} (pid ${proc.pid}, cwd ${cwd})`)
-
-    proc.onData((data: string) => {
-      // 1. Append to line buffer (strip ANSI for agent reads)
-      this.appendToBuffer(data)
-      // 2. Cache raw output for replay
-      this.rawBuffer.push(data)
-      if (this.rawBuffer.length > MAX_RAW_BUFFER) {
-        this.rawBuffer.splice(0, this.rawBuffer.length - MAX_RAW_BUFFER)
-      }
-      // 3. Notify all connected clients
-      this.notify({ type: "terminal.output", data })
-    })
-
-    proc.onExit(({ exitCode }: { exitCode: number }) => {
-      console.log(`🖥  Terminal exited for session ${this.sessionId} (code ${exitCode})`)
-      this.proc = null
-      this.notify({ type: "terminal.exited", exitCode })
-      this.notify({ type: "terminal.none" })
-    })
-
-    this.proc = proc
-
-    // Notify all WS clients that terminal is now ready
-    this.notify({ type: "terminal.ready" })
+    this.syncedClients = new WeakSet()
   }
-
-  destroy(): void {
-    if (!this.proc) throw new Error("No terminal exists.")
-    console.log(`🖥  Terminal destroyed for session ${this.sessionId}`)
-    this.proc.kill()
-    this.proc = null
-    this.lines = []
-    this.currentLine = ""
-    this.rawBuffer = []
-    this.notify({ type: "terminal.none" })
-  }
-
-  write(data: string): void {
-    if (!this.proc) throw new Error("No terminal exists.")
-    this.proc.write(data)
-  }
-
-  read(lineCount: number): string {
-    if (!this.proc) throw new Error("No terminal exists.")
-    // Include the current partial line if non-empty
-    const allLines = this.currentLine
-      ? [...this.lines, this.currentLine]
-      : [...this.lines]
-    const start = Math.max(0, allLines.length - lineCount)
-    return allLines.slice(start).join("\n")
-  }
-
-  /** Resize the PTY */
-  resize(cols: number, rows: number): void {
-    if (this.proc && cols > 0 && rows > 0) {
-      this.proc.resize(cols, rows)
-    }
-  }
-
-  // ── Model-style sync methods ──────────────────────────────────────────
 
   /** Broadcast a message to all connected clients */
   private notify(msg: Record<string, unknown>): void {
@@ -844,7 +768,6 @@ class NodeTerminalProvider implements TerminalProvider {
   /**
    * Full-state sync for a single client.
    * Called after the client's first resize so the PTY size matches.
-   * Replays the raw buffer to bring the client up to date.
    */
   private syncClient(ws: WS): void {
     if (this.syncedClients.has(ws)) return
@@ -858,57 +781,148 @@ class NodeTerminalProvider implements TerminalProvider {
 
   /**
    * Register a new WebSocket client and manage its lifecycle.
-   * Follows the SessionStateModel pattern:
-   *  1. Send current state indicator (ready / none)
-   *  2. Wait for first resize → full sync (replay buffer)
+   *  1. Send current state (ready / none)
+   *  2. First resize → full sync (replay buffer)
    *  3. After that, live updates via notify()
    */
   handleClient(ws: WS): void {
     this.wsClients.add(ws)
 
-    // 1. Tell client the current terminal state
-    if (this.exists()) {
-      ws.send(JSON.stringify({ type: "terminal.ready" }))
-    } else {
-      ws.send(JSON.stringify({ type: "terminal.none" }))
-    }
+    // 1. Current state
+    ws.send(JSON.stringify({ type: this.alive ? "terminal.ready" : "terminal.none" }))
 
-    // 2. Handle messages — sync on first resize, then normal I/O
+    // 2. Messages
     ws.on("message", (raw: Buffer | string) => {
       try {
         const msg = JSON.parse(raw.toString())
-        if (msg.type === "terminal.input" && this.proc) {
-          this.proc.write(msg.data)
+        if (msg.type === "terminal.input") {
+          this.onInput?.(msg.data)
         } else if (msg.type === "terminal.resize") {
-          this.resize(msg.cols, msg.rows)
-          // First resize triggers full sync
+          this.onResize?.(msg.cols, msg.rows)
           this.syncClient(ws)
         }
-      } catch { /* ignore malformed */ }
+      } catch { /* ignore */ }
     })
 
-    // 3. Cleanup on disconnect
-    ws.on("close", () => {
-      this.wsClients.delete(ws)
-      console.log(`🖥  Terminal WS closed for session ${this.sessionId}`)
+    // 3. Cleanup
+    ws.on("close", () => { this.wsClients.delete(ws) })
+  }
+}
+
+/**
+ * NodeTerminalProvider — per-session PTY process manager.
+ *
+ * Manages PTY lifecycle (create/destroy/write/read/resize).
+ * Feeds output to TerminalStateModel for client sync.
+ */
+class NodeTerminalProvider implements TerminalProvider {
+  private proc: pty.IPty | null = null
+  private lines: string[] = []
+  private currentLine = ""
+  private sessionId: string
+  readonly model: TerminalStateModel
+
+  constructor(sessionId: string) {
+    this.sessionId = sessionId
+    this.model = new TerminalStateModel()
+    this.model.onInput = (data) => this.proc?.write(data)
+    this.model.onResize = (cols, rows) => this.resize(cols, rows)
+  }
+
+  exists(): boolean { return this.proc !== null }
+
+  create(): void {
+    if (this.proc) throw new Error("Terminal already exists. Destroy it first.")
+    const session = getSession(this.sessionId)
+    const cwd = session?.directory || os.homedir()
+    const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "/bin/bash")
+
+    if (!fs.existsSync(cwd)) {
+      throw new Error(`Terminal cwd does not exist: ${cwd}`)
+    }
+
+    console.log(`🖥  Terminal creating: shell=${shell}, cwd=${cwd}, sessionId=${this.sessionId}`)
+    this.lines = []
+    this.currentLine = ""
+    this.model.reset()
+
+    const env: Record<string, string> = {}
+    for (const [k, v] of Object.entries(process.env)) {
+      if (v !== undefined) env[k] = v
+    }
+    env.PROMPT_EOL_MARK = ""
+    env.CLICOLOR = "1"
+    env.CLICOLOR_FORCE = "1"
+    env.LSCOLORS = "GxFxCxDxBxegedabagaced"
+
+    const proc = pty.spawn(shell, [], {
+      name: "xterm-256color",
+      cols: 80,
+      rows: 24,
+      cwd,
+      env,
     })
+
+    console.log(`🖥  Terminal created for session ${this.sessionId} (pid ${proc.pid}, cwd ${cwd})`)
+
+    proc.onData((data: string) => {
+      this.appendToBuffer(data)
+      this.model.pushOutput(data)
+    })
+
+    proc.onExit(({ exitCode }: { exitCode: number }) => {
+      console.log(`🖥  Terminal exited for session ${this.sessionId} (code ${exitCode})`)
+      this.proc = null
+      this.model.pushExited(exitCode)
+      this.model.setAlive(false)
+    })
+
+    this.proc = proc
+    this.model.setAlive(true)
+  }
+
+  destroy(): void {
+    if (!this.proc) throw new Error("No terminal exists.")
+    console.log(`🖥  Terminal destroyed for session ${this.sessionId}`)
+    this.proc.kill()
+    this.proc = null
+    this.lines = []
+    this.currentLine = ""
+    this.model.reset()
+    this.model.setAlive(false)
+  }
+
+  write(data: string): void {
+    if (!this.proc) throw new Error("No terminal exists.")
+    this.proc.write(data)
+  }
+
+  read(lineCount: number): string {
+    if (!this.proc) throw new Error("No terminal exists.")
+    const allLines = this.currentLine
+      ? [...this.lines, this.currentLine]
+      : [...this.lines]
+    const start = Math.max(0, allLines.length - lineCount)
+    return allLines.slice(start).join("\n")
+  }
+
+  resize(cols: number, rows: number): void {
+    if (this.proc && cols > 0 && rows > 0) {
+      this.proc.resize(cols, rows)
+    }
   }
 
   private appendToBuffer(data: string) {
     const clean = stripAnsi(data)
-    // Split on \n only (real newlines)
     const lines = clean.split("\n")
     for (let i = 0; i < lines.length; i++) {
       const segment = lines[i]
       if (i === 0) {
-        // First segment appends to current partial line
         this.handleCR(segment)
       } else {
-        // \n means the previous line is complete
         this.lines.push(this.currentLine)
         this.currentLine = ""
         this.handleCR(segment)
-        // Trim buffer
         if (this.lines.length > MAX_BUFFER_LINES) {
           this.lines.splice(0, this.lines.length - MAX_BUFFER_LINES)
         }
@@ -916,17 +930,13 @@ class NodeTerminalProvider implements TerminalProvider {
     }
   }
 
-  /** Handle \r within a segment: text after the last \r overwrites from column 0 */
   private handleCR(segment: string) {
     const crParts = segment.split("\r")
     if (crParts.length === 1) {
-      // No \r — just append
       this.currentLine += segment
     } else {
-      // Each \r resets to column 0; last part wins (overwrites)
       for (const part of crParts) {
         if (part === "") continue
-        // Overwrite from column 0, keep trailing content if new part is shorter
         if (part.length >= this.currentLine.length) {
           this.currentLine = part
         } else {
@@ -950,10 +960,11 @@ function getOrCreateTerminalProvider(sessionId: string): NodeTerminalProvider {
 }
 
 function handleTerminalWs(ws: WS, sessionId: string) {
-  getOrCreateTerminalProvider(sessionId).handleClient(ws)
+  getOrCreateTerminalProvider(sessionId).model.handleClient(ws)
 }
 
-// ── Preview Provider — dedicated preview port with full reverse proxy ─────
+
+
 
 /** Stores the current preview target URL. Only one active target at a time. */
 let previewTarget: string | null = null
