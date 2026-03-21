@@ -725,6 +725,8 @@ class NodeTerminalProvider implements TerminalProvider {
   private rawBuffer: string[] = []
   private wsClients = new Set<WS>()
   private sessionId: string
+  // Track which clients have received their initial full sync
+  private syncedClients = new WeakSet<WS>()
 
   constructor(sessionId: string) {
     this.sessionId = sessionId
@@ -774,38 +776,26 @@ class NodeTerminalProvider implements TerminalProvider {
     proc.onData((data: string) => {
       // 1. Append to line buffer (strip ANSI for agent reads)
       this.appendToBuffer(data)
-      // 2. Cache raw output for replay on WS reconnect
+      // 2. Cache raw output for replay
       this.rawBuffer.push(data)
       if (this.rawBuffer.length > MAX_RAW_BUFFER) {
         this.rawBuffer.splice(0, this.rawBuffer.length - MAX_RAW_BUFFER)
       }
-      // 3. Forward raw data to all connected WS clients (keep ANSI for xterm.js)
-      for (const ws of this.wsClients) {
-        if (ws.readyState === WS.OPEN) {
-          ws.send(JSON.stringify({ type: "terminal.output", data }))
-        }
-      }
+      // 3. Notify all connected clients
+      this.notify({ type: "terminal.output", data })
     })
 
     proc.onExit(({ exitCode }: { exitCode: number }) => {
       console.log(`🖥  Terminal exited for session ${this.sessionId} (code ${exitCode})`)
       this.proc = null
-      for (const ws of this.wsClients) {
-        if (ws.readyState === WS.OPEN) {
-          ws.send(JSON.stringify({ type: "terminal.exited", exitCode }))
-          ws.send(JSON.stringify({ type: "terminal.none" }))
-        }
-      }
+      this.notify({ type: "terminal.exited", exitCode })
+      this.notify({ type: "terminal.none" })
     })
 
     this.proc = proc
 
     // Notify all WS clients that terminal is now ready
-    for (const ws of this.wsClients) {
-      if (ws.readyState === WS.OPEN) {
-        ws.send(JSON.stringify({ type: "terminal.ready" }))
-      }
-    }
+    this.notify({ type: "terminal.ready" })
   }
 
   destroy(): void {
@@ -816,11 +806,7 @@ class NodeTerminalProvider implements TerminalProvider {
     this.lines = []
     this.currentLine = ""
     this.rawBuffer = []
-    for (const ws of this.wsClients) {
-      if (ws.readyState === WS.OPEN) {
-        ws.send(JSON.stringify({ type: "terminal.none" }))
-      }
-    }
+    this.notify({ type: "terminal.none" })
   }
 
   write(data: string): void {
@@ -838,38 +824,74 @@ class NodeTerminalProvider implements TerminalProvider {
     return allLines.slice(start).join("\n")
   }
 
-  /** Resize the PTY (called from WS client) */
+  /** Resize the PTY */
   resize(cols: number, rows: number): void {
     if (this.proc && cols > 0 && rows > 0) {
       this.proc.resize(cols, rows)
     }
   }
 
-  /** Get buffered raw output for replay */
-  getRawBuffer(): string[] {
-    return this.rawBuffer
+  // ── Model-style sync methods ──────────────────────────────────────────
+
+  /** Broadcast a message to all connected clients */
+  private notify(msg: Record<string, unknown>): void {
+    const json = JSON.stringify(msg)
+    for (const ws of this.wsClients) {
+      if (ws.readyState === WS.OPEN) ws.send(json)
+    }
   }
 
-  /** Register a WebSocket client for live output */
-  addClient(ws: WS): void {
-    this.wsClients.add(ws)
-  }
-
-  /** Unregister a WebSocket client */
-  removeClient(ws: WS): void {
-    this.wsClients.delete(ws)
-  }
-
-  /** Handle input from a WebSocket client */
-  handleWsMessage(raw: Buffer | string): void {
-    try {
-      const msg = JSON.parse(raw.toString())
-      if (msg.type === "terminal.input" && this.proc) {
-        this.proc.write(msg.data)
-      } else if (msg.type === "terminal.resize") {
-        this.resize(msg.cols, msg.rows)
+  /**
+   * Full-state sync for a single client.
+   * Called after the client's first resize so the PTY size matches.
+   * Replays the raw buffer to bring the client up to date.
+   */
+  private syncClient(ws: WS): void {
+    if (this.syncedClients.has(ws)) return
+    this.syncedClients.add(ws)
+    for (const chunk of this.rawBuffer) {
+      if (ws.readyState === WS.OPEN) {
+        ws.send(JSON.stringify({ type: "terminal.output", data: chunk }))
       }
-    } catch { /* ignore malformed */ }
+    }
+  }
+
+  /**
+   * Register a new WebSocket client and manage its lifecycle.
+   * Follows the SessionStateModel pattern:
+   *  1. Send current state indicator (ready / none)
+   *  2. Wait for first resize → full sync (replay buffer)
+   *  3. After that, live updates via notify()
+   */
+  handleClient(ws: WS): void {
+    this.wsClients.add(ws)
+
+    // 1. Tell client the current terminal state
+    if (this.exists()) {
+      ws.send(JSON.stringify({ type: "terminal.ready" }))
+    } else {
+      ws.send(JSON.stringify({ type: "terminal.none" }))
+    }
+
+    // 2. Handle messages — sync on first resize, then normal I/O
+    ws.on("message", (raw: Buffer | string) => {
+      try {
+        const msg = JSON.parse(raw.toString())
+        if (msg.type === "terminal.input" && this.proc) {
+          this.proc.write(msg.data)
+        } else if (msg.type === "terminal.resize") {
+          this.resize(msg.cols, msg.rows)
+          // First resize triggers full sync
+          this.syncClient(ws)
+        }
+      } catch { /* ignore malformed */ }
+    })
+
+    // 3. Cleanup on disconnect
+    ws.on("close", () => {
+      this.wsClients.delete(ws)
+      console.log(`🖥  Terminal WS closed for session ${this.sessionId}`)
+    })
   }
 
   private appendToBuffer(data: string) {
@@ -928,41 +950,7 @@ function getOrCreateTerminalProvider(sessionId: string): NodeTerminalProvider {
 }
 
 function handleTerminalWs(ws: WS, sessionId: string) {
-  const tp = getOrCreateTerminalProvider(sessionId)
-  tp.addClient(ws)
-
-  // Notify client of current terminal state (replay deferred until after resize)
-  if (tp.exists()) {
-    ws.send(JSON.stringify({ type: "terminal.ready" }))
-  } else {
-    ws.send(JSON.stringify({ type: "terminal.none" }))
-  }
-
-  // Track whether we've replayed the buffer for this client.
-  // Replay is deferred until the first resize so that the PTY size matches
-  // the client's xterm.js — replaying with a mismatched size causes blank lines.
-  let replayed = false
-
-  ws.on("message", (raw: Buffer | string) => {
-    try {
-      const msg = JSON.parse(raw.toString())
-      if (msg.type === "terminal.resize" && !replayed) {
-        replayed = true
-        tp.resize(msg.cols, msg.rows)
-        // Now replay buffer after the terminal is correctly sized
-        for (const chunk of tp.getRawBuffer()) {
-          ws.send(JSON.stringify({ type: "terminal.output", data: chunk }))
-        }
-        return
-      }
-    } catch { /* ignore */ }
-    tp.handleWsMessage(raw)
-  })
-
-  ws.on("close", () => {
-    tp.removeClient(ws)
-    console.log(`🖥  Terminal WS closed for session ${sessionId}`)
-  })
+  getOrCreateTerminalProvider(sessionId).handleClient(ws)
 }
 
 // ── Preview Provider — dedicated preview port with full reverse proxy ─────
