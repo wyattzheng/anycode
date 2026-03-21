@@ -67,8 +67,8 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
     const onDragMove = useCallback((clientY: number) => {
         if (!dragRef.current || !containerRef.current) return;
         const containerRect = containerRef.current.getBoundingClientRect();
-        const bottomY = containerRect.bottom;
-        const newHeight = Math.max(60, Math.min(bottomY - clientY, containerRect.height - 60));
+        const topY = containerRect.top;
+        const newHeight = Math.max(60, Math.min(clientY - topY, containerRect.height - 60));
         setListHeight(newHeight);
     }, []);
 
@@ -138,6 +138,28 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
 
     return (
         <div className="changes-view" ref={containerRef}>
+            <div className="changes-list" style={{ height: listHeight }}>
+                <div className="change-items">
+                    {isEmpty ? (
+                        <div className="changes-empty">
+                            <p>暂无变更</p>
+                        </div>
+                    ) : (
+                        changes.map((change) => (
+                            <div
+                                key={change.file}
+                                className={`change-item ${statusClass(change.status)}${selectedFile === change.file ? " selected" : ""}`}
+                                onClick={() => handleFileClick(change.file)}
+                            >
+                                <FileDocIcon />
+                                <span>{change.file}</span>
+                                <span className="change-badge">{statusLabel(change.status)}</span>
+                            </div>
+                        ))
+                    )}
+                </div>
+                <div className="cv-resize-border" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} />
+            </div>
             <div className="changes-diff">
                 {selectedFile ? (
                     <>
@@ -178,29 +200,6 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
                         </div>
                     </>
                 ) : null}
-            </div>
-            <div className="changes-list" style={{ height: listHeight }}>
-                <div className="cv-resize-border" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} />
-                <div className="change-items">
-                    {isEmpty ? (
-                        <div className="changes-empty">
-                            <DiffIcon size={36} />
-                            <p>工作区干净</p>
-                        </div>
-                    ) : (
-                        changes.map((change) => (
-                            <div
-                                key={change.file}
-                                className={`change-item ${statusClass(change.status)}${selectedFile === change.file ? " selected" : ""}`}
-                                onClick={() => handleFileClick(change.file)}
-                            >
-                                <FileDocIcon />
-                                <span>{change.file}</span>
-                                <span className="change-badge">{statusLabel(change.status)}</span>
-                            </div>
-                        ))
-                    )}
-                </div>
             </div>
         </div>
     );

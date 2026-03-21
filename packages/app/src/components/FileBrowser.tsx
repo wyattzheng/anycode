@@ -100,8 +100,8 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
     const onDragMove = useCallback((clientY: number) => {
         if (!dragRef.current || !containerRef.current) return;
         const containerRect = containerRef.current.getBoundingClientRect();
-        const bottomY = containerRect.bottom;
-        const newHeight = Math.max(60, Math.min(bottomY - clientY, containerRect.height - 60));
+        const topY = containerRect.top;
+        const newHeight = Math.max(60, Math.min(clientY - topY, containerRect.height - 60));
         setSidebarHeight(newHeight);
     }, []);
 
@@ -153,6 +153,28 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
 
     return (
         <div className="file-browser" ref={containerRef}>
+            <div className="file-browser-sidebar" style={{ height: sidebarHeight }}>
+                <div className="file-tree">
+                    {isEmpty ? (
+                        <div className="file-tree-empty">
+                            <FolderOpenIcon size={40} />
+                            <p>加载中…</p>
+                        </div>
+                    ) : (
+                        topLevel.map((entry) => (
+                            <LazyTreeItem
+                                key={entry.name}
+                                entry={entry}
+                                parentPath=""
+                                requestLs={requestLs}
+                                onFileClick={handleFileClick}
+                                selectedFile={selectedFile}
+                            />
+                        ))
+                    )}
+                </div>
+                <div className="fb-resize-border" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} />
+            </div>
             <div className="file-browser-content">
                 {selectedFile ? (
                     <>
@@ -191,28 +213,6 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
                         <p>选择文件查看内容</p>
                     </div>
                 )}
-            </div>
-            <div className="file-browser-sidebar" style={{ height: sidebarHeight }}>
-                <div className="fb-resize-border" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} />
-                <div className="file-tree">
-                    {isEmpty ? (
-                        <div className="file-tree-empty">
-                            <FolderOpenIcon size={40} />
-                            <p>加载中…</p>
-                        </div>
-                    ) : (
-                        topLevel.map((entry) => (
-                            <LazyTreeItem
-                                key={entry.name}
-                                entry={entry}
-                                parentPath=""
-                                requestLs={requestLs}
-                                onFileClick={handleFileClick}
-                                selectedFile={selectedFile}
-                            />
-                        ))
-                    )}
-                </div>
             </div>
         </div>
     );
