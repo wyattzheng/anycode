@@ -61,7 +61,7 @@ export function WindowSwitcher({
                     const btn = btnRefs.current.get(w.id);
                     if (btn) {
                         const rect = btn.getBoundingClientRect();
-                        setPopoverPos({ x: rect.left + rect.width / 2, y: rect.top });
+                        setPopoverPos({ x: rect.left + rect.width / 2, y: rect.bottom });
                     }
                     return w.id;
                 });

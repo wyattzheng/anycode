@@ -169,3 +169,23 @@ export function StopIcon({ size = 14, color = "currentColor" }: IconProps) {
         </svg>
     );
 }
+
+/* Dock to sidebar */
+export function PinIcon({ size = 10, color = "currentColor" }: IconProps) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="1" y="1" width="14" height="14" rx="1.5" />
+            <line x1="10" y1="1" x2="10" y2="15" />
+        </svg>
+    );
+}
+
+/* Undock / float */
+export function UndockIcon({ size = 10, color = "currentColor" }: IconProps) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="1" y="4" width="11" height="11" rx="1.5" />
+            <polyline points="8 4 8 1 15 1 15 8 12 8" />
+        </svg>
+    );
+}

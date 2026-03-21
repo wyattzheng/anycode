@@ -136,35 +136,42 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
 
     return (
         <div className="app-content" style={{ display: visible ? "flex" : "none" }}>
-            <div className="app-main">
-                {directory ? (
-                    <MainView
-                        activeTab={activeTab}
-                        topLevel={topLevel}
-                        changes={changes}
-                        directory={directory}
-                        sessionId={sessionId}
-                        previewPort={previewPort}
-                        requestLs={requestLs}
-                        requestFile={requestFile}
-                        requestDiff={requestDiff}
-                        onFileContext={setFileContext}
-                    />
-                ) : (
-                    <div className="main-view" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <div style={{ textAlign: "center" }}>
-                            <p style={{ color: "var(--color-text-dim)", fontSize: "14px", opacity: 0.4, fontWeight: 500 }}>
-                                通过对话面板
-                            </p>
-                            <p style={{ color: "var(--color-text-dim)", fontSize: "11px", opacity: 0.3, marginTop: "6px" }}>
-                                打开一个项目并开始
-                            </p>
+            {directory && (
+                <div className="main-path-bar">
+                    <span className="main-path-text">{directory}</span>
+                </div>
+            )}
+            <div className="app-middle">
+                <div className="app-main">
+                    {directory ? (
+                        <MainView
+                            activeTab={activeTab}
+                            topLevel={topLevel}
+                            changes={changes}
+                            directory={directory}
+                            sessionId={sessionId}
+                            previewPort={previewPort}
+                            requestLs={requestLs}
+                            requestFile={requestFile}
+                            requestDiff={requestDiff}
+                            onFileContext={setFileContext}
+                        />
+                    ) : (
+                        <div className="main-view" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <div style={{ textAlign: "center" }}>
+                                <p style={{ color: "var(--color-text-dim)", fontSize: "14px", opacity: 0.4, fontWeight: 500 }}>
+                                    通过对话面板
+                                </p>
+                                <p style={{ color: "var(--color-text-dim)", fontSize: "11px", opacity: 0.3, marginTop: "6px" }}>
+                                    打开一个项目并开始
+                                </p>
+                            </div>
                         </div>
-                    </div>
-                )}
-                <TabBar activeTab={activeTab} onTabChange={setActiveTab} changeCount={changes.length} />
+                    )}
+                </div>
+                <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} sendMessage={sendMessage} />
             </div>
-            <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} sendMessage={sendMessage} />
+            <TabBar activeTab={activeTab} onTabChange={setActiveTab} changeCount={changes.length} />
         </div>
     );
 }
@@ -255,6 +262,13 @@ export function App() {
 
     return (
         <div className="app-root">
+            <WindowSwitcher
+                windows={windows}
+                activeWindowId={activeWindowId}
+                onSwitch={handleWindowSwitch}
+                onCreate={handleWindowCreate}
+                onDelete={handleWindowDelete}
+            />
             {windows.map((w) => (
                 <WindowView
                     key={w.id}
@@ -263,13 +277,6 @@ export function App() {
                     onWindowsChanged={fetchWindows}
                 />
             ))}
-            <WindowSwitcher
-                windows={windows}
-                activeWindowId={activeWindowId}
-                onSwitch={handleWindowSwitch}
-                onCreate={handleWindowCreate}
-                onDelete={handleWindowDelete}
-            />
         </div>
     );
 }

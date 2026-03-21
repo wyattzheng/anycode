@@ -4,12 +4,12 @@
     overflow: hidden;
 }
 
-/* ── Floating mode (narrow screens) ── */
+/* ── Floating mode ── */
 .conversation-floating {
     position: absolute;
     top: 20px;
     right: 20px;
-    z-index: 50;
+    z-index: 200;
     background: rgba(26, 29, 39, 0.35);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -17,13 +17,42 @@
     border-radius: var(--radius);
 }
 
-/* ── Sidebar mode (wide screens) ── */
+/* ── Sidebar mode (default) ── */
 .conversation-sidebar {
-    width: 320px;
     flex-shrink: 0;
     height: 100%;
     background: var(--color-surface);
     border-left: 1px solid var(--color-border);
+    position: relative;
+}
+
+/* Left-edge resize zone — full height, wide touch target */
+.co-sidebar-border {
+    position: absolute;
+    left: -8px;
+    top: 0;
+    bottom: 0;
+    width: 16px;
+    cursor: col-resize;
+    z-index: 10;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.co-sidebar-border::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    transform: translateX(-50%);
+    transition: background 0.15s;
+}
+
+.co-sidebar-border:hover::after,
+.co-sidebar-border:active::after {
+    background: var(--color-accent);
 }
 
 .conversation-header {
@@ -43,6 +72,19 @@
     align-items: center;
     gap: 6px;
     width: 100%;
+}
+
+.co-float-toggle {
+    margin-left: auto;
+    font-size: 14px;
+    line-height: 1;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+    padding: 2px;
+}
+
+.co-float-toggle:hover {
+    opacity: 1;
 }
 
 .drag-grip {
@@ -363,7 +405,7 @@
     color: var(--color-text-dim);
 }
 
-/* ── Resize grips (invisible hot zones) ── */
+/* ── Resize grips (floating mode only) ── */
 .co-resize-grip {
     position: absolute;
     bottom: 0;

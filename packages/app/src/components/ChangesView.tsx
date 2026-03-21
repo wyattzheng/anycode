@@ -29,7 +29,7 @@ function statusLabel(status: string): string {
 }
 
 export function ChangesView({ changes, requestFile, requestDiff, onFileContext }: ChangesViewProps) {
-    const [listHeight, setListHeight] = useState(200);
+    const [listHeight, setListHeight] = useState(120);
     const containerRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
@@ -68,7 +68,7 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
         if (!dragRef.current || !containerRef.current) return;
         const containerRect = containerRef.current.getBoundingClientRect();
         const bottomY = containerRect.bottom;
-        const newHeight = Math.max(80, Math.min(bottomY - clientY, containerRect.height - 80));
+        const newHeight = Math.max(60, Math.min(bottomY - clientY, containerRect.height - 60));
         setListHeight(newHeight);
     }, []);
 
@@ -160,14 +160,8 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
                     </>
                 ) : null}
             </div>
-            <div
-                className="resize-handle"
-                onMouseDown={handleMouseDown}
-                onTouchStart={handleTouchStart}
-            >
-                <div className="resize-grip" />
-            </div>
             <div className="changes-list" style={{ height: listHeight }}>
+                <div className="cv-resize-border" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} />
                 <div className="change-items">
                     {isEmpty ? (
                         <div className="changes-empty">

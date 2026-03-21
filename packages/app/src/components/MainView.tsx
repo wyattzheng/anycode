@@ -29,9 +29,6 @@ export function MainView({ activeTab, topLevel, changes, directory, sessionId, p
 
     return (
         <div className="main-view">
-            <div className="main-path-bar">
-                <span className="main-path-text">{directory}</span>
-            </div>
             <div className="main-tab-area">
                 <div className="main-tab-panel" style={{ display: activeTab === "files" ? "flex" : "none" }}>
                     <FileBrowser topLevel={topLevel} requestLs={requestLs} requestFile={requestFile} onFileContext={onFileContext} />

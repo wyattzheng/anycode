@@ -4,18 +4,27 @@ import { Tool } from "./tool"
 export const SetWorkingDirectoryTool = Tool.define("set_working_directory", {
   description: `Use this tool to set the working directory for this session. The user will tell you which project or folder they want to work on. The directory must be an absolute path to an existing directory on the file system. After setting the directory, the full development environment (file browser, diff viewer, etc.) will become available.
 
-IMPORTANT: This tool can only be called ONCE per session. Once the working directory is set, it cannot be changed. If a working directory is already set, this tool will return an error.`,
+IMPORTANT: If you want to change to a different working directory, you must first call this tool with directory set to null to clear the current directory, and then call it again with the new path.`,
   parameters: z.object({
-    directory: z.string().describe("Absolute path to the project directory"),
+    directory: z.string().nullable().describe("Absolute path to the project directory. Pass null to clear the current directory."),
   }),
   async execute(params, ctx) {
     const dir = params.directory
+
+    if (dir === null) {
+      ctx.emit("directory.set", { directory: "" })
+      return {
+        title: "Cleared directory",
+        output: "Working directory has been cleared. You can now set a new working directory.",
+        metadata: {},
+      }
+    }
 
     // Check if directory is already set
     if (ctx.worktree && ctx.worktree !== "") {
       return {
         title: "Already set",
-        output: `Working directory is already set to "${ctx.worktree}". It can only be set once per session.`,
+        output: `Working directory is already set to "${ctx.worktree}". You must first set it to null to clear it before setting a new one.`,
         metadata: {},
       }
     }

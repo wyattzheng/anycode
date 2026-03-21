@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, type MutableRefObject } from "react";
 import type { FileContext } from "../App";
-import { MicIcon, KeyboardIcon, SendIcon, CloseIcon, ChatIcon, StopIcon } from "./Icons";
+import { MicIcon, KeyboardIcon, SendIcon, CloseIcon, ChatIcon, StopIcon, PinIcon, UndockIcon } from "./Icons";
 import "./ConversationOverlay.css";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -135,9 +135,10 @@ interface ConversationOverlayProps {
     sendMessage: (data: any) => void;
 }
 
-const SIDEBAR_BREAKPOINT = 768;
 const STORAGE_KEY_POS = "anycode-conv-pos";
 const STORAGE_KEY_SIZE = "anycode-conv-size";
+const STORAGE_KEY_FLOATING = "anycode-conv-floating";
+const STORAGE_KEY_SIDEBAR_W = "anycode-conv-sidebar-w";
 
 function loadStoredRect() {
     try {
@@ -152,39 +153,96 @@ function loadStoredRect() {
     }
 }
 
-function useIsSidebar() {
-    const [isSidebar, setIsSidebar] = useState(() => window.innerWidth > SIDEBAR_BREAKPOINT);
-    useEffect(() => {
-        const mq = window.matchMedia(`(min-width: ${SIDEBAR_BREAKPOINT + 1}px)`);
-        const handler = (e: MediaQueryListEvent) => setIsSidebar(e.matches);
-        mq.addEventListener("change", handler);
-        return () => mq.removeEventListener("change", handler);
-    }, []);
-    return isSidebar;
+function defaultSidebarWidth() {
+    const vw = window.innerWidth;
+    if (vw >= 1024) return 300;
+    if (vw >= 600) return 250;
+    return 150;
 }
 
 export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, sendMessage }: ConversationOverlayProps) {
-    const isSidebar = useIsSidebar();
-
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [recording, setRecording] = useState(false);
     const [showTextInput, setShowTextInput] = useState(false);
     const [busy, setBusy] = useState(false);
 
+    // Floating mode toggle — defaults to false (sidebar)
+    const [floating, setFloating] = useState(() => {
+        try { return localStorage.getItem(STORAGE_KEY_FLOATING) === "true"; } catch { return false; }
+    });
+    const toggleFloating = useCallback(() => {
+        setFloating(prev => {
+            const next = !prev;
+            try { localStorage.setItem(STORAGE_KEY_FLOATING, String(next)); } catch { /* ignore */ }
+            return next;
+        });
+    }, []);
+
+    // Sidebar width (resizable via left border drag)
+    const hasUserWidth = useRef(false);
+    const [sidebarWidth, setSidebarWidth] = useState(() => {
+        try {
+            const v = localStorage.getItem(STORAGE_KEY_SIDEBAR_W);
+            if (v) { hasUserWidth.current = true; return Math.max(120, Math.min(600, Number(v))); }
+        } catch { /* ignore */ }
+        return defaultSidebarWidth();
+    });
+
+    // Update width on window resize when no user-saved value
+    useEffect(() => {
+        if (hasUserWidth.current) return;
+        const onResize = () => setSidebarWidth(defaultSidebarWidth());
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
+
+    const sidebarDragRef = useRef<{ startX: number; origW: number } | null>(null);
+
+    const onSidebarResizeStart = useCallback((cx: number) => {
+        sidebarDragRef.current = { startX: cx, origW: sidebarWidth };
+    }, [sidebarWidth]);
+    const onSidebarResizeMove = useCallback((cx: number) => {
+        if (!sidebarDragRef.current) return;
+        const dw = sidebarDragRef.current.startX - cx; // dragging left = wider
+        const w = Math.max(120, Math.min(600, sidebarDragRef.current.origW + dw));
+        setSidebarWidth(w);
+    }, []);
+    const onSidebarResizeEnd = useCallback(() => {
+        if (sidebarDragRef.current) {
+            hasUserWidth.current = true;
+            setSidebarWidth((w: number) => { try { localStorage.setItem(STORAGE_KEY_SIDEBAR_W, String(w)); } catch {} return w; });
+        }
+        sidebarDragRef.current = null;
+    }, []);
+
+    const handleBorderMouseDown = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        onSidebarResizeStart(e.clientX);
+        const onMove = (ev: MouseEvent) => onSidebarResizeMove(ev.clientX);
+        const onUp = () => { onSidebarResizeEnd(); window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+        window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
+    }, [onSidebarResizeStart, onSidebarResizeMove, onSidebarResizeEnd]);
+    const handleBorderTouchStart = useCallback((e: React.TouchEvent) => {
+        onSidebarResizeStart(e.touches[0].clientX);
+        const onMove = (ev: TouchEvent) => { ev.preventDefault(); onSidebarResizeMove(ev.touches[0].clientX); };
+        const onUp = () => { onSidebarResizeEnd(); window.removeEventListener('touchmove', onMove); window.removeEventListener('touchend', onUp); };
+        window.addEventListener('touchmove', onMove, { passive: false }); window.addEventListener('touchend', onUp);
+    }, [onSidebarResizeStart, onSidebarResizeMove, onSidebarResizeEnd]);
+
+    // Floating position & size
     const stored = useRef(loadStoredRect());
     const [position, setPosition] = useState(stored.current.pos);
     const [size, setSize] = useState(stored.current.size);
 
-    // Persist floating position/size to localStorage
     useEffect(() => {
-        if (isSidebar) return;
+        if (!floating) return;
         localStorage.setItem(STORAGE_KEY_POS, JSON.stringify(position));
-    }, [position, isSidebar]);
+    }, [position, floating]);
     useEffect(() => {
-        if (isSidebar) return;
+        if (!floating) return;
         localStorage.setItem(STORAGE_KEY_SIZE, JSON.stringify(size));
-    }, [size, isSidebar]);
+    }, [size, floating]);
 
     const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
     const resizeRef = useRef<{ startX: number; startY: number; origW: number; origH: number } | null>(null);
@@ -381,8 +439,8 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
                 case "chat.userMessage":
                     toolMapRef.current.clear();
                     setMessages(prev => [...prev,
-                        { role: "user", text: data.text },
-                        { role: "assistant", parts: [] },
+                    { role: "user", text: data.text },
+                    { role: "assistant", parts: [] },
                     ]);
                     setBusy(true);
                     break;
@@ -435,7 +493,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
         window.addEventListener("touchend", onUp);
     };
 
-    // ── Drag ──
+    // ── Drag (floating mode only) ──
     const onDragStart = useCallback((cx: number, cy: number) => {
         dragRef.current = { startX: cx, startY: cy, origX: position.x, origY: position.y };
     }, [position]);
@@ -458,7 +516,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
         window.addEventListener("touchmove", onMove, { passive: false }); window.addEventListener("touchend", onUp);
     };
 
-    // ── Resize (shared logic for bottom-left & bottom-right) ──
+    // ── Resize (floating mode only) ──
     const resizeDirRef = useRef<"bl" | "br">("bl");
     const onResizeStart = useCallback((cx: number, cy: number, dir: "bl" | "br") => {
         resizeDirRef.current = dir;
@@ -470,8 +528,8 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
         const dh = cy - resizeRef.current.startY;
         const dw = resizeDirRef.current === "bl" ? -dx : dx;
         setSize({
-            w: Math.max(180, Math.min(600, resizeRef.current.origW + dw)),
-            h: Math.max(200, Math.min(800, resizeRef.current.origH + dh)),
+            w: Math.max(160, Math.min(600, resizeRef.current.origW + dw)),
+            h: Math.max(130, Math.min(800, resizeRef.current.origH + dh)),
         });
     }, []);
     const onResizeEnd = useCallback(() => { resizeRef.current = null; }, []);
@@ -519,16 +577,30 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
         }
     };
 
-    const panelClass = isSidebar ? "conversation-panel conversation-sidebar" : "conversation-panel conversation-floating";
-    const panelStyle = isSidebar
-        ? undefined
-        : { transform: `translate(${position.x}px, ${position.y}px)`, width: size.w, height: size.h };
+    const panelClass = floating
+        ? "conversation-panel conversation-floating"
+        : "conversation-panel conversation-sidebar";
+    const panelStyle = floating
+        ? { transform: `translate(${position.x}px, ${position.y}px)`, width: size.w, height: size.h }
+        : { width: sidebarWidth };
 
     return (
         <div className={panelClass} style={panelStyle}>
-            <div className="conversation-header" {...(!isSidebar ? { onMouseDown: handleMouseDown, onTouchStart: handleTouchStart } : {})}>
-                {!isSidebar && <div className="drag-grip" />}
-                <div className="conversation-header-content"><ChatIcon /> 对话</div>
+            {!floating && <div className="co-sidebar-border" onMouseDown={handleBorderMouseDown} onTouchStart={handleBorderTouchStart} />}
+            <div className="conversation-header"
+                {...(floating ? { onMouseDown: handleMouseDown, onTouchStart: handleTouchStart } : {})}
+            >
+                {floating && <div className="drag-grip" />}
+                <div className="conversation-header-content">
+                    <ChatIcon /> 对话
+                    <button
+                        className="co-float-toggle"
+                        onClick={toggleFloating}
+                        title={floating ? "固定到侧边栏" : "浮动窗口"}
+                    >
+                        {floating ? <PinIcon /> : <UndockIcon />}
+                    </button>
+                </div>
             </div>
 
             <div className="conversation-messages" ref={msgsRef}>
@@ -590,7 +662,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
                     </>
                 )}
             </div>
-            {!isSidebar && (
+            {floating && (
                 <>
                     <div className="co-resize-grip co-resize-bl" onMouseDown={makeResizeMouseDown("bl")} onTouchStart={makeResizeTouchStart("bl")} />
                     <div className="co-resize-grip co-resize-br" onMouseDown={makeResizeMouseDown("br")} onTouchStart={makeResizeTouchStart("br")} />

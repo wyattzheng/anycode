@@ -89,7 +89,7 @@ function LazyTreeItem({
 }
 
 export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }: FileBrowserProps) {
-    const [sidebarHeight, setSidebarHeight] = useState(200);
+    const [sidebarHeight, setSidebarHeight] = useState(120);
     const containerRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
@@ -101,7 +101,7 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
         if (!dragRef.current || !containerRef.current) return;
         const containerRect = containerRef.current.getBoundingClientRect();
         const bottomY = containerRect.bottom;
-        const newHeight = Math.max(80, Math.min(bottomY - clientY, containerRect.height - 80));
+        const newHeight = Math.max(60, Math.min(bottomY - clientY, containerRect.height - 60));
         setSidebarHeight(newHeight);
     }, []);
 
@@ -174,14 +174,8 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
                     </div>
                 )}
             </div>
-            <div
-                className="resize-handle"
-                onMouseDown={handleMouseDown}
-                onTouchStart={handleTouchStart}
-            >
-                <div className="resize-grip" />
-            </div>
             <div className="file-browser-sidebar" style={{ height: sidebarHeight }}>
+                <div className="fb-resize-border" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} />
                 <div className="file-tree">
                     {isEmpty ? (
                         <div className="file-tree-empty">
