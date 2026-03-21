@@ -1,8 +1,8 @@
 /**
- * Test: set_working_directory tool via mocked conversation
+ * Test: set_project_directory tool via mocked conversation
  *
  * Verifies that:
- * 1. The agent correctly calls set_working_directory when the LLM responds
+ * 1. The agent correctly calls set_project_directory when the LLM responds
  *    with a tool call, and the bus event fires + agent state updates
  * 2. A second tool call is rejected (directory already set)
  *
@@ -116,7 +116,7 @@ const GENERIC_TEXT_BODY = [
 
 const TARGET_DIR = os.homedir()
 
-describe("CodeAgent: set_working_directory via mock conversation", () => {
+describe("CodeAgent: set_project_directory via mock conversation", () => {
     let agent: CodeAgent
     let tmpDir: string
     let setDir: string
@@ -193,10 +193,10 @@ describe("CodeAgent: set_working_directory via mock conversation", () => {
         expect(events.length).toBeGreaterThan(0)
         expect(events[events.length - 1].type).toBe("done")
 
-        // Should have tool events for set_working_directory
+        // Should have tool events for set_project_directory
         const toolStarts = events.filter((e) => e.type === "tool.start")
         expect(toolStarts.length).toBeGreaterThan(0)
-        expect(toolStarts[0].toolName).toBe("set_working_directory")
+        expect(toolStarts[0].toolName).toBe("set_project_directory")
 
         const toolDones = events.filter((e) => e.type === "tool.done")
         expect(toolDones.length).toBeGreaterThan(0)

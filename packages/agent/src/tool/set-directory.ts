@@ -1,7 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 
-export const SetWorkingDirectoryTool = Tool.define("set_working_directory", {
+export const SetWorkingDirectoryTool = Tool.define("set_project_directory", {
   description: `Set the working directory for this session. The typical usage is to open a project repository's root directory so the full development environment (file browser, diff viewer, terminal, etc.) becomes available.
 
 The directory must be an absolute path to an existing directory on the file system.

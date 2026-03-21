@@ -236,7 +236,7 @@ function registerSession(cfg: ServerConfig, id: string, agent: InstanceType<type
   // Kick off initial state compute
   entry.state.updateFileSystem(directory)
 
-  // Listen for directory.set events from the agent's set_working_directory tool
+  // Listen for directory.set events from the agent's set_project_directory tool
   agent.on("directory.set", (data: any) => {
     const dir = data.directory
     entry.directory = dir
@@ -546,7 +546,13 @@ const watchers = new Map<string, fs.FSWatcher>()
 function watchDirectory(cfg: ServerConfig, sessionId: string, dir: string) {
   // Clean up existing watcher for this session
   const existing = watchers.get(sessionId)
-  if (existing) existing.close()
+  if (existing) {
+    existing.close()
+    watchers.delete(sessionId)
+  }
+
+  // If dir is empty (cleared), just stop watching
+  if (!dir) return
 
   const debouncedPush = () => {
     scheduleStatePush(cfg, sessionId, 500)

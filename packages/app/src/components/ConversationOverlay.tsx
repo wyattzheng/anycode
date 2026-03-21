@@ -109,7 +109,7 @@ function summarizeToolInfo(tool: ToolCard) {
         case "ls":
         case "glob":
             return compactPathLabel(tool.title || firstString(tool.args, ["filePath", "path"]));
-        case "set_working_directory": {
+        case "set_project_directory": {
             const titlePath = tool.title?.replace(/^Set directory:\s*/, "") || "";
             return compactPathLabel(titlePath || firstString(tool.args, ["directory"]));
         }
