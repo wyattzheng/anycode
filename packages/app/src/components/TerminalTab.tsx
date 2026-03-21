@@ -135,10 +135,39 @@ export function TerminalTab({ sessionId }: TerminalTabProps) {
         });
         resizeObserver.observe(containerRef.current);
 
+        // ── Touch scroll support (xterm.js v6 has no built-in touch scroll) ──
+        let touchStartY: number | null = null;
+        const cellHeight = () => term.options.lineHeight! * term.options.fontSize!;
+
+        const onTouchStart = (e: TouchEvent) => {
+            if (e.touches.length === 1) {
+                touchStartY = e.touches[0].clientY;
+            }
+        };
+        const onTouchMove = (e: TouchEvent) => {
+            if (touchStartY === null || e.touches.length !== 1) return;
+            const dy = touchStartY - e.touches[0].clientY;
+            const lines = Math.trunc(dy / cellHeight());
+            if (lines !== 0) {
+                term.scrollLines(lines);
+                touchStartY = e.touches[0].clientY;
+            }
+            e.preventDefault();
+        };
+        const onTouchEnd = () => { touchStartY = null; };
+
+        const xtermEl = containerRef.current;
+        xtermEl.addEventListener("touchstart", onTouchStart, { passive: true });
+        xtermEl.addEventListener("touchmove", onTouchMove, { passive: false });
+        xtermEl.addEventListener("touchend", onTouchEnd);
+
         return () => {
             disposed = true;
             if (reconnectTimer) clearTimeout(reconnectTimer);
             resizeObserver.disconnect();
+            xtermEl.removeEventListener("touchstart", onTouchStart);
+            xtermEl.removeEventListener("touchmove", onTouchMove);
+            xtermEl.removeEventListener("touchend", onTouchEnd);
             if (ws) ws.close();
             term.dispose();
             termRef.current = null;
