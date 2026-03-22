@@ -198,6 +198,7 @@ export class ClaudeCodeAgent implements IChatAgent {
           model: this.config.model || "sonnet",
           thinking: { type: "enabled", budgetTokens: 10000 },
           allowDangerouslySkipPermissions: true,
+          includePartialMessages: true,
           baseTools: [{ preset: "default" }],
           deniedTools: ["AskUserQuestion"],
           cwd: process.cwd(),
@@ -218,27 +219,32 @@ export class ClaudeCodeAgent implements IChatAgent {
           this._claudeSessionId = (msg as any).session_id
         }
         switch (msg.type) {
-          // Complete assistant message — extract content blocks
-          case "assistant": {
-            const blocks = msg.message?.content ?? []
-            for (const block of blocks) {
-              if (block.type === "thinking") {
-                yield {
-                  type: "thinking.delta" as const,
-                  thinkingContent: block.thinking ?? "",
-                }
-              } else if (block.type === "text") {
+          // Streaming deltas — token-by-token output
+          case "stream_event": {
+            const evt = (msg as any).event
+            if (!evt) break
+            // content_block_delta: text or thinking delta
+            if (evt.type === "content_block_delta") {
+              const delta = evt.delta
+              if (delta?.type === "text_delta") {
                 yield {
                   type: "text.delta" as const,
-                  content: block.text ?? "",
+                  content: delta.text ?? "",
                 }
-              } else if (block.type === "tool_use") {
+              } else if (delta?.type === "thinking_delta") {
                 yield {
-                  type: "tool.start" as const,
-                  toolCallId: block.id ?? "",
-                  toolName: block.name ?? "",
-                  toolArgs: block.input ?? {},
+                  type: "thinking.delta" as const,
+                  thinkingContent: delta.thinking ?? "",
                 }
+              }
+            }
+            // content_block_start: tool_use start
+            if (evt.type === "content_block_start" && evt.content_block?.type === "tool_use") {
+              yield {
+                type: "tool.start" as const,
+                toolCallId: evt.content_block.id ?? "",
+                toolName: evt.content_block.name ?? "",
+                toolArgs: evt.content_block.input ?? {},
               }
             }
             break
@@ -246,7 +252,7 @@ export class ClaudeCodeAgent implements IChatAgent {
 
           // Tool result messages
           case "user": {
-            const blocks = msg.message?.content ?? []
+            const blocks = (msg as any).message?.content ?? []
             for (const block of blocks) {
               if (block.type === "tool_result") {
                 yield {
