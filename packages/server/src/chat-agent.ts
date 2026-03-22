@@ -9,7 +9,7 @@
  *   AGENT=claudecode  → ClaudeCodeAgent (wraps @anthropic-ai/claude-agent-sdk)
  */
 
-import { CodeAgent, type CodeAgentEvent, type CodeAgentOptions } from "@any-code/agent"
+import { CodeAgent, type CodeAgentEvent, type CodeAgentOptions, type TerminalProvider, type PreviewProvider } from "@any-code/agent"
 
 // Re-export the event type under a unified name
 export type ChatAgentEvent = CodeAgentEvent
@@ -24,6 +24,10 @@ export interface ChatAgentConfig {
   baseUrl?: string
   /** AnyCode-specific: full CodeAgentOptions for internal CodeAgent creation */
   codeAgentOptions?: CodeAgentOptions
+  /** Terminal provider for the session (used by ClaudeCodeAgent MCP tools) */
+  terminal?: TerminalProvider
+  /** Preview provider for the session (used by ClaudeCodeAgent MCP tools) */
+  preview?: PreviewProvider
 }
 
 /**
@@ -192,6 +196,94 @@ export class ClaudeCodeAgent implements IChatAgent {
     }
 
     try {
+      // Build MCP server with custom tools (set_user_watch_project, set_preview_url, terminal_write, terminal_read)
+      let mcpConfig: Record<string, any> | undefined
+      try {
+        const sdkMod = await import("@anthropic-ai/claude-agent-sdk")
+        const toolFn = sdkMod.tool
+        const createServer = sdkMod.createSdkMcpServer
+        if (toolFn && createServer) {
+          const z = (await import("zod")).default ?? (await import("zod"))
+          const tools: any[] = []
+
+          // ── set_user_watch_project ──
+          tools.push(toolFn(
+            "set_user_watch_project",
+            `Let the user's frontend UI watch a project directory. This activates the file browser, diff viewer, and other project-related UI panels for the user. Call after creating a new project, cloning a repository, or when the user asks to open a specific project. Pass null to clear. If project is newly created, run git init first.`,
+            { directory: z.string().nullable().describe("Absolute path to the project directory. Pass null to clear.") },
+            async (args: any) => {
+              self._emitEvent("directory.set", { directory: args.directory ?? "" })
+              return { content: [{ type: "text" as const, text: args.directory ? `Working directory set to "${args.directory}".` : "Working directory cleared." }] }
+            },
+          ))
+
+          // ── set_preview_url ──
+          if (self.config.preview) {
+            const preview = self.config.preview
+            tools.push(toolFn(
+              "set_preview_url",
+              `Set the local URL to reverse-proxy for the user's preview tab. Call this after starting a dev server so the user can see the app in their preview panel.`,
+              { forwarded_local_url: z.string().describe('The absolute local URL to reverse-proxy to (e.g. "http://localhost:5173").') },
+              async (args: any) => {
+                preview.setPreviewTarget(args.forwarded_local_url)
+                return { content: [{ type: "text" as const, text: `Preview proxy set to "${args.forwarded_local_url}".` }] }
+              },
+            ))
+          }
+
+          // ── terminal_write ──
+          if (self.config.terminal) {
+            const terminal = self.config.terminal
+            tools.push(toolFn(
+              "terminal_write",
+              `Manage a persistent user-visible terminal. Actions: "create" to spawn a new terminal, "input" to send text, "destroy" to kill the terminal. The terminal is visible to the user in their UI.`,
+              {
+                type: z.enum(["input", "create", "destroy"]).describe('Action type.'),
+                content: z.string().optional().describe('Text to send when type is "input".'),
+                pressEnter: z.boolean().optional().describe('Whether to press Enter after input. Defaults to true.'),
+              },
+              async (args: any) => {
+                if (args.type === "create") {
+                  terminal.create()
+                  return { content: [{ type: "text" as const, text: "Terminal created." }] }
+                }
+                if (args.type === "destroy") {
+                  terminal.destroy()
+                  return { content: [{ type: "text" as const, text: "Terminal destroyed." }] }
+                }
+                // input
+                if (!terminal.exists()) return { content: [{ type: "text" as const, text: 'No terminal exists. Use type "create" first.' }], isError: true }
+                const pressEnter = args.pressEnter ?? true
+                terminal.write(pressEnter ? (args.content ?? "") + "\n" : (args.content ?? ""))
+                return { content: [{ type: "text" as const, text: "Input sent to terminal." }] }
+              },
+            ))
+
+            // ── terminal_read ──
+            tools.push(toolFn(
+              "terminal_read",
+              `Read the last N lines from the persistent user-visible terminal buffer. Use waitBefore to let a command finish before reading.`,
+              {
+                length: z.number().int().min(1).describe('Number of lines to read from the bottom of the terminal buffer.'),
+                waitBefore: z.number().int().min(0).optional().describe('Milliseconds to wait before reading. Defaults to 0.'),
+              },
+              async (args: any) => {
+                if (!terminal.exists()) return { content: [{ type: "text" as const, text: 'No terminal exists. Use terminal_write with type "create" first.' }], isError: true }
+                const waitMs = Math.min(args.waitBefore ?? 0, 5000)
+                if (waitMs > 0) await new Promise(r => setTimeout(r, waitMs))
+                const content = terminal.read(args.length)
+                return { content: [{ type: "text" as const, text: content || "(terminal buffer is empty)" }] }
+              },
+            ))
+          }
+
+          if (tools.length > 0) {
+            const server = createServer({ name: "anycode-tools", version: "1.0.0", tools })
+            mcpConfig = { "anycode-tools": server }
+          }
+        }
+      } catch { /* SDK tools unavailable, proceed without them */ }
+
       const stream = queryFn({
         prompt: messages(),
         options: {
@@ -208,6 +300,7 @@ export class ClaudeCodeAgent implements IChatAgent {
             ...(this.config.baseUrl ? { ANTHROPIC_BASE_URL: this.config.baseUrl } : {}),
           },
           abortController: self.abortController,
+          ...(mcpConfig ? { mcpServers: mcpConfig } : {}),
           // Resume previous session for conversation memory
           ...(this._claudeSessionId ? { resume: this._claudeSessionId } : {}),
         },
@@ -292,6 +385,12 @@ export class ClaudeCodeAgent implements IChatAgent {
     }
 
     yield { type: "done" as const }
+  }
+
+  /** Emit an event to all registered handlers (used by MCP tools) */
+  private _emitEvent(event: string, data: any): void {
+    const handlers = this.eventHandlers.get(event) ?? []
+    for (const handler of handlers) handler(data)
   }
 
   abort(): void {
