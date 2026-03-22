@@ -48,7 +48,7 @@ interface ServerConfig {
   userSettings: Record<string, any>
   tlsCert?: string
   tlsKey?: string
-  /** Agent backend: "anycode" (default) or "claudecode" */
+  /** Agent backend: "anycode" (default), "claudecode", or "codex" */
   agent: string
 }
 

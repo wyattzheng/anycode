@@ -7,6 +7,7 @@
  * Controlled by the AGENT environment variable:
  *   AGENT=anycode     → AnyCodeAgent (default, wraps CodeAgent from @any-code/agent)
  *   AGENT=claudecode  → ClaudeCodeAgent (wraps @anthropic-ai/claude-agent-sdk)
+ *   AGENT=codex       → CodexAgent (wraps @openai/codex-sdk)
  */
 
 import { CodeAgent, type CodeAgentEvent, type CodeAgentOptions, type TerminalProvider, type PreviewProvider } from "@any-code/agent"
@@ -456,12 +457,251 @@ export class ClaudeCodeAgent implements IChatAgent {
   }
 }
 
+// ── CodexAgent ───────────────────────────────────────────────────────────
+
+/**
+ * CodexAgent — wraps @openai/codex-sdk.
+ *
+ * Uses dynamic import to avoid hard dependency on the SDK package.
+ * Spawns the Codex CLI via the SDK, maps ThreadEvent → ChatAgentEvent.
+ */
+export class CodexAgent implements IChatAgent {
+  readonly name = "Codex Agent"
+  readonly sessionId: string
+  private config: ChatAgentConfig
+  private abortController: AbortController | null = null
+  private eventHandlers = new Map<string, Array<(data: any) => void>>()
+  private _codex: any = null
+  private _thread: any = null
+  private _workingDirectory: string = ""
+
+  constructor(config: ChatAgentConfig) {
+    this.config = config
+    this.sessionId = `codex-${Date.now()}`
+  }
+
+  async ensureInit(): Promise<void> {
+    // Codex handles initialization internally when starting a thread
+  }
+
+  on(event: string, handler: (data: any) => void): void {
+    const handlers = this.eventHandlers.get(event) ?? []
+    handlers.push(handler)
+    this.eventHandlers.set(event, handlers)
+  }
+
+  setWorkingDirectory(dir: string): void {
+    this._workingDirectory = dir
+  }
+
+  getStats(): any {
+    return null
+  }
+
+  async getSessionMessages(_opts: { limit: number }): Promise<any> {
+    return []
+  }
+
+  async *chat(input: string): AsyncGenerator<ChatAgentEvent, void, unknown> {
+    let Codex: any
+    try {
+      const sdk = await import("@openai/codex-sdk")
+      Codex = sdk.Codex
+    } catch {
+      yield {
+        type: "error",
+        error: "Codex SDK (@openai/codex-sdk) is not installed. " +
+          "Install it with: npm install @openai/codex-sdk",
+      }
+      yield { type: "done" }
+      return
+    }
+
+    this.abortController = new AbortController()
+
+    try {
+      // Lazily create the Codex instance
+      if (!this._codex) {
+        this._codex = new Codex({
+          ...(this.config.apiKey ? { apiKey: this.config.apiKey } : {}),
+          ...(this.config.baseUrl ? { baseUrl: this.config.baseUrl } : {}),
+        })
+      }
+
+      // Reuse thread for multi-turn conversation, or start a new one
+      if (!this._thread) {
+        this._thread = this._codex.startThread({
+          model: this.config.model || undefined,
+          ...(this._workingDirectory ? { workingDirectory: this._workingDirectory } : {}),
+          approvalPolicy: "never",
+          sandboxMode: "danger-full-access",
+        })
+      }
+
+      const { events } = await this._thread.runStreamed(input, {
+        signal: this.abortController.signal,
+      })
+
+      let hasEmittedThinkingStart = false
+      let hasEmittedThinkingEnd = false
+
+      for await (const event of events) {
+        switch (event.type) {
+          case "item.started": {
+            const item = (event as any).item
+            if (item.type === "reasoning") {
+              if (!hasEmittedThinkingStart) {
+                hasEmittedThinkingStart = true
+                yield { type: "thinking.start" as const }
+              }
+              if (item.text) {
+                yield { type: "thinking.delta" as const, thinkingContent: item.text }
+              }
+            } else if (item.type === "agent_message") {
+              // Close thinking if still open
+              if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
+                hasEmittedThinkingEnd = true
+                yield { type: "thinking.end" as const, thinkingDuration: 0 }
+              }
+              if (item.text) {
+                yield { type: "text.delta" as const, content: item.text }
+              }
+            } else if (item.type === "command_execution") {
+              yield {
+                type: "tool.start" as const,
+                toolCallId: item.id,
+                toolName: "command_execution",
+                toolArgs: { command: item.command },
+              }
+            } else if (item.type === "file_change") {
+              yield {
+                type: "tool.start" as const,
+                toolCallId: item.id,
+                toolName: "file_change",
+                toolArgs: { changes: item.changes },
+              }
+            } else if (item.type === "mcp_tool_call") {
+              yield {
+                type: "tool.start" as const,
+                toolCallId: item.id,
+                toolName: item.tool || "mcp_tool",
+                toolArgs: item.arguments ?? {},
+              }
+            }
+            break
+          }
+
+          case "item.updated": {
+            const item = (event as any).item
+            if (item.type === "reasoning" && item.text) {
+              if (!hasEmittedThinkingStart) {
+                hasEmittedThinkingStart = true
+                yield { type: "thinking.start" as const }
+              }
+              yield { type: "thinking.delta" as const, thinkingContent: item.text }
+            } else if (item.type === "agent_message" && item.text) {
+              if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
+                hasEmittedThinkingEnd = true
+                yield { type: "thinking.end" as const, thinkingDuration: 0 }
+              }
+              yield { type: "text.delta" as const, content: item.text }
+            }
+            break
+          }
+
+          case "item.completed": {
+            const item = (event as any).item
+            if (item.type === "reasoning") {
+              if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
+                hasEmittedThinkingEnd = true
+                yield { type: "thinking.end" as const, thinkingDuration: 0 }
+              }
+            } else if (item.type === "command_execution") {
+              yield {
+                type: "tool.done" as const,
+                toolCallId: item.id,
+                toolName: "command_execution",
+                toolOutput: item.aggregated_output ?? "",
+                toolTitle: item.command,
+                toolMetadata: { exit_code: item.exit_code },
+              }
+            } else if (item.type === "file_change") {
+              yield {
+                type: "tool.done" as const,
+                toolCallId: item.id,
+                toolName: "file_change",
+                toolOutput: JSON.stringify(item.changes ?? []),
+                toolTitle: "File changes",
+                toolMetadata: { status: item.status },
+              }
+            } else if (item.type === "mcp_tool_call") {
+              yield {
+                type: "tool.done" as const,
+                toolCallId: item.id,
+                toolName: item.tool || "mcp_tool",
+                toolOutput: item.result ? JSON.stringify(item.result) : (item.error?.message ?? ""),
+                toolTitle: item.tool || "MCP Tool",
+                toolMetadata: { server: item.server, status: item.status },
+              }
+            }
+            break
+          }
+
+          case "turn.failed": {
+            const err = (event as any).error
+            yield {
+              type: "error" as const,
+              error: err?.message ?? "Turn failed",
+            }
+            break
+          }
+
+          case "error": {
+            yield {
+              type: "error" as const,
+              error: (event as any).message ?? "Unknown error",
+            }
+            break
+          }
+
+          // thread.started, turn.started, turn.completed — no mapping needed
+          default:
+            break
+        }
+      }
+
+      if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
+        yield { type: "thinking.end" as const, thinkingDuration: 0 }
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        // User cancelled — not an error
+      } else {
+        yield {
+          type: "error" as const,
+          error: err?.message ?? String(err),
+        }
+      }
+    }
+
+    yield { type: "done" as const }
+  }
+
+  abort(): void {
+    this.abortController?.abort()
+    this.abortController = null
+  }
+}
+
 // ── Factory ──────────────────────────────────────────────────────────────
 
 /** Create the appropriate IChatAgent based on agent type string */
 export function createChatAgent(agentType: string, config: ChatAgentConfig): IChatAgent {
   if (agentType === "claudecode") {
     return new ClaudeCodeAgent(config)
+  }
+  if (agentType === "codex") {
+    return new CodexAgent(config)
   }
   return new AnyCodeAgent(config)
 }
