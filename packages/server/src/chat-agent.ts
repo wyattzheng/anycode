@@ -350,6 +350,7 @@ export class ClaudeCodeAgent implements IChatAgent {
           thinking: { type: "enabled", budgetTokens: 10000 },
           allowDangerouslySkipPermissions: true,
           includePartialMessages: true,
+          canUseTool: async () => ({ behavior: 'allow' as const }),
           baseTools: [{ preset: "default" }],
           deniedTools: ["AskUserQuestion"],
           cwd: process.cwd(),
