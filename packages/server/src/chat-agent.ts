@@ -288,7 +288,6 @@ export class ClaudeCodeAgent implements IChatAgent {
         prompt: messages(),
         options: {
           model: this.config.model || "sonnet",
-          thinking: { type: "enabled", budgetTokens: 10000 },
           allowDangerouslySkipPermissions: true,
           includePartialMessages: true,
           baseTools: [{ preset: "default" }],
