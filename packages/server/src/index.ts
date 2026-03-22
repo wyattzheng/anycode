@@ -1254,7 +1254,7 @@ function createServer(cfg: ServerConfig, handler: http.RequestListener): http.Se
 function createMainServer(cfg: ServerConfig): http.Server {
   const server = createServer(cfg, async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*")
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
     res.setHeader("Access-Control-Allow-Headers", "Content-Type")
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return }
 
