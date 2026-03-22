@@ -353,9 +353,9 @@ export function App() {
             });
             const data = await res.json();
             if (data.error) return;
+            await fetchWindows();
             setActiveWindowId(data.id);
             try { localStorage.setItem('anycode:lastWindow', data.id); } catch { }
-            fetchWindows();
         } catch { /* ignore */ }
     }, [fetchWindows]);
 
