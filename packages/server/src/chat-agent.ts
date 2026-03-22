@@ -199,7 +199,11 @@ export class ClaudeCodeAgent implements IChatAgent {
           baseTools: [{ preset: "default" }],
           deniedTools: ["AskUserQuestion"],
           cwd: process.cwd(),
-          env: process.env,
+          env: {
+            ...process.env,
+            ...(this.config.apiKey ? { ANTHROPIC_API_KEY: this.config.apiKey } : {}),
+            ...(this.config.baseUrl ? { ANTHROPIC_BASE_URL: this.config.baseUrl } : {}),
+          },
           abortController: self.abortController,
         },
       })
