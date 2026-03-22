@@ -177,7 +177,7 @@ export class ClaudeCodeAgent implements IChatAgent {
       yield {
         type: "error",
         error: "Claude Code SDK (@anthropic-ai/claude-agent-sdk) is not installed. " +
-               "Install it with: npm install @anthropic-ai/claude-agent-sdk",
+          "Install it with: npm install @anthropic-ai/claude-agent-sdk",
       }
       yield { type: "done" }
       return
@@ -191,9 +191,12 @@ export class ClaudeCodeAgent implements IChatAgent {
         type: "user",
         session_id: "",
         parent_tool_use_id: null,
-        message: { role: "user", content: input },
+        message: { role: "user", content: [{ type: "text", text: input }] },
       }
     }
+
+    let hasEmittedThinkingStart = false
+    let hasEmittedThinkingEnd = false
 
     try {
       // Build MCP server with custom tools (set_user_watch_project, set_preview_url, terminal_write, terminal_read)
@@ -210,7 +213,7 @@ export class ClaudeCodeAgent implements IChatAgent {
           tools.push(toolFn(
             "set_user_watch_project",
             `Let the user's frontend UI watch a project directory. This activates the file browser, diff viewer, and other project-related UI panels for the user. Call after creating a new project, cloning a repository, or when the user asks to open a specific project. Pass null to clear. If project is newly created, run git init first.`,
-            { directory: z.string().nullable().describe("Absolute path to the project directory. Pass null to clear.") },
+            z.object({ directory: z.string().nullable().describe("Absolute path to the project directory. Pass null to clear.") }),
             async (args: any) => {
               self._emitEvent("directory.set", { directory: args.directory ?? "" })
               return { content: [{ type: "text" as const, text: args.directory ? `Working directory set to "${args.directory}".` : "Working directory cleared." }] }
@@ -223,7 +226,7 @@ export class ClaudeCodeAgent implements IChatAgent {
             tools.push(toolFn(
               "set_preview_url",
               `Set the local URL to reverse-proxy for the user's preview tab. Call this after starting a dev server so the user can see the app in their preview panel.`,
-              { forwarded_local_url: z.string().describe('The absolute local URL to reverse-proxy to (e.g. "http://localhost:5173").') },
+              z.object({ forwarded_local_url: z.string().describe('The absolute local URL to reverse-proxy to (e.g. "http://localhost:5173").') }),
               async (args: any) => {
                 preview.setPreviewTarget(args.forwarded_local_url)
                 return { content: [{ type: "text" as const, text: `Preview proxy set to "${args.forwarded_local_url}".` }] }
@@ -237,11 +240,11 @@ export class ClaudeCodeAgent implements IChatAgent {
             tools.push(toolFn(
               "terminal_write",
               `Manage a persistent user-visible terminal. Actions: "create" to spawn a new terminal, "input" to send text, "destroy" to kill the terminal. The terminal is visible to the user in their UI.`,
-              {
+              z.object({
                 type: z.enum(["input", "create", "destroy"]).describe('Action type.'),
                 content: z.string().optional().describe('Text to send when type is "input".'),
                 pressEnter: z.boolean().optional().describe('Whether to press Enter after input. Defaults to true.'),
-              },
+              }),
               async (args: any) => {
                 if (args.type === "create") {
                   terminal.create()
@@ -263,10 +266,10 @@ export class ClaudeCodeAgent implements IChatAgent {
             tools.push(toolFn(
               "terminal_read",
               `Read the last N lines from the persistent user-visible terminal buffer. Use waitBefore to let a command finish before reading.`,
-              {
+              z.object({
                 length: z.number().int().min(1).describe('Number of lines to read from the bottom of the terminal buffer.'),
                 waitBefore: z.number().int().min(0).optional().describe('Milliseconds to wait before reading. Defaults to 0.'),
-              },
+              }),
               async (args: any) => {
                 if (!terminal.exists()) return { content: [{ type: "text" as const, text: 'No terminal exists. Use terminal_write with type "create" first.' }], isError: true }
                 const waitMs = Math.min(args.waitBefore ?? 0, 5000)
@@ -326,11 +329,19 @@ export class ClaudeCodeAgent implements IChatAgent {
             if (evt.type === "content_block_delta") {
               const delta = evt.delta
               if (delta?.type === "text_delta") {
+                if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
+                  hasEmittedThinkingEnd = true
+                  yield { type: "thinking.end" as const, thinkingDuration: 0 }
+                }
                 yield {
                   type: "text.delta" as const,
                   content: delta.text ?? "",
                 }
               } else if (delta?.type === "thinking_delta") {
+                if (!hasEmittedThinkingStart) {
+                  hasEmittedThinkingStart = true
+                  yield { type: "thinking.start" as const }
+                }
                 yield {
                   type: "thinking.delta" as const,
                   thinkingContent: delta.thinking ?? "",
@@ -386,6 +397,9 @@ export class ClaudeCodeAgent implements IChatAgent {
       }
     }
 
+    if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
+      yield { type: "thinking.end" as const, thinkingDuration: 0 }
+    }
     yield { type: "done" as const }
   }
 
