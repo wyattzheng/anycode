@@ -1015,7 +1015,14 @@ class NodePreviewProvider implements PreviewProvider {
   }
 
   setPreviewTarget(forwardedLocalUrl: string): void {
-    previewTarget = forwardedLocalUrl.replace(/\/+$/, "")
+    // Normalize localhost → 127.0.0.1 to avoid IPv4/IPv6 mismatch (Vite 5+ may bind IPv6)
+    try {
+      const u = new URL(forwardedLocalUrl)
+      if (u.hostname === "localhost") u.hostname = "127.0.0.1"
+      previewTarget = u.origin
+    } catch {
+      previewTarget = forwardedLocalUrl.replace(/\/+$/, "")
+    }
     previewSessionId = this.sessionId
     console.log(`🔗  Preview proxy: :${this.cfg.previewPort} → ${previewTarget} (session ${this.sessionId})`)
 
