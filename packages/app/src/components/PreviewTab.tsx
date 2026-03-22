@@ -1,4 +1,5 @@
 import { MonitorIcon } from "./Icons";
+import { getServerUrl } from "../serverUrl";
 import "./PreviewTab.css";
 
 interface PreviewTabProps {
@@ -17,7 +18,18 @@ export function PreviewTab({ previewPort }: PreviewTabProps) {
         );
     }
 
-    const src = `${location.protocol}//${location.hostname}:${previewPort}`;
+    // Use server URL's hostname if configured, otherwise use current hostname
+    const serverUrl = getServerUrl();
+    let hostname = location.hostname;
+    let protocol = location.protocol;
+    if (serverUrl) {
+        try {
+            const parsed = new URL(serverUrl);
+            hostname = parsed.hostname;
+            protocol = parsed.protocol;
+        } catch { /* use defaults */ }
+    }
+    const src = `${protocol}//${hostname}:${previewPort}`;
 
     return (
         <div className="preview-tab">

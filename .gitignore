@@ -2,3 +2,4 @@ node_modules/
 dist/
 *.tsbuildinfo
 .dev/.DS_Store
+packages/app/ios/

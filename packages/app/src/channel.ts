@@ -46,9 +46,8 @@ export class WebSocketChannel implements Channel {
     close() { this.ws.close(); }
 }
 
-// ── Factory ─────────────────────────────────────────────────────────────────
+import { getWsUrl } from "./serverUrl";
 
 export function createChannel(sessionId: string): Channel {
-    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    return new WebSocketChannel(`${protocol}//${location.host}/?sessionId=${sessionId}`);
+    return new WebSocketChannel(getWsUrl(`/?sessionId=${sessionId}`));
 }

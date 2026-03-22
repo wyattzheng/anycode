@@ -3,6 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { TerminalIcon } from "./Icons";
 import "@xterm/xterm/css/xterm.css";
+import { getWsUrl } from "../serverUrl";
 import "./TerminalTab.css";
 
 interface TerminalTabProps {
@@ -88,9 +89,8 @@ export function TerminalTab({ sessionId }: TerminalTabProps) {
         function connect() {
             if (disposed) return;
 
-            const protocol = location.protocol === "https:" ? "wss:" : "ws:";
             ws = new WebSocket(
-                `${protocol}//${location.host}/terminal?sessionId=${sessionId}`
+                getWsUrl(`/terminal?sessionId=${sessionId}`)
             );
 
             ws.onopen = () => {

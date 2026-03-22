@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createChannel, type Channel } from "./channel";
+import { getApiBase, getServerUrl, setServerUrl, isConfigured } from "./serverUrl";
 import { TabBar } from "./components/TabBar";
 import { MainView } from "./components/MainView";
 import { ConversationOverlay } from "./components/ConversationOverlay";
@@ -23,7 +24,6 @@ export interface FileContext {
     lines: number[];
 }
 
-const API_BASE = "";
 
 
 // ── Per-window view — each instance keeps its own DOM and state alive ────
@@ -44,7 +44,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
 
     // Persist active tab per window
     useEffect(() => {
-        try { localStorage.setItem(`anycode:tab:${sessionId}`, activeTab); } catch {}
+        try { localStorage.setItem(`anycode:tab:${sessionId}`, activeTab); } catch { }
     }, [sessionId, activeTab]);
     const [directory, setDirectory] = useState("");
     const [topLevel, setTopLevel] = useState<DirEntry[]>([]);
@@ -111,7 +111,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
     const requestLs = useCallback(async (subPath: string): Promise<DirEntry[]> => {
         try {
             const res = await fetch(
-                `${API_BASE}/api/sessions/${sessionId}/ls?path=${encodeURIComponent(subPath)}`
+                `${getApiBase()}/api/sessions/${sessionId}/ls?path=${encodeURIComponent(subPath)}`
             );
             if (!res.ok) return [];
             const data = await res.json();
@@ -124,7 +124,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
     const requestFile = useCallback(async (filePath: string): Promise<string | null> => {
         try {
             const res = await fetch(
-                `${API_BASE}/api/sessions/${sessionId}/file?path=${encodeURIComponent(filePath)}`
+                `${getApiBase()}/api/sessions/${sessionId}/file?path=${encodeURIComponent(filePath)}`
             );
             if (!res.ok) return null;
             const data = await res.json();
@@ -137,7 +137,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
     const requestDiff = useCallback(async (filePath: string): Promise<{ added: number[]; removed: number[] }> => {
         try {
             const res = await fetch(
-                `${API_BASE}/api/sessions/${sessionId}/diff?path=${encodeURIComponent(filePath)}`
+                `${getApiBase()}/api/sessions/${sessionId}/diff?path=${encodeURIComponent(filePath)}`
             );
             if (!res.ok) return { added: [], removed: [] };
             return await res.json();
@@ -188,17 +188,116 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
     );
 }
 
+// ── Capacitor / native app mode ─────────────────────────────────────────
+
+function isNativeApp(): boolean {
+    const origin = location.origin;
+    return origin.startsWith("capacitor://") || origin.startsWith("ionic://");
+}
+
+function needsSetup(): boolean {
+    return isNativeApp() && !isConfigured();
+}
+
+/** Enable viewport-fit=cover for safe area insets (Dynamic Island etc.) */
+function applyNativeViewport() {
+    if (!isNativeApp()) return;
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (meta && !meta.getAttribute("content")?.includes("viewport-fit")) {
+        meta.setAttribute("content", meta.getAttribute("content") + ", viewport-fit=cover");
+    }
+}
+
+function ServerSetup({ onDone }: { onDone: () => void }) {
+    const [url, setUrl] = useState(getServerUrl() || "https://");
+    const [status, setStatus] = useState<"idle" | "connecting" | "error">("idle");
+    const [errorMsg, setErrorMsg] = useState("");
+
+    // Trigger iOS Local Network permission dialog immediately on mount
+    useEffect(() => {
+        fetch("https://captive.apple.com").catch(() => { });
+    }, []);
+
+    const handleSubmit = async () => {
+        const trimmed = url.trim();
+        if (!trimmed || trimmed === "https://" || trimmed === "http://") return;
+
+        setStatus("connecting");
+        setErrorMsg("");
+
+        // Save first so getApiBase() returns the new URL
+        setServerUrl(trimmed);
+
+        try {
+            // Test connection using the server's status endpoint
+            const res = await fetch(`${trimmed}/api/status`, { signal: AbortSignal.timeout(10000) });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            onDone();
+        } catch (e: any) {
+            setStatus("error");
+            setErrorMsg(e.message || "无法连接到服务器");
+        }
+    };
+
+    return (
+        <div className="app" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "32px" }}>
+            <div style={{ width: "100%", maxWidth: "360px", textAlign: "center" }}>
+                <h2 style={{ color: "var(--color-text)", fontSize: "20px", fontWeight: 600, marginBottom: "8px" }}>AnyCode</h2>
+                <p style={{ color: "var(--color-text-dim)", fontSize: "13px", marginBottom: "24px", opacity: 0.6 }}>
+                    输入服务器地址以连接
+                </p>
+                <input
+                    type="url"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder="https://your-server.com"
+                    onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+                    disabled={status === "connecting"}
+                    style={{
+                        width: "100%", padding: "12px 16px", borderRadius: "10px",
+                        border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)",
+                        color: "var(--color-text)", fontSize: "15px", outline: "none",
+                        boxSizing: "border-box",
+                        opacity: status === "connecting" ? 0.5 : 1,
+                    }}
+                    autoFocus
+                />
+                {status === "error" && (
+                    <p style={{ color: "var(--red, #f47067)", fontSize: "12px", marginTop: "8px" }}>
+                        {errorMsg}
+                    </p>
+                )}
+                <button
+                    onClick={handleSubmit}
+                    disabled={status === "connecting"}
+                    style={{
+                        width: "100%", marginTop: "16px", padding: "12px",
+                        borderRadius: "10px", border: "none",
+                        background: "var(--blue, #6cb6ff)", color: "#fff",
+                        fontSize: "15px", fontWeight: 600, cursor: "pointer",
+                        opacity: status === "connecting" ? 0.6 : 1,
+                    }}
+                >
+                    {status === "connecting" ? "连接中…" : status === "error" ? "重试" : "连接"}
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // ── App shell — manages windows list and renders all WindowViews ─────────
 
 export function App() {
+    const [setupDone, setSetupDone] = useState(!needsSetup());
     const [activeWindowId, setActiveWindowId] = useState<string | null>(null);
     const [windows, setWindows] = useState<WindowInfo[]>([]);
     const [error, setError] = useState<string | null>(null);
 
+    useEffect(() => { applyNativeViewport(); }, []);
 
     const fetchWindows = useCallback(async () => {
         try {
-            const res = await fetch(`${API_BASE}/api/windows`);
+            const res = await fetch(`${getApiBase()}/api/windows`);
             if (res.ok) {
                 const list = await res.json();
                 setWindows(list);
@@ -208,9 +307,10 @@ export function App() {
 
     // Bootstrap: get or create default session, then load windows
     useEffect(() => {
+        if (!setupDone) return;
         (async () => {
             try {
-                const res = await fetch(`${API_BASE}/api/sessions`, {
+                const res = await fetch(`${getApiBase()}/api/sessions`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({}),
@@ -225,7 +325,7 @@ export function App() {
                 setError(e.message);
             }
         })();
-    }, [fetchWindows]);
+    }, [fetchWindows, setupDone]);
 
     // If saved window doesn't exist in the list, fall back
     useEffect(() => {
@@ -234,19 +334,19 @@ export function App() {
             const fallback = windows.find(w => w.isDefault) || windows[0];
             if (fallback) {
                 setActiveWindowId(fallback.id);
-                try { localStorage.setItem('anycode:lastWindow', fallback.id); } catch {}
+                try { localStorage.setItem('anycode:lastWindow', fallback.id); } catch { }
             }
         }
     }, [activeWindowId, windows]);
 
     const handleWindowSwitch = useCallback((id: string) => {
         setActiveWindowId(id);
-        try { localStorage.setItem('anycode:lastWindow', id); } catch {}
+        try { localStorage.setItem('anycode:lastWindow', id); } catch { }
     }, []);
 
     const handleWindowCreate = useCallback(async () => {
         try {
-            const res = await fetch(`${API_BASE}/api/windows`, {
+            const res = await fetch(`${getApiBase()}/api/windows`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({}),
@@ -254,14 +354,14 @@ export function App() {
             const data = await res.json();
             if (data.error) return;
             setActiveWindowId(data.id);
-            try { localStorage.setItem('anycode:lastWindow', data.id); } catch {}
+            try { localStorage.setItem('anycode:lastWindow', data.id); } catch { }
             fetchWindows();
         } catch { /* ignore */ }
     }, [fetchWindows]);
 
     const handleWindowDelete = useCallback(async (id: string) => {
         try {
-            const res = await fetch(`${API_BASE}/api/windows/${id}`, { method: "DELETE" });
+            const res = await fetch(`${getApiBase()}/api/windows/${id}`, { method: "DELETE" });
             if (!res.ok) return;
             if (id === activeWindowId) {
                 const remaining = windows.filter((w) => w.id !== id);
@@ -272,10 +372,20 @@ export function App() {
         } catch { /* ignore */ }
     }, [activeWindowId, windows, fetchWindows]);
 
+    if (!setupDone) {
+        return <ServerSetup onDone={() => setSetupDone(true)} />;
+    }
+
     if (error) {
         return (
-            <div className="app" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div className="app" style={{ display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "16px" }}>
                 <p style={{ color: "var(--red)", fontSize: "14px" }}>连接失败: {error}</p>
+                <button
+                    onClick={() => { setServerUrl(""); location.reload(); }}
+                    style={{ padding: "8px 20px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.08)", color: "var(--color-text-dim)", fontSize: "13px", cursor: "pointer" }}
+                >
+                    重新配置服务器
+                </button>
             </div>
         );
     }

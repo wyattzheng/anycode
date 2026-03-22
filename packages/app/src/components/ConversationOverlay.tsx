@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect, type MutableRefObject } from 
 import { flushSync } from "react-dom";
 import type { FileContext } from "../App";
 import { MicIcon, KeyboardIcon, SendIcon, CloseIcon, ChatIcon, StopIcon, PinIcon, UndockIcon } from "./Icons";
+import { getApiBase } from "../serverUrl";
 import "./ConversationOverlay.css";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -287,7 +288,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, se
 
         (async () => {
             try {
-                const res = await fetch(`/api/messages?sessionId=${encodeURIComponent(sessionId)}`);
+                const res = await fetch(`${getApiBase()}/api/messages?sessionId=${encodeURIComponent(sessionId)}`);
                 if (!res.ok) return;
                 const data = await res.json();
                 if (!Array.isArray(data) || data.length === 0) return;
