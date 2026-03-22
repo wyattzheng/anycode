@@ -263,12 +263,8 @@ export class ClaudeCodeAgent implements IChatAgent {
         const toolFn = sdkMod.tool
         const createServer = sdkMod.createSdkMcpServer
         if (toolFn && createServer) {
-          const { SetWorkingDirectoryTool, TerminalWriteTool, TerminalReadTool, SetPreviewUrlTool } = await import("@any-code/agent")
-          const extraTools = [
-            SetWorkingDirectoryTool,
-            ...(self.config.terminal ? [TerminalWriteTool, TerminalReadTool] : []),
-            ...(self.config.preview ? [SetPreviewUrlTool] : []),
-          ]
+          const extraTools = self.config.codeAgentOptions?.extraTools ?? []
+          if (extraTools.length > 0) {
 
           // Lightweight context proxy for Tool.execute()
           const makeCtx = () => ({
@@ -302,6 +298,7 @@ export class ClaudeCodeAgent implements IChatAgent {
           if (sdkTools.length > 0) {
             const server = createServer({ name: "anycode-tools", version: "1.0.0", tools: sdkTools })
             mcpConfig = { "anycode-tools": server }
+          }
           }
         }
       } catch (err) { 
