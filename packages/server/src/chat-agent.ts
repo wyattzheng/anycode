@@ -179,7 +179,9 @@ export class ClaudeCodeAgent implements IChatAgent {
       const limit = opts?.limit ?? 50
       const recent = dbMsgs.slice(-limit)
       
-      return recent.map((m: any) => {
+      const merged: any[] = []
+      
+      for (const m of recent) {
         const msg = m.message || {}
         const role = msg.role || m.type || "unknown"
         
@@ -202,8 +204,17 @@ export class ClaudeCodeAgent implements IChatAgent {
           })
         }
         
-        return simplified
-      })
+        const last = merged[merged.length - 1]
+        if (last && last.role === "assistant" && simplified.role === "assistant") {
+          // Merge adjacent assistant messages to render as a single chat bubble
+          if (!last.parts) last.parts = []
+          if (simplified.parts) last.parts.push(...simplified.parts)
+        } else {
+          merged.push(simplified)
+        }
+      }
+      
+      return merged
     } catch (err) {
       console.error("[ClaudeCodeAgent] Failed to fetch session history:", err)
       return []
