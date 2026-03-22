@@ -535,6 +535,7 @@ export class CodexAgent implements IChatAgent {
           ...(this._workingDirectory ? { workingDirectory: this._workingDirectory } : {}),
           approvalPolicy: "never",
           sandboxMode: "danger-full-access",
+          skipGitRepoCheck: true,
         })
       }
 
