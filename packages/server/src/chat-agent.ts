@@ -348,6 +348,7 @@ export class ClaudeCodeAgent implements IChatAgent {
         options: {
           model: this.config.model || "sonnet",
           thinking: { type: "enabled", budgetTokens: 10000 },
+          permissionMode: "bypassPermissions",
           allowDangerouslySkipPermissions: true,
           includePartialMessages: true,
           canUseTool: async () => ({ behavior: 'allow' as const }),
