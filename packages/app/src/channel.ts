@@ -64,13 +64,13 @@ export class WebSocketChannel implements Channel {
     private startHeartbeat() {
         this.lastReceived = Date.now();
         this.heartbeatTimer = setInterval(() => {
-            // If no message in 45s, server is probably dead — force reconnect
-            if (Date.now() - this.lastReceived > 45_000) {
+            // If no message in 10s, server is probably dead — force reconnect
+            if (Date.now() - this.lastReceived > 10_000) {
                 this.ws.close();
                 return;
             }
             this.send({ type: "ping" });
-        }, 30_000);
+        }, 5_000);
     }
 
     private stopHeartbeat() {
