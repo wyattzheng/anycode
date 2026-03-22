@@ -352,7 +352,7 @@ export class ClaudeCodeAgent implements IChatAgent {
           includePartialMessages: true,
           canUseTool: async () => ({ behavior: 'allow' as const }),
           baseTools: [{ preset: "default" }],
-          deniedTools: ["AskUserQuestion"],
+          disallowedTools: ["AskUserQuestion"],
           cwd: process.cwd(),
           stderr: (data: string) => {
             console.error("[ClaudeCode Stderr]", data)
