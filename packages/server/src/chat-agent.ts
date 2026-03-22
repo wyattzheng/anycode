@@ -265,40 +265,39 @@ export class ClaudeCodeAgent implements IChatAgent {
         if (toolFn && createServer) {
           const extraTools = self.config.codeAgentOptions?.extraTools ?? []
           if (extraTools.length > 0) {
+            // Lightweight context proxy for Tool.execute()
+            const makeCtx = () => ({
+              emit: (event: string, data?: any) => self._emitEvent(event, data),
+              terminal: self.config.terminal || { create() {}, destroy() {}, exists: () => false, write() {}, read: () => "" },
+              preview: self.config.preview || { setPreviewTarget() {} },
+              fs: { stat: async (p: string) => { try { const s = (await import("fs")).statSync(p); return { isDirectory: s.isDirectory(), isFile: s.isFile() } } catch { return null } } },
+              worktree: "",
+            })
 
-          // Lightweight context proxy for Tool.execute()
-          const makeCtx = () => ({
-            emit: (event: string, data?: any) => self._emitEvent(event, data),
-            terminal: self.config.terminal || { create() {}, destroy() {}, exists: () => false, write() {}, read: () => "" },
-            preview: self.config.preview || { setPreviewTarget() {} },
-            fs: { stat: async (p: string) => { try { const s = (await import("fs")).statSync(p); return { isDirectory: s.isDirectory(), isFile: s.isFile() } } catch { return null } } },
-            worktree: "",
-          })
+            const sdkTools: any[] = []
+            for (const toolDef of extraTools) {
+              const info = await toolDef.init()
+              // Extract Zod shape from z.object() for SDK tool() — SDK expects raw shape, not z.object()
+              const shape = (info.parameters as any)?.shape ?? {}
+              sdkTools.push(toolFn(
+                toolDef.id,
+                info.description,
+                shape,
+                async (args: any) => {
+                  try {
+                    const result = await info.execute(args, makeCtx() as any)
+                    return { content: [{ type: "text" as const, text: result.output }] }
+                  } catch (err: any) {
+                    return { content: [{ type: "text" as const, text: err.message || String(err) }], isError: true }
+                  }
+                },
+              ))
+            }
 
-          const sdkTools: any[] = []
-          for (const toolDef of extraTools) {
-            const info = await toolDef.init()
-            // Extract Zod shape from z.object() for SDK tool() — SDK expects raw shape, not z.object()
-            const shape = (info.parameters as any)?.shape ?? {}
-            sdkTools.push(toolFn(
-              toolDef.id,
-              info.description,
-              shape,
-              async (args: any) => {
-                try {
-                  const result = await info.execute(args, makeCtx() as any)
-                  return { content: [{ type: "text" as const, text: result.output }] }
-                } catch (err: any) {
-                  return { content: [{ type: "text" as const, text: err.message || String(err) }], isError: true }
-                }
-              },
-            ))
-          }
-
-          if (sdkTools.length > 0) {
-            const server = createServer({ name: "anycode-tools", version: "1.0.0", tools: sdkTools })
-            mcpConfig = { "anycode-tools": server }
-          }
+            if (sdkTools.length > 0) {
+              const server = createServer({ name: "anycode-tools", version: "1.0.0", tools: sdkTools })
+              mcpConfig = { "anycode-tools": server }
+            }
           }
         }
       } catch (err) { 
