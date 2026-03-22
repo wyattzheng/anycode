@@ -256,89 +256,51 @@ export class ClaudeCodeAgent implements IChatAgent {
     const activeToolCalls = new Map<number, { id: string, name: string, argsStr: string }>()
 
     try {
-      // Build MCP server with custom tools (set_user_watch_project, set_preview_url, terminal_write, terminal_read)
+      // Build MCP server with custom tools bridged from @any-code/agent extraTools
       let mcpConfig: Record<string, any> | undefined
       try {
         const sdkMod = await import("@anthropic-ai/claude-agent-sdk")
         const toolFn = sdkMod.tool
         const createServer = sdkMod.createSdkMcpServer
         if (toolFn && createServer) {
-          const z = (await import("zod")).default ?? (await import("zod"))
-          const tools: any[] = []
+          const { SetWorkingDirectoryTool, TerminalWriteTool, TerminalReadTool, SetPreviewUrlTool } = await import("@any-code/agent")
+          const extraTools = [
+            SetWorkingDirectoryTool,
+            ...(self.config.terminal ? [TerminalWriteTool, TerminalReadTool] : []),
+            ...(self.config.preview ? [SetPreviewUrlTool] : []),
+          ]
 
-          // ── set_user_watch_project ──
-          tools.push(toolFn(
-            "set_user_watch_project",
-            `Let the user's frontend UI watch a project directory. This activates the file browser, diff viewer, and other project-related UI panels for the user. Call after creating a new project, cloning a repository, or when the user asks to open a specific project. Pass an empty string to clear. If project is newly created, run git init first.`,
-            { directory: z.string().optional().describe("Absolute path to the project directory. Omit or pass empty string to clear.") },
-            async (args: any) => {
-              self._emitEvent("directory.set", { directory: args.directory ?? "" })
-              return { content: [{ type: "text" as const, text: args.directory ? `Working directory set to "${args.directory}".` : "Working directory cleared." }] }
-            },
-          ))
+          // Lightweight context proxy for Tool.execute()
+          const makeCtx = () => ({
+            emit: (event: string, data?: any) => self._emitEvent(event, data),
+            terminal: self.config.terminal || { create() {}, destroy() {}, exists: () => false, write() {}, read: () => "" },
+            preview: self.config.preview || { setPreviewTarget() {} },
+            fs: { stat: async (p: string) => { try { const s = (await import("fs")).statSync(p); return { isDirectory: s.isDirectory(), isFile: s.isFile() } } catch { return null } } },
+            worktree: "",
+          })
 
-          // ── set_preview_url ──
-          if (self.config.preview) {
-            const preview = self.config.preview
-            tools.push(toolFn(
-              "set_preview_url",
-              `Set the local URL to reverse-proxy for the user's preview tab. Call this after starting a dev server so the user can see the app in their preview panel.`,
-              { forwarded_local_url: z.string().describe('The absolute local URL to reverse-proxy to (e.g. "http://localhost:5173").') },
+          const sdkTools: any[] = []
+          for (const toolDef of extraTools) {
+            const info = await toolDef.init()
+            // Extract Zod shape from z.object() for SDK tool() — SDK expects raw shape, not z.object()
+            const shape = (info.parameters as any)?.shape ?? {}
+            sdkTools.push(toolFn(
+              toolDef.id,
+              info.description,
+              shape,
               async (args: any) => {
-                preview.setPreviewTarget(args.forwarded_local_url)
-                return { content: [{ type: "text" as const, text: `Preview proxy set to "${args.forwarded_local_url}".` }] }
+                try {
+                  const result = await info.execute(args, makeCtx() as any)
+                  return { content: [{ type: "text" as const, text: result.output }] }
+                } catch (err: any) {
+                  return { content: [{ type: "text" as const, text: err.message || String(err) }], isError: true }
+                }
               },
             ))
           }
 
-          // ── terminal_write ──
-          if (self.config.terminal) {
-            const terminal = self.config.terminal
-            tools.push(toolFn(
-              "terminal_write",
-              `Manage a persistent user-visible terminal. Actions: "create" to spawn a new terminal, "input" to send text, "destroy" to kill the terminal. The terminal is visible to the user in their UI.`,
-              {
-                type: z.enum(["input", "create", "destroy"]).describe('Action type.'),
-                content: z.string().optional().describe('Text to send when type is "input".'),
-                pressEnter: z.boolean().optional().describe('Whether to press Enter after input. Defaults to true.'),
-              },
-              async (args: any) => {
-                if (args.type === "create") {
-                  terminal.create()
-                  return { content: [{ type: "text" as const, text: "Terminal created." }] }
-                }
-                if (args.type === "destroy") {
-                  terminal.destroy()
-                  return { content: [{ type: "text" as const, text: "Terminal destroyed." }] }
-                }
-                // input
-                if (!terminal.exists()) return { content: [{ type: "text" as const, text: 'No terminal exists. Use type "create" first.' }], isError: true }
-                const pressEnter = args.pressEnter ?? true
-                terminal.write(pressEnter ? (args.content ?? "") + "\n" : (args.content ?? ""))
-                return { content: [{ type: "text" as const, text: "Input sent to terminal." }] }
-              },
-            ))
-
-            // ── terminal_read ──
-            tools.push(toolFn(
-              "terminal_read",
-              `Read the last N lines from the persistent user-visible terminal buffer. Use waitBefore to let a command finish before reading.`,
-              {
-                length: z.number().int().min(1).describe('Number of lines to read from the bottom of the terminal buffer.'),
-                waitBefore: z.number().int().min(0).optional().describe('Milliseconds to wait before reading. Defaults to 0.'),
-              },
-              async (args: any) => {
-                if (!terminal.exists()) return { content: [{ type: "text" as const, text: 'No terminal exists. Use terminal_write with type "create" first.' }], isError: true }
-                const waitMs = Math.min(args.waitBefore ?? 0, 5000)
-                if (waitMs > 0) await new Promise(r => setTimeout(r, waitMs))
-                const content = terminal.read(args.length)
-                return { content: [{ type: "text" as const, text: content || "(terminal buffer is empty)" }] }
-              },
-            ))
-          }
-
-          if (tools.length > 0) {
-            const server = createServer({ name: "anycode-tools", version: "1.0.0", tools })
+          if (sdkTools.length > 0) {
+            const server = createServer({ name: "anycode-tools", version: "1.0.0", tools: sdkTools })
             mcpConfig = { "anycode-tools": server }
           }
         }
