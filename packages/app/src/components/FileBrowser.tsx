@@ -53,7 +53,7 @@ function LazyTreeItem({
         return (
             <div
                 className={`file-tree-item file${isSelected ? " selected" : ""}`}
-                style={{ paddingLeft: `${12 + depth * 16 + 18}px` }}
+                style={{ paddingLeft: `${12 + depth * 16 + 12}px` }}
                 onClick={() => onFileClick(fullPath)}
             >
                 <span className="file-icon"><FileIcon filename={entry.name} size={14} /></span>

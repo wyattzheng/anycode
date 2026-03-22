@@ -89,7 +89,7 @@
     line-height: 1.4;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     cursor: pointer;
 }
 
@@ -107,6 +107,7 @@
     display: flex;
     align-items: center;
     flex-shrink: 0;
+    width: 10px;
     transition: transform 0.15s;
     opacity: 0.5;
 }
