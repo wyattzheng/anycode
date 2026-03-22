@@ -578,16 +578,23 @@ async function handleClientMessage(sessionId: string, client: ClientLike, msg: a
   }
 }
 
-// ── fs.watch-based directory watcher ──────────────────────────────────────
+// ── Directory watcher: fs.watch + polling fallback ───────────────────────
 
 const watchers = new Map<string, fs.FSWatcher>()
+const pollers = new Map<string, ReturnType<typeof setInterval>>()
+const POLL_INTERVAL_MS = 3000
 
 function watchDirectory(cfg: ServerConfig, sessionId: string, dir: string) {
-  // Clean up existing watcher for this session
+  // Clean up existing watcher & poller for this session
   const existing = watchers.get(sessionId)
   if (existing) {
     existing.close()
     watchers.delete(sessionId)
+  }
+  const existingPoller = pollers.get(sessionId)
+  if (existingPoller) {
+    clearInterval(existingPoller)
+    pollers.delete(sessionId)
   }
 
   // If dir is empty (cleared), just stop watching
@@ -597,8 +604,8 @@ function watchDirectory(cfg: ServerConfig, sessionId: string, dir: string) {
     scheduleStatePush(cfg, sessionId, 500)
   }
 
+  // 1. Try fs.watch for instant feedback
   try {
-    // macOS and Windows support recursive: true natively
     const watcher = fs.watch(dir, { recursive: true }, (eventType, filename) => {
       // Ignore .git internals (too noisy), node_modules, etc.
       if (filename && (filename.startsWith(".git/") || filename.startsWith("node_modules/"))) return
@@ -609,6 +616,12 @@ function watchDirectory(cfg: ServerConfig, sessionId: string, dir: string) {
   } catch (err) {
     console.error(`❌  fs.watch failed for ${dir}:`, err)
   }
+
+  // 2. Polling fallback — covers Docker bind mounts where inotify is unreliable
+  const poller = setInterval(() => {
+    getSession(sessionId)?.state.updateFileSystem()
+  }, POLL_INTERVAL_MS)
+  pollers.set(sessionId, poller)
 }
 
 export class SessionStateModel {
@@ -1603,12 +1616,10 @@ export async function startServer() {
     clients.add(ws as ClientLike)
     console.log(`🔌  WS client connected to session ${sessionId} (${clients.size} total)`)
 
-    // Send current state to this client immediately, then trigger a fresh compute
+    // Send current state to this client only (no broadcast)
     const sessionModel = getSession(sessionId)?.state
     if (sessionModel) {
       ws.send(JSON.stringify(sessionModel.toJSON()))
-      // Refresh state in background so client gets up-to-date data
-      sessionModel.updateFileSystem()
     }
 
     ws.on("message", async (raw) => {
