@@ -10,7 +10,7 @@ import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
-import type { AgentMode } from "../llm-runner"
+
 import { Tool } from "./tool"
 import type { AgentContext } from "../context"
 
@@ -69,9 +69,8 @@ export namespace ToolRegistry {
 
     async tools(
       model: { providerID: ProviderID; modelID: ModelID },
-      agent?: AgentMode,
     ) {
-      return ToolRegistry.tools(this.context, model, agent)
+      return ToolRegistry.tools(this.context, model)
     }
   }
 
@@ -93,7 +92,7 @@ export namespace ToolRegistry {
             worktree: ctx.worktree,
           } as unknown as ToolContext
           const result = await def.execute(args as any, pluginCtx)
-          const out = await Truncate.output(ctx as any, result, {}, initCtx?.agent)
+          const out = await Truncate.output(ctx as any, result, {})
           return {
             title: "",
             output: out.truncated ? out.content : result,
@@ -139,7 +138,6 @@ export namespace ToolRegistry {
       providerID: ProviderID
       modelID: ModelID
     },
-    agent?: AgentMode,
   ) {
     const tools = await all(context)
     const result = await Promise.all(
@@ -160,7 +158,7 @@ export namespace ToolRegistry {
         })
         .map(async (t) => {
           using _ = context.log.create({ service: "tool.registry" }).time(t.id)
-          const tool = await t.init({ agent, agentContext: context })
+          const tool = await t.init({ agentContext: context })
           const output = {
             description: tool.description,
             parameters: tool.parameters,

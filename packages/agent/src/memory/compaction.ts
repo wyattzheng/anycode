@@ -182,7 +182,7 @@ When constructing the summary, try to stick to this template:
     const promptText = compacting.prompt ?? [defaultPrompt, ...compacting.context].join("\n\n")
     const result = await processor.process({
       user: userMessage,
-      agent,
+      prompt: agent.prompt,
       abort: input.abort,
       sessionID: input.sessionID,
       tools: {},

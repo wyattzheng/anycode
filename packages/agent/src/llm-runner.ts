@@ -3,17 +3,7 @@ import { mergeDeep, pipe } from "remeda"
 import type { AgentContext } from "./context"
 import { Provider } from "./provider/provider"
 import { VendorRegistry } from "./provider/vendors"
-/** Minimal agent mode configuration (replaces the removed Agent.Info) */
-export type AgentMode = {
-  name: string
-  mode: string
-  prompt?: string
-  model?: { providerID: string; modelID: string }
-  temperature?: number
-  topP?: number
-  options: Record<string, any>
-  steps?: number
-}
+
 import { SystemPrompt } from "./prompt"
 import { Flag } from "./util/flag"
 import { Installation } from "./util/installation"
@@ -135,7 +125,8 @@ export namespace LLM {
     user: MessageV2.User
     sessionID: string
     model: Provider.Model
-    agent: AgentMode
+    /** Optional system prompt override (e.g. for compaction) */
+    prompt?: string
     system: string[]
     abort: AbortSignal
     messages: ModelMessage[]
@@ -155,8 +146,6 @@ export namespace LLM {
       .tag("modelID", input.model.id)
       .tag("sessionID", input.sessionID)
       .tag("small", (input.small ?? false).toString())
-      .tag("agent", input.agent.name)
-      .tag("mode", input.agent.mode)
     l.info("stream", {
       modelID: input.model.id,
       providerID: input.model.providerID,
@@ -177,7 +166,7 @@ export namespace LLM {
       [
         // use agent prompt otherwise provider prompt
         // Some providers send their system prompt via vendor-specific instructions.
-        ...(input.agent.prompt ? [input.agent.prompt] : includeProviderPrompt ? SystemPrompt.provider(input.model) : []),
+        ...(input.prompt ? [input.prompt] : includeProviderPrompt ? SystemPrompt.provider(input.model) : []),
         // any custom prompt passed into this call
         ...input.system,
         // any custom prompt from last user message
@@ -205,7 +194,6 @@ export namespace LLM {
     const options: Record<string, any> = pipe(
       base,
       mergeDeep(input.model.options),
-      mergeDeep(input.agent.options),
     )
     if (useInstructions) {
       options.instructions = SystemPrompt.instructions(input.model)
@@ -213,9 +201,9 @@ export namespace LLM {
 
     const params = {
       temperature: input.model.capabilities.temperature
-        ? (input.agent.temperature ?? modelProvider.getTemperature())
+        ? modelProvider.getTemperature()
         : undefined,
-      topP: input.agent.topP ?? modelProvider.getTopP(),
+      topP: modelProvider.getTopP(),
       topK: modelProvider.getTopK(),
       options,
     }
@@ -321,7 +309,7 @@ export namespace LLM {
     })
   }
 
-  async function resolveTools(input: Pick<StreamInput, "tools" | "agent" | "user">) {
+  async function resolveTools(input: Pick<StreamInput, "tools" | "user">) {
     for (const tool of Object.keys(input.tools)) {
       if (input.user.tools?.[tool] === false) {
         delete input.tools[tool]

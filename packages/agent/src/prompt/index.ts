@@ -1,6 +1,6 @@
 import type { AgentContext } from "../context"
 import type { Provider } from "../provider/provider"
-import type { AgentMode } from "../llm-runner"
+
 import { VendorRegistry } from "../provider/vendors"
 import { Skill } from "../skill"
 
@@ -36,8 +36,8 @@ export namespace SystemPrompt {
     ]
   }
 
-  export async function skills(context: AgentContext, agent: AgentMode) {
-    const list = await context.skill.available(agent)
+  export async function skills(context: AgentContext) {
+    const list = await context.skill.available()
 
     return [
       "Skills provide specialized instructions and workflows for specific tasks.",

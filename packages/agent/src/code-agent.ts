@@ -1043,16 +1043,13 @@ export class CodeAgent extends EventEmitter {
         onStructuredOutput: (v: unknown) => void
     }): Promise<"stop" | "compact" | "continue"> {
         const { context, session, sessionID, abort, model, lastUser, lastFinished, step } = input
-        const agent = { name: "build", mode: "primary" as const, options: {} }
-        const maxSteps = Infinity
-        const isLastStep = false
 
-        const msgs = await SessionPrompt.insertReminders({ context, messages: input.msgs, agent, session })
+        const msgs = await SessionPrompt.insertReminders({ context, messages: input.msgs, session })
 
         const processor = LLMRunner.create({
             assistantMessage: (await context.session.updateMessage({
                 id: MsgID.ascending(), parentID: lastUser.id, role: "assistant",
-                mode: agent.name, agent: agent.name, variant: lastUser.variant,
+                mode: "build", agent: "build", variant: lastUser.variant,
                 path: { cwd: context.directory, root: context.worktree },
                 cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
                 modelID: model.id, providerID: model.providerID,
@@ -1073,7 +1070,7 @@ export class CodeAgent extends EventEmitter {
         const bypassAgentCheck = lastUserMsg?.parts.some((p) => p.type === "agent") ?? false
 
         const tools = await SessionPrompt.resolveTools({
-            agent, session, model, tools: lastUser.tools,
+            session, model, tools: lastUser.tools,
             processor, bypassAgentCheck, messages: msgs, agentContext: context,
             onToolEvent: (event, data) => this.emit(event, data),
         })
@@ -1108,7 +1105,7 @@ export class CodeAgent extends EventEmitter {
         }
 
         // Build system prompt
-        const skills = await SystemPrompt.skills(context, agent)
+        const skills = await SystemPrompt.skills(context)
         const system = [
             ...(await SystemPrompt.environment(model, context)),
             ...(skills ? [skills] : []),
@@ -1121,11 +1118,8 @@ export class CodeAgent extends EventEmitter {
 
         // LLM streaming + tool execution
         const result = await processor.process({
-            user: lastUser, agent, abort, sessionID, system, context,
-            messages: [
-                ...MessageV2.toModelMessages(msgs, model),
-                ...(isLastStep ? [{ role: "assistant" as const, content: MAX_STEPS }] : []),
-            ],
+            user: lastUser, abort, sessionID, system, context,
+            messages: MessageV2.toModelMessages(msgs, model),
             tools: tools as any, model,
             toolChoice: format.type === "json_schema" ? "required" : undefined,
         })

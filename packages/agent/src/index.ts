@@ -37,8 +37,7 @@ export { SetPreviewUrlTool } from "./tool/set-preview-url"
 export { Provider } from "./provider/provider"
 export { ProviderID, ModelID } from "./provider/schema"
 
-// Agent mode
-export { type AgentMode } from "./llm-runner"
+
 
 // Bus & logging
 

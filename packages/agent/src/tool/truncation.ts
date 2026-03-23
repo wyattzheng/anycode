@@ -1,6 +1,6 @@
 import * as path from "../util/path"
 import { Identifier } from "../util/id"
-import type { AgentMode } from "../llm-runner"
+
 import { Scheduler } from "../util/scheduler"
 import { Filesystem } from "../util/filesystem"
 import { Glob } from "../util/glob"
@@ -46,7 +46,7 @@ export namespace Truncate {
     }
   }
 
-  export async function output(context: AgentContext, text: string, options: Options = {}, agent?: AgentMode): Promise<Result> {
+  export async function output(context: AgentContext, text: string, options: Options = {}): Promise<Result> {
     const maxLines = options.maxLines ?? MAX_LINES
     const maxBytes = options.maxBytes ?? MAX_BYTES
     const direction = options.direction ?? "head"
