@@ -7,7 +7,7 @@ export default defineConfig({
     format: ["esm"],
     platform: "node",
     dts: true,
-    clean: true,
+    clean: false,
     skipNodeModulesBundle: true,
-    external: ["sql.js"],
+    external: ["sql.js", "@any-code/agent"],
 });
