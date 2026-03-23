@@ -7,7 +7,7 @@ import { SessionID, MessageID, PartID } from "./schema"
 import { MessageV2 } from "../memory/message-v2"
 
 import { Session, SessionService } from "."
-import { Agent } from "../agent"
+import { type AgentMode } from "../llm-runner"
 import { Provider } from "../provider/provider"
 import { ModelID, ProviderID } from "../provider/schema"
 import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, asSchema, wrapLanguageModel, type ModelMessage, type StreamTextResult, type ToolSet, streamText } from "ai"
@@ -170,13 +170,7 @@ export namespace SessionPrompt {
 
         const stats = await Filesystem.stat(context, filepath).catch((): any => undefined as any)
         if (!stats) {
-          const agent = await context.agents.get(name)
-          if (agent) {
-            parts.push({
-              type: "agent",
-              name: agent.name,
-            })
-          }
+          // Agent lookup removed (agent mode system removed)
           return
         }
 
@@ -215,7 +209,7 @@ export namespace SessionPrompt {
 
   /** @internal Exported for testing */
   export async function resolveTools(input: {
-    agent: Agent.Info
+    agent: AgentMode
     model: Provider.Model
     session: Session.Info
     tools?: Record<string, boolean>
@@ -336,14 +330,8 @@ export namespace SessionPrompt {
   }
 
   export async function createUserMessage(context: AgentContext, input: PromptInput) {
-    const agent = await context.agents.get(input.agent ?? (await context.agents.defaultAgent()))
-
-    const model = input.model ?? agent.model ?? (await lastModel(context, input.sessionID))
-    const full =
-      !input.variant && agent.variant
-        ? await context.provider.getModel(model.providerID, model.modelID as ModelID).catch((): any => undefined as any)
-        : undefined
-    const variant = input.variant ?? (agent.variant && full?.variants?.[agent.variant] ? agent.variant : undefined)
+    const model = input.model ?? (await lastModel(context, input.sessionID))
+    const variant = input.variant ?? undefined
 
     const info: MessageV2.Info = {
       id: input.messageID ?? MessageID.ascending(),
@@ -353,7 +341,7 @@ export namespace SessionPrompt {
         created: Date.now(),
       },
       tools: input.tools,
-      agent: agent.name,
+      agent: "build",
       model: model as any,
       system: input.system,
       format: input.format,
@@ -624,7 +612,7 @@ export namespace SessionPrompt {
     }
   }
 
-  export async function insertReminders(input: { context: AgentContext; messages: MessageV2.WithParts[]; agent: Agent.Info; session: Session.Info }) {
+  export async function insertReminders(input: { context: AgentContext; messages: MessageV2.WithParts[]; agent: AgentMode; session: Session.Info }) {
     const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
     if (!userMessage) return input.messages
 
@@ -796,46 +784,6 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     const subtaskParts = firstRealUser.parts.filter((p) => p.type === "subtask") as MessageV2.SubtaskPart[]
     const hasOnlySubtaskParts = subtaskParts.length > 0 && firstRealUser.parts.every((p) => p.type === "subtask")
 
-    const agent = await input.context.agents.get("title")
-    if (!agent) return
-    const model = await iife(async () => {
-      if (agent.model) return await input.context.provider.getModel(agent.model.providerID, agent.model.modelID)
-      return (
-        (await input.context.provider.getSmallModel(input.providerID)) ?? (await input.context.provider.getModel(input.providerID, input.modelID))
-      )
-    })
-    const result = await LLM.stream(input.context, {
-      agent,
-      user: firstRealUser.info as MessageV2.User,
-      system: [],
-      small: true,
-      tools: {},
-      model,
-      abort: new AbortController().signal,
-      sessionID: input.session.id,
-      retries: 2,
-      context: input.context,
-      messages: [
-        {
-          role: "user",
-          content: "Generate a title for this conversation:\n",
-        },
-        ...(hasOnlySubtaskParts
-          ? [{ role: "user" as const, content: subtaskParts.map((p) => p.prompt).join("\n") }]
-          : MessageV2.toModelMessages(contextMessages, model)),
-      ],
-    })
-    const text = await result.text.catch((err) => getLog(input.context).error("failed to generate title", { error: err }))
-    if (text) {
-      const cleaned = text
-        .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
-        .split("\n")
-        .map((line) => line.trim())
-        .find((line) => line.length > 0)
-      if (!cleaned) return
-
-      const title = cleaned.length > 100 ? cleaned.substring(0, 97) + "..." : cleaned
-      return input.context.session.setTitle({ sessionID: input.session.id, title })
-    }
+    // Title generation removed (agent mode system removed)
   }
 }

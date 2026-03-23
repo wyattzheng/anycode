@@ -10,7 +10,7 @@ import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
-import type { Agent } from "../agent"
+import type { AgentMode } from "../llm-runner"
 import { Tool } from "./tool"
 import type { AgentContext } from "../context"
 
@@ -69,7 +69,7 @@ export namespace ToolRegistry {
 
     async tools(
       model: { providerID: ProviderID; modelID: ModelID },
-      agent?: Agent.Info,
+      agent?: AgentMode,
     ) {
       return ToolRegistry.tools(this.context, model, agent)
     }
@@ -139,7 +139,7 @@ export namespace ToolRegistry {
       providerID: ProviderID
       modelID: ModelID
     },
-    agent?: Agent.Info,
+    agent?: AgentMode,
   ) {
     const tools = await all(context)
     const result = await Promise.all(

@@ -3,7 +3,17 @@ import { mergeDeep, pipe } from "remeda"
 import type { AgentContext } from "./context"
 import { Provider } from "./provider/provider"
 import { VendorRegistry } from "./provider/vendors"
-import { Agent } from "./agent"
+/** Minimal agent mode configuration (replaces the removed Agent.Info) */
+export type AgentMode = {
+  name: string
+  mode: string
+  prompt?: string
+  model?: { providerID: string; modelID: string }
+  temperature?: number
+  topP?: number
+  options: Record<string, any>
+  steps?: number
+}
 import { SystemPrompt } from "./prompt"
 import { Flag } from "./util/flag"
 import { Installation } from "./util/installation"
@@ -125,7 +135,7 @@ export namespace LLM {
     user: MessageV2.User
     sessionID: string
     model: Provider.Model
-    agent: Agent.Info
+    agent: AgentMode
     system: string[]
     abort: AbortSignal
     messages: ModelMessage[]

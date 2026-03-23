@@ -11,7 +11,7 @@ import { Flag } from "../util/flag"
 
 import { Glob } from "../util/glob"
 import { pathToFileURL } from "url"
-import type { Agent } from "../agent"
+import type { AgentMode } from "../llm-runner"
 
 // ── Discovery ───────────────────────────────────────────────────────────────
 
@@ -175,7 +175,7 @@ export namespace Skill {
       return (await this._promise).dirs
     }
 
-    async available(agent?: Agent.Info): Promise<Info[]> {
+    async available(agent?: AgentMode): Promise<Info[]> {
       return this.all()
     }
   }

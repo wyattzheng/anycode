@@ -15,7 +15,7 @@ import type { SessionService } from "./session"
 import type { SessionPrompt } from "./session/session"
 
 
-import type { Agent } from "./agent"
+
 import type { Provider } from "./provider/provider"
 import type { ModelsDev } from "./provider/models"
 import type { ToolRegistry } from "./tool/registry"
@@ -116,8 +116,6 @@ export interface AgentContext {
 
   sessionPrompt: SessionPrompt.SessionPromptService
 
-
-  agents: Agent.AgentService
   provider: Provider.ProviderService
   modelsDev: ModelsDev.ModelsDevService
   toolRegistry: ToolRegistry.ToolRegistryService

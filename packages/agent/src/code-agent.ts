@@ -51,7 +51,7 @@ import { SessionStatus } from "./session"
 import type { Settings } from "./settings"
 
 
-import { Agent } from "./agent"
+
 import { Provider } from "./provider/provider"
 import { ModelsDev } from "./provider/models"
 import { Skill } from "./skill"
@@ -448,7 +448,7 @@ export class CodeAgent extends EventEmitter {
         ctx.sessionPrompt = new SessionPrompt.SessionPromptService()
 
 
-        ctx.agents = new Agent.AgentService(ctx)
+
         ctx.modelsDev = new ModelsDev.ModelsDevService(ctx)
         ctx.provider = new Provider.ProviderService(ctx)
         ctx.toolRegistry = new ToolRegistry.ToolRegistryService(ctx)
@@ -1043,9 +1043,9 @@ export class CodeAgent extends EventEmitter {
         onStructuredOutput: (v: unknown) => void
     }): Promise<"stop" | "compact" | "continue"> {
         const { context, session, sessionID, abort, model, lastUser, lastFinished, step } = input
-        const agent = await context.agents.get(lastUser.agent)
-        const maxSteps = agent.steps ?? Infinity
-        const isLastStep = step >= maxSteps
+        const agent = { name: "build", mode: "primary" as const, options: {} }
+        const maxSteps = Infinity
+        const isLastStep = false
 
         const msgs = await SessionPrompt.insertReminders({ context, messages: input.msgs, agent, session })
 

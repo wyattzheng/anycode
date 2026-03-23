@@ -6,6 +6,7 @@ import { Provider } from "../provider/provider"
 import { VendorRegistry } from "../provider/vendors"
 import { Token } from "../util/fn"
 import { LLMRunner } from "../llm-runner"
+import PROMPT_COMPACTION from "../prompt/compaction.txt"
 
 export namespace ContextCompaction {
 
@@ -112,10 +113,9 @@ export namespace ContextCompaction {
       }
     }
 
-    const agent = (await context.agents.get("compaction"))!
-    const model = agent.model
-      ? await context.provider.getModel(agent.model.providerID, agent.model.modelID)
-      : await context.provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
+    // Agent mode system removed — use the user message's model directly
+    const agent = { name: "compaction", mode: "primary" as const, prompt: PROMPT_COMPACTION, options: {} }
+    const model = await context.provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
     const msg = (await context.memory.updateMessage({
       id: MessageID.ascending(),
       role: "assistant",
