@@ -37,7 +37,7 @@ export namespace SystemPrompt {
   }
 
   export async function skills(context: AgentContext) {
-    const list = await context.skill.available()
+    const list = await context.skill.all()
 
     return [
       "Skills provide specialized instructions and workflows for specific tasks.",
