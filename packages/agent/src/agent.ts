@@ -2,20 +2,13 @@ import type { AgentContext } from "./context"
 import z from "zod"
 import { Provider } from "./provider/provider"
 import { ModelID, ProviderID } from "./provider/schema"
-import { generateObject, streamObject, type ModelMessage } from "ai"
-import { SystemPrompt } from "./prompt"
-import { Truncate } from "./tool/truncation"
-import { Auth } from "./util/auth"
-import { VendorRegistry } from "./provider/vendors"
 
-import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 
 import { mergeDeep, pipe, sortBy, values } from "remeda"
-import * as path from "./util/path"
 
 export namespace Agent {
   export const Info = z
@@ -93,65 +86,6 @@ export namespace Agent {
       return primaryVisible.name
     }
 
-    /** Generate a new agent configuration from description */
-    async generate(input: {
-      description: string
-      model?: { providerID: ProviderID; modelID: ModelID }
-    }): Promise<{ identifier: string; whenToUse: string; systemPrompt: string }> {
-      const cfg = this.context.config
-      const defaultModel = input.model ?? (await this.context.provider.defaultModel())
-      const model = await this.context.provider.getModel(defaultModel.providerID, defaultModel.modelID)
-      const language = await this.context.provider.getLanguage(model)
-
-      const system = [PROMPT_GENERATE]
-      const existing = await this.listSorted()
-
-      const params = {
-        experimental_telemetry: {
-          isEnabled: cfg.experimental?.openTelemetry,
-          metadata: {
-            userId: cfg.username ?? "unknown",
-          },
-        },
-        temperature: 0.3,
-        messages: [
-          ...system.map(
-            (item): ModelMessage => ({
-              role: "system",
-              content: item,
-            }),
-          ),
-          {
-            role: "user",
-            content: `Create an agent configuration based on this request: \"${input.description}\".\n\nIMPORTANT: The following identifiers already exist and must NOT be used: ${existing.map((i) => i.name).join(", ")}\n  Return ONLY the JSON object, no other text, do not wrap in backticks`,
-          },
-        ],
-        model: language,
-        schema: z.object({
-          identifier: z.string(),
-          whenToUse: z.string(),
-          systemPrompt: z.string(),
-        }),
-      } satisfies Parameters<typeof generateObject>[0]
-
-      if (defaultModel.providerID === "openai" && (await Auth.get(defaultModel.providerID))?.type === "oauth") {
-        const result = streamObject({
-          ...params,
-          providerOptions: VendorRegistry.getModelProvider({ model }).wrapProviderOptions({
-            instructions: SystemPrompt.instructions(model),
-            store: false,
-          }),
-          onError: () => {},
-        })
-        for await (const part of result.fullStream) {
-          if (part.type === "error") throw part.error
-        }
-        return result.object
-      }
-
-      const result = await generateObject(params)
-      return result.object
-    }
 
     private async initAgents(): Promise<Record<string, Info>> {
       const context = this.context
