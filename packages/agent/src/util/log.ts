@@ -1,8 +1,6 @@
-import z from "zod"
 import { type Logger, consoleLogger } from "@any-code/utils"
 
-export const LogLevel = z.enum(["DEBUG", "INFO", "WARN", "ERROR"]).meta({ ref: "LogLevel", description: "Log level" })
-export type LogLevel = z.infer<typeof LogLevel>
+export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR"
 
 const levelPriority: Record<LogLevel, number> = {
     DEBUG: 0,
