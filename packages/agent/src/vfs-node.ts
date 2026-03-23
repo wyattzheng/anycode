@@ -35,12 +35,21 @@ export class NodeFS implements VFS {
         }
     }
 
+    async isDir(p: string): Promise<boolean> {
+        const s = await this.stat(p)
+        return s?.isDirectory ?? false
+    }
+
     async readText(p: string): Promise<string> {
         return fs.readFile(p, "utf-8")
     }
 
     async readBytes(p: string): Promise<Uint8Array> {
         return fs.readFile(p)
+    }
+
+    async readJson<T = any>(p: string): Promise<T> {
+        return JSON.parse(await this.readText(p))
     }
 
     async readDir(p: string): Promise<VFSDirEntry[]> {
@@ -63,6 +72,10 @@ export class NodeFS implements VFS {
             }
             throw e
         }
+    }
+
+    async writeJson(p: string, data: unknown): Promise<void> {
+        await this.write(p, JSON.stringify(data, null, 2))
     }
 
     async mkdir(p: string): Promise<void> {

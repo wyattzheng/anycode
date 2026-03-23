@@ -27,10 +27,13 @@ export interface VFSDirEntry {
 export interface VFS {
     exists(path: string): Promise<boolean>
     stat(path: string): Promise<VFSStat | undefined>
+    isDir(path: string): Promise<boolean>
     readText(path: string): Promise<string>
     readBytes(path: string): Promise<Uint8Array>
+    readJson<T = any>(path: string): Promise<T>
     readDir(path: string): Promise<VFSDirEntry[]>
     write(path: string, content: string | Uint8Array): Promise<void>
+    writeJson(path: string, data: unknown): Promise<void>
     mkdir(path: string): Promise<void>
     remove(path: string): Promise<void>
     glob(pattern: string, options: {

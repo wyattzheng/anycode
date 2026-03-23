@@ -6,7 +6,7 @@ import { withStatics } from "../util/schema"
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core"
 import { Timestamps } from "../storage"
 import type { AgentContext } from "../context"
-import { Filesystem } from "../util/filesystem"
+
 import * as path from "../util/path"
 
 
@@ -141,7 +141,7 @@ export class FileTimeService {
     if (Flag.OPENCODE_DISABLE_FILETIME_CHECK === true) return
     const time = this.get(sessionID, filepath)
     if (!time) throw new Error(`You must read file ${filepath} before overwriting it. Use the Read tool first`)
-    const s = await Filesystem.stat(context, filepath)
+    const s = await context.fs.stat(filepath)
     const mtimeMs = s?.mtimeMs
     if (mtimeMs && mtimeMs > time.getTime() + 50) {
       const mtime = new Date(mtimeMs)
@@ -274,7 +274,7 @@ export namespace Project {
     const data = fromRow(row)
     const valid: string[] = []
     for (const dir of data.sandboxes) {
-      const s = await Filesystem.stat(context, dir)
+      const s = await context.fs.stat(dir)
       if (s?.isDirectory) valid.push(dir)
     }
     return valid

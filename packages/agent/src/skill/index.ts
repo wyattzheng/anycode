@@ -2,8 +2,7 @@ import type { AgentContext } from "../context"
 import * as path from "../util/path"
 import z from "zod"
 import { ConfigMarkdown } from "../util/markdown"
-import { Filesystem } from "../util/filesystem"
-import { Glob } from "../util/glob"
+
 import { pathToFileURL } from "url"
 
 // ── Skill ───────────────────────────────────────────────────────────────────
@@ -76,23 +75,27 @@ export namespace Skill {
     }
 
     const scan = async (pattern: string, cwd: string) => {
-      const matches = await Glob.scan(context, pattern, { cwd, absolute: true, include: "file", dot: true, symlink: true }).catch(() => [] as string[])
+      const matches = await context.fs.glob(pattern, { cwd, absolute: true, dot: true, follow: true, nodir: true }).catch(() => [] as string[])
       await Promise.all(matches.map(addSkill))
     }
 
     // 1. Scan project-level skill directories (.claude/skills/, .agents/skills/, etc.)
-    for await (const root of Filesystem.up(context, {
-      targets: SKILL_DIRS,
-      start: context.directory,
-      stop: context.worktree,
-    })) {
-      await scan(SKILL_GLOB, root)
+    let current = context.directory
+    while (true) {
+      for (const target of SKILL_DIRS) {
+        const search = path.join(current, target)
+        if (await context.fs.exists(search)) await scan(SKILL_GLOB, search)
+      }
+      if (context.worktree === current) break
+      const parent = path.dirname(current)
+      if (parent === current) break
+      current = parent
     }
 
     // 2. Scan additional skill paths from config
     for (const skillPath of context.config.skills?.paths ?? []) {
       const resolved = path.isAbsolute(skillPath) ? skillPath : path.join(context.directory, skillPath)
-      if (!(await Filesystem.isDir(context, resolved))) {
+      if (!(await context.fs.isDir(resolved))) {
         log.warn("skill path not found", { path: resolved })
         continue
       }

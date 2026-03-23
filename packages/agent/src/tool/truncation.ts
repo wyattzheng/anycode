@@ -2,8 +2,8 @@ import * as path from "../util/path"
 import { Identifier } from "../util/id"
 
 import { Scheduler } from "../util/scheduler"
-import { Filesystem } from "../util/filesystem"
-import { Glob } from "../util/glob"
+
+
 import { ToolID } from "./schema"
 import type { AgentContext } from "../context"
 
@@ -39,10 +39,10 @@ export namespace Truncate {
   export async function cleanup(context?: AgentContext) {
     if (!context) return
     const cutoff = Identifier.timestamp(Identifier.create("tool", false, Date.now() - RETENTION_MS))
-    const entries = await Glob.scan(context, "tool_*", { cwd: dir(context), include: "file" }).catch(() => [] as string[])
+    const entries = await context.fs.glob("tool_*", { cwd: dir(context), nodir: true }).catch(() => [] as string[])
     for (const entry of entries) {
       if (Identifier.timestamp(entry) >= cutoff) continue
-      await Filesystem.remove(context, path.join(dir(context), entry)).catch(() => {})
+      await context.fs.remove(path.join(dir(context), entry)).catch(() => {})
     }
   }
 
@@ -90,7 +90,7 @@ export namespace Truncate {
 
     const id = ToolID.ascending()
     const filepath = path.join(dir(context), id)
-    await Filesystem.write(context, filepath, text)
+    await context.fs.write(filepath, text)
 
     const hint = `The tool call succeeded but the output was truncated. Full output saved to: ${filepath}\nUse Grep to search the full content or Read with offset/limit to view specific sections.`
     const message =

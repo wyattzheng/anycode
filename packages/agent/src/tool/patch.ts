@@ -1,7 +1,7 @@
 import type { AgentContext } from "../context"
 import z from "zod"
 import * as path from "../util/path"
-import { Filesystem } from "../util/filesystem"
+
 
 export namespace Patch {
 
@@ -310,7 +310,7 @@ export namespace Patch {
     // Read original file content
     let originalContent: string
     try {
-      originalContent = await Filesystem.readText(context, filePath)
+      originalContent = await context.fs.readText(filePath)
     } catch (error) {
       throw new Error(`Failed to read file ${filePath}: ${error}`)
     }
@@ -528,16 +528,16 @@ export namespace Patch {
           // Create parent directories
           const addDir = path.dirname(hunk.path)
           if (addDir !== "." && addDir !== "/") {
-            await Filesystem.mkdir(context, addDir)
+            await context.fs.mkdir(addDir)
           }
 
-          await Filesystem.write(context, hunk.path, hunk.contents)
+          await context.fs.write(hunk.path, hunk.contents)
           added.push(hunk.path)
           context.log.create({ service: "patch" }).info(`Added file: ${hunk.path}`)
           break
 
         case "delete":
-          await Filesystem.remove(context, hunk.path)
+          await context.fs.remove(hunk.path)
           deleted.push(hunk.path)
           context.log.create({ service: "patch" }).info(`Deleted file: ${hunk.path}`)
           break
@@ -549,16 +549,16 @@ export namespace Patch {
             // Handle file move
             const moveDir = path.dirname(hunk.move_path)
             if (moveDir !== "." && moveDir !== "/") {
-              await Filesystem.mkdir(context, moveDir)
+              await context.fs.mkdir(moveDir)
             }
 
-            await Filesystem.write(context, hunk.move_path, fileUpdate.content)
-            await Filesystem.remove(context, hunk.path)
+            await context.fs.write(hunk.move_path, fileUpdate.content)
+            await context.fs.remove(hunk.path)
             modified.push(hunk.move_path)
             context.log.create({ service: "patch" }).info(`Moved file: ${hunk.path} -> ${hunk.move_path}`)
           } else {
             // Regular update
-            await Filesystem.write(context, hunk.path, fileUpdate.content)
+            await context.fs.write(hunk.path, fileUpdate.content)
             modified.push(hunk.path)
             context.log.create({ service: "patch" }).info(`Updated file: ${hunk.path}`)
           }
@@ -624,7 +624,7 @@ export namespace Patch {
               // For delete, we need to read the current content
               const deletePath = path.resolve(effectiveCwd, hunk.path)
               try {
-                const content = await Filesystem.readText(context, deletePath)
+                const content = await context.fs.readText(deletePath)
                 changes.set(resolvedPath, {
                   type: "delete",
                   content,

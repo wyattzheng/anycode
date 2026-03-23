@@ -3,7 +3,7 @@ import * as path from "../util/path"
 import z from "zod"
 import { Installation } from "../util/installation"
 import { Flag } from "../util/flag"
-import { Filesystem } from "../util/filesystem"
+
 
 // Try to import bundled snapshot (generated at build time)
 // Falls back to undefined in dev mode when snapshot doesn't exist
@@ -102,7 +102,7 @@ export namespace ModelsDev {
   async function initModels(context: AgentContext) {
       let data: Record<string, unknown> | undefined
       try {
-        data = await Filesystem.readJson(context, Flag.OPENCODE_MODELS_PATH ?? filepath(context)).catch((): any => undefined)
+        data = await context.fs.readJson(Flag.OPENCODE_MODELS_PATH ?? filepath(context)).catch((): any => undefined)
       } catch {}
       if (data) return { data }
       // @ts-ignore
@@ -133,7 +133,7 @@ export namespace ModelsDev {
     })
     if (result && result.ok) {
       try {
-        await Filesystem.write(context, filepath(context), await result.text())
+        await context.fs.write(filepath(context), await result.text())
       } catch (e) {
         context.log.create({ service: "models.dev" }).warn("Failed to write models cache", { error: e })
       }

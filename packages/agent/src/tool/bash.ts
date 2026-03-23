@@ -3,7 +3,7 @@ import { Tool } from "./tool"
 import * as path from "../util/path"
 import DESCRIPTION from "./bash.txt"
 
-import { Filesystem } from "../util/filesystem"
+
 import { Flag } from "../util/flag"
 
 import { Truncate } from "./truncation"
@@ -126,12 +126,12 @@ export const BashTool = Tool.define("bash", async (initCtx?: Tool.InitContext) =
         if (["cd", "rm", "cp", "mv", "mkdir", "touch", "chmod", "chown", "cat"].includes(name)) {
           for (const arg of args) {
             if (arg.startsWith("-") || (name === "chmod" && arg.startsWith("+"))) continue
-            const resolved = Filesystem.resolve(path.resolve(cwd, arg))
+            const resolved = path.resolve(cwd, arg)
             const log = ctx.log.create({ service: "bash-tool" })
             log.info("resolved path", { arg, resolved })
             if (resolved) {
               if (!ctx.containsPath(resolved)) {
-                const dir = (await Filesystem.isDir(ctx, resolved)) ? resolved : path.dirname(resolved)
+                const dir = (await ctx.fs.isDir(resolved)) ? resolved : path.dirname(resolved)
                 directories.add(dir)
               }
             }

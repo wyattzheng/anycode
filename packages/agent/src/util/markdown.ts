@@ -1,7 +1,7 @@
 import type { AgentContext } from "../context"
 import { NamedError } from "./error"
 import { z } from "zod"
-import { Filesystem } from "../util/filesystem"
+
 
 /** Simple frontmatter parser — replaces gray-matter (CJS, depends on fs) */
 function parseFrontmatter(input: string): { data: Record<string, string>; content: string } {
@@ -86,7 +86,7 @@ export namespace ConfigMarkdown {
   }
 
   export async function parse(context: AgentContext, filePath: string) {
-    const template = await Filesystem.readText(context, filePath)
+    const template = await context.fs.readText(filePath)
 
     try {
       return parseFrontmatter(template)

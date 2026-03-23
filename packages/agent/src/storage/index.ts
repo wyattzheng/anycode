@@ -213,10 +213,8 @@ CREATE TABLE IF NOT EXISTS "control_account" (
 
 import type { AgentContext } from "../context"
 import fs from "fs/promises"
-import { Filesystem } from "../util/filesystem"
 import { lazy } from "../util/lazy"
 import { Lock } from "../util/lock"
-import { Glob } from "../util/glob"
 
 
 export namespace Storage {
@@ -236,30 +234,30 @@ export namespace Storage {
   const MIGRATIONS: Migration[] = [
     async (context, dir) => {
       const project = path.resolve(dir, "../project")
-      if (!(await Filesystem.isDir(context, project))) return
-      const projectDirs = await Glob.scan(context, "*", {
+      if (!(await context.fs.isDir(project))) return
+      const projectDirs = await context.fs.glob("*", {
         cwd: project,
-        include: "all",
+        nodir: false,
       })
       for (const projectDir of projectDirs) {
         const fullPath = path.join(project, projectDir)
-        if (!(await Filesystem.isDir(context, fullPath))) continue
+        if (!(await context.fs.isDir(fullPath))) continue
         getLog(context).info(`migrating project ${projectDir}`)
         let projectID = projectDir
         const fullProjectDir = path.join(project, projectDir)
         let worktree = "/"
 
         if (projectID !== "global") {
-          for (const msgFile of await Glob.scan(context, "storage/session/message/*/*.json", {
+          for (const msgFile of await context.fs.glob("storage/session/message/*/*.json", {
             cwd: path.join(project, projectDir),
             absolute: true,
           })) {
-            const json = await Filesystem.readJson<any>(context, msgFile)
+            const json = await context.fs.readJson<any>(msgFile)
             worktree = json.path?.root
             if (worktree) break
           }
           if (!worktree) continue
-          if (!(await Filesystem.isDir(context, worktree))) continue
+          if (!(await context.fs.isDir(worktree))) continue
           const result = await context.git.run(["rev-list", "--max-parents=0", "--all"], {
             cwd: worktree,
           })
@@ -272,7 +270,7 @@ export namespace Storage {
           if (!id) continue
           projectID = id
 
-          await Filesystem.writeJson(context, path.join(dir, "project", projectID + ".json"), {
+          await context.fs.writeJson(path.join(dir, "project", projectID + ".json"), {
             id,
             vcs: "git",
             worktree,
@@ -283,7 +281,7 @@ export namespace Storage {
           })
 
           getLog(context).info(`migrating sessions for project ${projectID}`)
-          for (const sessionFile of await Glob.scan(context, "storage/session/info/*.json", {
+          for (const sessionFile of await context.fs.glob("storage/session/info/*.json", {
             cwd: fullProjectDir,
             absolute: true,
           })) {
@@ -292,10 +290,10 @@ export namespace Storage {
               sessionFile,
               dest,
             })
-            const session = await Filesystem.readJson<any>(context, sessionFile)
-            await Filesystem.writeJson(context, dest, session)
+            const session = await context.fs.readJson<any>(sessionFile)
+            await context.fs.writeJson(dest, session)
             getLog(context).info(`migrating messages for session ${session.id}`)
-            for (const msgFile of await Glob.scan(context, `storage/session/message/${session.id}/*.json`, {
+            for (const msgFile of await context.fs.glob(`storage/session/message/${session.id}/*.json`, {
               cwd: fullProjectDir,
               absolute: true,
             })) {
@@ -304,21 +302,21 @@ export namespace Storage {
                 msgFile,
                 dest,
               })
-              const message = await Filesystem.readJson<any>(context, msgFile)
-              await Filesystem.writeJson(context, dest, message)
+              const message = await context.fs.readJson<any>(msgFile)
+              await context.fs.writeJson(dest, message)
 
               getLog(context).info(`migrating parts for message ${message.id}`)
-              for (const partFile of await Glob.scan(context, `storage/session/part/${session.id}/${message.id}/*.json`, {
+              for (const partFile of await context.fs.glob(`storage/session/part/${session.id}/${message.id}/*.json`, {
                 cwd: fullProjectDir,
                 absolute: true,
               })) {
                 const dest = path.join(dir, "part", message.id, path.basename(partFile))
-                const part = await Filesystem.readJson(context, partFile)
+                const part = await context.fs.readJson(partFile)
                 getLog(context).info("copying", {
                   partFile,
                   dest,
                 })
-                await Filesystem.writeJson(context, dest, part)
+                await context.fs.writeJson(dest, part)
               }
             }
           }
@@ -326,16 +324,16 @@ export namespace Storage {
       }
     },
     async (context, dir) => {
-      for (const item of await Glob.scan(context, "session/*/*.json", {
+      for (const item of await context.fs.glob("session/*/*.json", {
         cwd: dir,
         absolute: true,
       })) {
-        const session = await Filesystem.readJson<any>(context, item)
+        const session = await context.fs.readJson<any>(item)
         if (!session.projectID) continue
         if (!session.summary?.diffs) continue
         const { diffs } = session.summary
-        await Filesystem.write(context, path.join(dir, "session_diff", session.id + ".json"), JSON.stringify(diffs))
-        await Filesystem.writeJson(context, path.join(dir, "session", session.projectID, session.id + ".json"), {
+        await context.fs.write(path.join(dir, "session_diff", session.id + ".json"), JSON.stringify(diffs))
+        await context.fs.writeJson(path.join(dir, "session", session.projectID, session.id + ".json"), {
           ...session,
           summary: {
             additions: diffs.reduce((sum: any, x: any) => sum + x.additions, 0),
@@ -348,14 +346,14 @@ export namespace Storage {
 
   async function getDir(context: AgentContext) {
     const dir = path.join(context.dataPath, "storage")
-    const migration = await Filesystem.readJson<string>(context, path.join(dir, "migration"))
+    const migration = await context.fs.readJson<string>(path.join(dir, "migration"))
       .then((x) => parseInt(x))
       .catch(() => 0)
     for (let index = migration; index < MIGRATIONS.length; index++) {
       getLog(context).info("running migration", { index })
       const migrationFn = MIGRATIONS[index]
       await migrationFn(context, dir).catch(() => getLog(context).error("failed to run migration", { index }))
-      await Filesystem.write(context, path.join(dir, "migration"), (index + 1).toString())
+      await context.fs.write(path.join(dir, "migration"), (index + 1).toString())
     }
     return dir
   }
@@ -373,7 +371,7 @@ export namespace Storage {
     const target = path.join(dir, ...key) + ".json"
     return withErrorHandling(async () => {
       using _ = await Lock.read(target)
-      const result = await Filesystem.readJson<T>(context, target)
+      const result = await context.fs.readJson<T>(target)
       return result as T
     })
   }
@@ -383,9 +381,9 @@ export namespace Storage {
     const target = path.join(dir, ...key) + ".json"
     return withErrorHandling(async () => {
       using _ = await Lock.write(target)
-      const content = await Filesystem.readJson<T>(context, target)
+      const content = await context.fs.readJson<T>(target)
       fn(content as T)
-      await Filesystem.writeJson(context, target, content)
+      await context.fs.writeJson(target, content)
       return content
     })
   }
@@ -395,7 +393,7 @@ export namespace Storage {
     const target = path.join(dir, ...key) + ".json"
     return withErrorHandling(async () => {
       using _ = await Lock.write(target)
-      await Filesystem.writeJson(context, target, content)
+      await context.fs.writeJson(target, content)
     })
   }
 
@@ -413,9 +411,9 @@ export namespace Storage {
   export async function list(context: AgentContext, prefix: string[]) {
     const dir = await getDir(context)
     try {
-      const result = await Glob.scan(context, "**/*", {
+      const result = await context.fs.glob("**/*", {
         cwd: path.join(dir, ...prefix),
-        include: "file",
+        nodir: true,
       }).then((results) => results.map((x) => [...prefix, ...x.slice(0, -5).split(path.sep)]))
       result.sort()
       return result

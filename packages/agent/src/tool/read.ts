@@ -1,6 +1,6 @@
 import z from "zod"
 import * as path from "../util/path"
-import { Filesystem } from "../util/filesystem"
+
 import { Tool } from "./tool"
 import { LSP } from "../util/lsp"
 

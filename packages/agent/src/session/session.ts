@@ -2,7 +2,7 @@ import * as path from "../util/path"
 
 
 import z from "zod"
-import { Filesystem } from "../util/filesystem"
+
 import { SessionID, MessageID, PartID } from "./schema"
 import { MessageV2 } from "../memory/message-v2"
 
@@ -168,7 +168,7 @@ export namespace SessionPrompt {
         seen.add(name)
         const filepath = path.resolve(context.worktree, name)
 
-        const stats = await Filesystem.stat(context, filepath).catch((): any => undefined as any)
+        const stats = await context.fs.stat(filepath).catch((): any => undefined as any)
         if (!stats) {
           // Agent lookup removed (agent mode system removed)
           return
@@ -394,7 +394,7 @@ export namespace SessionPrompt {
               // have to normalize, symbol search returns absolute paths
               // Decode the pathname since URL constructor doesn't automatically decode it
               const filepath = fileURLToPath(part.url)
-              const s = await Filesystem.stat(context, filepath)
+              const s = await context.fs.stat(filepath)
 
               if (s?.isDirectory) {
                 part.mime = "application/x-directory"
@@ -556,7 +556,7 @@ export namespace SessionPrompt {
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "file",
-                  url: `data:${part.mime};base64,` + Buffer.from(await Filesystem.readBytes(context, filepath)).toString("base64"),
+                  url: `data:${part.mime};base64,` + Buffer.from(await context.fs.readBytes(filepath)).toString("base64"),
                   mime: part.mime,
                   filename: part.filename!,
                   source: part.source,
