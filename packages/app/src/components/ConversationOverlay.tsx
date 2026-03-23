@@ -510,7 +510,10 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
                     setBusy(true);
                     break;
                 case "chat.event":
-                    if (data.event) handleEvent(data.event);
+                    if (data.event) {
+                        setBusy(true);
+                        handleEvent(data.event);
+                    }
                     break;
                 case "chat.done":
                     setBusy(false);
