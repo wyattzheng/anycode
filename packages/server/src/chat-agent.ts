@@ -459,22 +459,67 @@ export class ClaudeCodeAgent implements IChatAgent {
 
 // ── CodexAgent ───────────────────────────────────────────────────────────
 
+import { spawn, type ChildProcess } from "child_process"
+import { createInterface, type Interface as ReadlineInterface } from "readline"
+import { createRequire } from "module"
+
 /**
- * CodexAgent — wraps @openai/codex-sdk.
+ * Find the codex CLI binary path from the installed @openai/codex package.
+ */
+function findCodexBinaryPath(): string {
+  const moduleReq = createRequire(import.meta.url)
+  const { platform, arch } = process
+  const PLATFORM_PACKAGE: Record<string, string> = {
+    "x86_64-unknown-linux-musl": "@openai/codex-linux-x64",
+    "aarch64-unknown-linux-musl": "@openai/codex-linux-arm64",
+    "x86_64-apple-darwin": "@openai/codex-darwin-x64",
+    "aarch64-apple-darwin": "@openai/codex-darwin-arm64",
+    "x86_64-pc-windows-msvc": "@openai/codex-win32-x64",
+    "aarch64-pc-windows-msvc": "@openai/codex-win32-arm64",
+  }
+  let triple: string | null = null
+  if (platform === "linux" || platform === "android") {
+    triple = arch === "x64" ? "x86_64-unknown-linux-musl" : arch === "arm64" ? "aarch64-unknown-linux-musl" : null
+  } else if (platform === "darwin") {
+    triple = arch === "x64" ? "x86_64-apple-darwin" : arch === "arm64" ? "aarch64-apple-darwin" : null
+  } else if (platform === "win32") {
+    triple = arch === "x64" ? "x86_64-pc-windows-msvc" : arch === "arm64" ? "aarch64-pc-windows-msvc" : null
+  }
+  if (!triple) throw new Error(`Unsupported platform: ${platform} (${arch})`)
+  const pkg = PLATFORM_PACKAGE[triple]
+  if (!pkg) throw new Error(`No package for: ${triple}`)
+  const { join, dirname } = require("path")
+  const codexPkgJson = moduleReq.resolve("@openai/codex/package.json")
+  const codexReq = createRequire(codexPkgJson)
+  const platformPkgJson = codexReq.resolve(`${pkg}/package.json`)
+  const vendorRoot = join(dirname(platformPkgJson), "vendor")
+  const binaryName = platform === "win32" ? "codex.exe" : "codex"
+  return join(vendorRoot, triple, "codex", binaryName)
+}
+
+/**
+ * CodexAgent — uses `codex app-server` with JSON-RPC 2.0 over stdio.
  *
- * Uses dynamic import to avoid hard dependency on the SDK package.
- * Spawns the Codex CLI via the SDK, maps ThreadEvent → ChatAgentEvent.
+ * This provides true token-level streaming for agent text responses
+ * via `item/agentMessage/delta` notifications, unlike the SDK's `codex exec`
+ * which buffers the entire agent_message before emitting.
  */
 export class CodexAgent implements IChatAgent {
   readonly name = "Codex Agent"
   readonly sessionId: string
   private config: ChatAgentConfig
-  private abortController: AbortController | null = null
   private eventHandlers = new Map<string, Array<(data: any) => void>>()
-  private _codex: any = null
-  private _thread: any = null
   private _workingDirectory: string = ""
-  private _oauthProviderPrefix: string = ""
+
+  // App-server process state
+  private _child: ChildProcess | null = null
+  private _rl: ReadlineInterface | null = null
+  private _rpcId = 0
+  private _pendingRequests = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>()
+  private _notificationListeners: Array<(notification: any) => void> = []
+  private _initialized = false
+  private _threadId: string | null = null
+  private _turnActive = false
 
   constructor(config: ChatAgentConfig) {
     this.config = config
@@ -482,7 +527,7 @@ export class CodexAgent implements IChatAgent {
   }
 
   async ensureInit(): Promise<void> {
-    // Codex handles initialization internally when starting a thread
+    await this._ensureAppServer()
   }
 
   on(event: string, handler: (data: any) => void): void {
@@ -495,248 +540,396 @@ export class CodexAgent implements IChatAgent {
     this._workingDirectory = dir
   }
 
-  getStats(): any {
-    return null
+  getStats(): any { return null }
+
+  async getSessionMessages(_opts: { limit: number }): Promise<any> { return [] }
+
+  // ── App-server lifecycle ──
+
+  private async _ensureAppServer(): Promise<void> {
+    if (this._child && !this._child.killed) return
+
+    let codexBin: string
+    try {
+      codexBin = findCodexBinaryPath()
+    } catch {
+      throw new Error("Codex CLI (@openai/codex) is not installed.")
+    }
+
+    // Build environment
+    const env: Record<string, string> = {}
+    for (const [k, v] of Object.entries(process.env)) {
+      if (v !== undefined) env[k] = v
+    }
+
+    const isOAuth = this.config.apiKey?.startsWith("oauth:")
+    const isChatGptOAuth = this.config.apiKey === "chatgpt-oauth"
+
+    if (isOAuth) {
+      const parts = this.config.apiKey!.slice("oauth:".length).split(":")
+      const fs = await import("fs")
+      const path = await import("path")
+      const os = await import("os")
+      const codexHome = path.join(os.homedir(), ".codex-oauth")
+      fs.mkdirSync(codexHome, { recursive: true })
+      fs.writeFileSync(
+        path.join(codexHome, "auth.json"),
+        JSON.stringify({
+          auth_mode: "chatgpt",
+          OPENAI_API_KEY: null,
+          tokens: {
+            id_token: parts[2] || "",
+            access_token: parts[0],
+            ...(parts[1] ? { refresh_token: parts[1] } : {}),
+          },
+          last_refresh: new Date().toISOString(),
+        }),
+      )
+      env.CODEX_HOME = codexHome
+    } else if (isChatGptOAuth) {
+      // Use CODEX_HOME from env (mounted auth.json)
+    } else {
+      if (this.config.apiKey) env.CODEX_API_KEY = this.config.apiKey
+    }
+
+    const args = ["app-server", "--listen", "stdio://", "--session-source", "exec"]
+    if (!isChatGptOAuth && !isOAuth && this.config.baseUrl) {
+      args.push("--config", `openai_base_url="${this.config.baseUrl}"`)
+    }
+
+    console.log(`[CodexAgent] Starting app-server: ${codexBin} ${args.join(" ")}`)
+    this._child = spawn(codexBin, args, { env, stdio: ["pipe", "pipe", "pipe"] })
+
+    this._child.stderr?.on("data", (chunk: Buffer) => {
+      const msg = chunk.toString().trim()
+      if (msg) console.log(`[CodexAgent stderr] ${msg}`)
+    })
+
+    this._child.on("exit", (code, signal) => {
+      console.log(`[CodexAgent] app-server exited: code=${code} signal=${signal}`)
+      this._child = null
+      this._rl = null
+      this._initialized = false
+      this._threadId = null
+      // Reject all pending requests
+      for (const [, pending] of this._pendingRequests) {
+        pending.reject(new Error("app-server exited"))
+      }
+      this._pendingRequests.clear()
+    })
+
+    this._rl = createInterface({ input: this._child.stdout!, crlfDelay: Infinity })
+    this._rl.on("line", (line: string) => {
+      let msg: any
+      try {
+        msg = JSON.parse(line)
+      } catch {
+        return
+      }
+
+      // JSON-RPC response (has id + result/error)
+      if ("id" in msg && (("result" in msg) || ("error" in msg))) {
+        const pending = this._pendingRequests.get(msg.id)
+        if (pending) {
+          this._pendingRequests.delete(msg.id)
+          if (msg.error) {
+            pending.reject(new Error(msg.error.message || JSON.stringify(msg.error)))
+          } else {
+            pending.resolve(msg.result)
+          }
+        }
+        return
+      }
+
+      // JSON-RPC notification (has method + params, no id)
+      if ("method" in msg) {
+        for (const listener of this._notificationListeners) {
+          listener(msg)
+        }
+        return
+      }
+
+      // JSON-RPC server request (has method + params + id) — auto-approve
+      if ("method" in msg && "id" in msg) {
+        this._autoApproveServerRequest(msg)
+      }
+    })
+
+    // Send initialize
+    await this._sendRequest("initialize", {
+      clientInfo: { name: "anycode-server", title: "AnyCode Server", version: "1.0.0" },
+      capabilities: { experimentalApi: false },
+    })
+
+    this._initialized = true
+    console.log("[CodexAgent] app-server initialized")
   }
 
-  async getSessionMessages(_opts: { limit: number }): Promise<any> {
-    return []
+  private _sendRequest(method: string, params: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+      if (!this._child || this._child.killed) {
+        return reject(new Error("app-server not running"))
+      }
+      const id = ++this._rpcId
+      this._pendingRequests.set(id, { resolve, reject })
+      const msg = JSON.stringify({ jsonrpc: "2.0", id, method, params })
+      this._child.stdin!.write(msg + "\n")
+    })
   }
+
+  private _autoApproveServerRequest(msg: any): void {
+    // Auto-approve all approval requests (we run with full access)
+    const id = msg.id
+    let result: any = {}
+    if (msg.method === "item/commandExecution/requestApproval") {
+      result = { decision: "approve" }
+    } else if (msg.method === "item/fileChange/requestApproval") {
+      result = { decision: "approve" }
+    } else if (msg.method === "item/permissions/requestApproval") {
+      result = { decision: "approve" }
+    } else if (msg.method === "account/chatgptAuthTokens/refresh") {
+      // Can't refresh — just return empty
+      result = { tokens: null }
+    } else {
+      // Unknown server request — respond with empty result
+      result = {}
+    }
+    if (this._child && !this._child.killed) {
+      this._child.stdin!.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\n")
+    }
+  }
+
+  // ── Chat ──
 
   async *chat(input: string): AsyncGenerator<ChatAgentEvent, void, unknown> {
-    let Codex: any
     try {
-      const sdk = await import("@openai/codex-sdk")
-      Codex = sdk.Codex
-    } catch {
-      yield {
-        type: "error",
-        error: "Codex SDK (@openai/codex-sdk) is not installed. " +
-          "Install it with: npm install @openai/codex-sdk",
-      }
-      yield { type: "done" }
+      await this._ensureAppServer()
+    } catch (err: any) {
+      yield { type: "error" as const, error: err?.message ?? String(err) }
+      yield { type: "done" as const }
       return
     }
 
-    this.abortController = new AbortController()
-
     try {
-      // Lazily create the Codex instance
-      if (!this._codex) {
-        const isOAuth = this.config.apiKey?.startsWith("oauth:")
-        if (isOAuth) {
-          // Format: oauth:<access_token>:<refresh_token>:<id_token>
-          // Write auth.json to a dedicated CODEX_HOME dir and inject via env.
-          const parts = this.config.apiKey!.slice("oauth:".length).split(":")
-          const accessToken = parts[0]
-          const refreshToken = parts[1] || ""
-          const idToken = parts[2] || ""
-
-          const fs = await import("fs")
-          const path = await import("path")
-          const os = await import("os")
-          const codexHome = path.join(os.homedir(), ".codex-oauth")
-          fs.mkdirSync(codexHome, { recursive: true })
-          fs.writeFileSync(
-            path.join(codexHome, "auth.json"),
-            JSON.stringify({
-              auth_mode: "chatgpt",
-              OPENAI_API_KEY: null,
-              tokens: {
-                id_token: idToken,
-                access_token: accessToken,
-                ...(refreshToken ? { refresh_token: refreshToken } : {}),
-              },
-              last_refresh: new Date().toISOString(),
-            }),
-          )
-          // Pass CODEX_HOME via env, don't pass apiKey (let CLI use auth.json)
-          this._codex = new Codex({
-            ...(this.config.baseUrl ? { baseUrl: this.config.baseUrl } : {}),
-            env: { ...process.env, CODEX_HOME: codexHome } as Record<string, string>,
-          })
-        } else {
-          // "chatgpt-oauth" is a sentinel meaning "use OAuth auth from mounted auth.json"
-          // Don't pass apiKey or baseUrl — let CLI use its own defaults for OAuth mode.
-          const skipApiKey = this.config.apiKey === "chatgpt-oauth"
-          this._codex = new Codex({
-            ...(!skipApiKey && this.config.apiKey ? { apiKey: this.config.apiKey } : {}),
-            ...(!skipApiKey && this.config.baseUrl ? { baseUrl: this.config.baseUrl } : {}),
-          })
+      // Start thread if needed
+      if (!this._threadId) {
+        const threadResult = await this._sendRequest("thread/start", {
+          model: this.config.model || "o4-mini",
+          sandbox: "danger-full-access",
+          approvalPolicy: "never",
+          ...(this._workingDirectory ? { cwd: this._workingDirectory } : {}),
+          experimentalRawEvents: false,
+          persistExtendedHistory: false,
+        })
+        this._threadId = threadResult?.threadId ?? null
+        if (!this._threadId) {
+          // Thread ID may come from a thread/started notification
+          // Wait briefly for notifications to arrive
+          await new Promise(r => setTimeout(r, 200))
         }
       }
 
-      // Reuse thread for multi-turn conversation, or start a new one
-      if (!this._thread) {
-        this._thread = this._codex.startThread({
-          model: this.config.model || "o4-mini",
-          ...(this._workingDirectory ? { workingDirectory: this._workingDirectory } : {}),
-          approvalPolicy: "never",
-          sandboxMode: "danger-full-access",
-          skipGitRepoCheck: true,
-        })
+      if (!this._threadId) {
+        yield { type: "error" as const, error: "Failed to start thread" }
+        yield { type: "done" as const }
+        return
       }
 
-      const { events } = await this._thread.runStreamed(input, {
-        signal: this.abortController.signal,
-      })
-
+      // Set up a promise + notification listener for this turn
       let hasEmittedThinkingStart = false
       let hasEmittedThinkingEnd = false
+      const eventQueue: ChatAgentEvent[] = []
+      let turnDone = false
+      let turnError: string | null = null
+      let resolveTurn: (() => void) | null = null
 
-      for await (const event of events) {
-        switch (event.type) {
-          case "item.started": {
-            const item = (event as any).item
-            if (item.type === "reasoning") {
-              if (!hasEmittedThinkingStart) {
-                hasEmittedThinkingStart = true
-                yield { type: "thinking.start" as const }
-              }
-              if (item.text) {
-                yield { type: "thinking.delta" as const, thinkingContent: item.text }
-              }
-            } else if (item.type === "agent_message") {
-              // Close thinking if still open
+      const notificationHandler = (msg: any) => {
+        const method = msg.method as string
+        const params = msg.params
+
+        switch (method) {
+          case "thread/started":
+            if (!this._threadId && params?.threadId) {
+              this._threadId = params.threadId
+            }
+            break
+
+          case "item/agentMessage/delta":
+            // Close thinking if still open
+            if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
+              hasEmittedThinkingEnd = true
+              eventQueue.push({ type: "thinking.end", thinkingDuration: 0 })
+            }
+            eventQueue.push({ type: "text.delta", content: params.delta || "" })
+            break
+
+          case "item/reasoning/summaryTextDelta":
+          case "item/reasoning/textDelta":
+            if (!hasEmittedThinkingStart) {
+              hasEmittedThinkingStart = true
+              eventQueue.push({ type: "thinking.start" })
+            }
+            eventQueue.push({ type: "thinking.delta", thinkingContent: params.delta || "" })
+            break
+
+          case "item/started": {
+            const item = params?.item
+            if (!item) break
+            if (item.type === "agentMessage") {
               if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
                 hasEmittedThinkingEnd = true
-                yield { type: "thinking.end" as const, thinkingDuration: 0 }
+                eventQueue.push({ type: "thinking.end", thinkingDuration: 0 })
               }
-              if (item.text) {
-                yield { type: "text.delta" as const, content: item.text }
+            } else if (item.type === "commandExecution") {
+              if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
+                hasEmittedThinkingEnd = true
+                eventQueue.push({ type: "thinking.end", thinkingDuration: 0 })
               }
-            } else if (item.type === "command_execution") {
-              yield {
-                type: "tool.start" as const,
+              eventQueue.push({
+                type: "tool.start",
                 toolCallId: item.id,
                 toolName: "command_execution",
                 toolArgs: { command: item.command },
+              })
+            } else if (item.type === "fileChange") {
+              if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
+                hasEmittedThinkingEnd = true
+                eventQueue.push({ type: "thinking.end", thinkingDuration: 0 })
               }
-            } else if (item.type === "file_change") {
-              yield {
-                type: "tool.start" as const,
+              eventQueue.push({
+                type: "tool.start",
                 toolCallId: item.id,
                 toolName: "file_change",
                 toolArgs: { changes: item.changes },
+              })
+            } else if (item.type === "mcpToolCall") {
+              if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
+                hasEmittedThinkingEnd = true
+                eventQueue.push({ type: "thinking.end", thinkingDuration: 0 })
               }
-            } else if (item.type === "mcp_tool_call") {
-              yield {
-                type: "tool.start" as const,
+              eventQueue.push({
+                type: "tool.start",
                 toolCallId: item.id,
                 toolName: item.tool || "mcp_tool",
                 toolArgs: item.arguments ?? {},
-              }
+              })
             }
             break
           }
 
-          case "item.updated": {
-            const item = (event as any).item
-            if (item.type === "reasoning" && item.text) {
-              if (!hasEmittedThinkingStart) {
-                hasEmittedThinkingStart = true
-                yield { type: "thinking.start" as const }
-              }
-              yield { type: "thinking.delta" as const, thinkingContent: item.text }
-            } else if (item.type === "agent_message" && item.text) {
-              if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
-                hasEmittedThinkingEnd = true
-                yield { type: "thinking.end" as const, thinkingDuration: 0 }
-              }
-              yield { type: "text.delta" as const, content: item.text }
-            }
-            break
-          }
-
-          case "item.completed": {
-            const item = (event as any).item
+          case "item/completed": {
+            const item = params?.item
+            if (!item) break
             if (item.type === "reasoning") {
               if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
                 hasEmittedThinkingEnd = true
-                yield { type: "thinking.end" as const, thinkingDuration: 0 }
+                eventQueue.push({ type: "thinking.end", thinkingDuration: 0 })
               }
-            } else if (item.type === "agent_message") {
-              // For short text responses, the SDK may emit item.completed directly
-              // (skipping item.started/item.updated), so we must yield text here too.
+            } else if (item.type === "agentMessage") {
+              // item.completed may arrive for short texts without any delta
               if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
                 hasEmittedThinkingEnd = true
-                yield { type: "thinking.end" as const, thinkingDuration: 0 }
+                eventQueue.push({ type: "thinking.end", thinkingDuration: 0 })
               }
-              if (item.text) {
-                yield { type: "text.delta" as const, content: item.text }
-              }
-            } else if (item.type === "command_execution") {
-              yield {
-                type: "tool.done" as const,
+              // Only emit text if we haven't already streamed it via deltas
+              // (item.completed always contains full text)
+            } else if (item.type === "commandExecution") {
+              eventQueue.push({
+                type: "tool.done",
                 toolCallId: item.id,
                 toolName: "command_execution",
-                toolOutput: item.aggregated_output ?? "",
+                toolOutput: item.aggregatedOutput ?? "",
                 toolTitle: item.command,
-                toolMetadata: { exit_code: item.exit_code },
-              }
-            } else if (item.type === "file_change") {
-              yield {
-                type: "tool.done" as const,
+                toolMetadata: { exit_code: item.exitCode },
+              })
+            } else if (item.type === "fileChange") {
+              eventQueue.push({
+                type: "tool.done",
                 toolCallId: item.id,
                 toolName: "file_change",
                 toolOutput: JSON.stringify(item.changes ?? []),
                 toolTitle: "File changes",
                 toolMetadata: { status: item.status },
-              }
-            } else if (item.type === "mcp_tool_call") {
-              yield {
-                type: "tool.done" as const,
+              })
+            } else if (item.type === "mcpToolCall") {
+              eventQueue.push({
+                type: "tool.done",
                 toolCallId: item.id,
                 toolName: item.tool || "mcp_tool",
                 toolOutput: item.result ? JSON.stringify(item.result) : (item.error?.message ?? ""),
                 toolTitle: item.tool || "MCP Tool",
                 toolMetadata: { server: item.server, status: item.status },
-              }
-            }
-            break
-          }
-
-          case "turn.failed": {
-            const err = (event as any).error
-            yield {
-              type: "error" as const,
-              error: err?.message ?? "Turn failed",
+              })
             }
             break
           }
 
           case "error": {
-            const msg = (event as any).message ?? "Unknown error"
-            // Codex CLI emits transient reconnection errors internally — suppress them
-            // since the CLI's retry logic handles recovery automatically.
-            if (/Reconnecting\.{3}/.test(msg)) {
-              console.log(`[CodexAgent] ${msg}`)
-              break
-            }
-            yield {
-              type: "error" as const,
-              error: msg,
+            const errMsg = params?.error?.message ?? "Unknown error"
+            if (params?.willRetry) {
+              console.log(`[CodexAgent] Retryable error: ${errMsg}`)
+            } else {
+              turnError = errMsg
+              eventQueue.push({ type: "error", error: errMsg })
             }
             break
           }
 
-          // thread.started, turn.started, turn.completed — no mapping needed
-          default:
+          case "turn/completed":
+            turnDone = true
+            if (resolveTurn) resolveTurn()
             break
         }
+
+        // Wake up the yield loop
+        if (resolveTurn) resolveTurn()
       }
 
-      if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
-        yield { type: "thinking.end" as const, thinkingDuration: 0 }
+      this._notificationListeners.push(notificationHandler)
+
+      try {
+        // Start the turn
+        this._turnActive = true
+        this._sendRequest("turn/start", {
+          threadId: this._threadId,
+          input: [{ type: "text", text: input, text_elements: [] }],
+          model: this.config.model || "o4-mini",
+          approvalPolicy: "never",
+          sandboxPolicy: "danger-full-access",
+        }).catch(err => {
+          turnError = err?.message ?? String(err)
+          turnDone = true
+          if (resolveTurn) resolveTurn()
+        })
+
+        // Yield events as they arrive
+        while (!turnDone) {
+          // Drain any queued events
+          while (eventQueue.length > 0) {
+            yield eventQueue.shift()!
+          }
+          // Wait for more events
+          if (!turnDone) {
+            await new Promise<void>(r => { resolveTurn = r })
+            resolveTurn = null
+          }
+        }
+        // Drain remaining events
+        while (eventQueue.length > 0) {
+          yield eventQueue.shift()!
+        }
+
+        if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
+          yield { type: "thinking.end" as const, thinkingDuration: 0 }
+        }
+      } finally {
+        this._turnActive = false
+        const idx = this._notificationListeners.indexOf(notificationHandler)
+        if (idx >= 0) this._notificationListeners.splice(idx, 1)
       }
     } catch (err: any) {
-      if (err?.name === "AbortError") {
-        // User cancelled — not an error
-      } else {
-        yield {
-          type: "error" as const,
-          error: err?.message ?? String(err),
-        }
+      if (err?.name !== "AbortError") {
+        yield { type: "error" as const, error: err?.message ?? String(err) }
       }
     }
 
@@ -744,8 +937,19 @@ export class CodexAgent implements IChatAgent {
   }
 
   abort(): void {
-    this.abortController?.abort()
-    this.abortController = null
+    if (this._turnActive && this._threadId) {
+      this._sendRequest("turn/interrupt", { threadId: this._threadId }).catch(() => {})
+    }
+  }
+
+  destroy(): void {
+    if (this._child && !this._child.killed) {
+      this._child.kill()
+      this._child = null
+    }
+    this._rl = null
+    this._initialized = false
+    this._threadId = null
   }
 }
 
