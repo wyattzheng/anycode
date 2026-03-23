@@ -15,6 +15,7 @@ COPY packages/agent/package.json packages/agent/
 COPY packages/app/package.json packages/app/
 COPY packages/cli/package.json packages/cli/
 COPY packages/server/package.json packages/server/
+COPY packages/utils/package.json packages/utils/
 
 RUN pnpm install --frozen-lockfile --registry https://registry.npmmirror.com
 
