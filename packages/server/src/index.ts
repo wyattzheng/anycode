@@ -593,6 +593,8 @@ async function handleClientMessage(sessionId: string, client: ClientLike, msg: a
       session.chatAgent.abort?.()
     })
 
+    session.state.setChatBusy(true)
+
     try {
       for await (const event of session.chatAgent.chat(effectiveMessage)) {
         if (aborted) break
@@ -603,6 +605,7 @@ async function handleClientMessage(sessionId: string, client: ClientLike, msg: a
     }
 
     sessionChatAbort.delete(sessionId)
+    session.state.setChatBusy(false)
     broadcast(sessionId, { type: "chat.done" })
   }
 
@@ -651,6 +654,7 @@ export class SessionStateModel {
   topLevel: any[] = []
   changes: any[] = []
   previewPort: number | null = null
+  chatBusy: boolean = false
 
   private _isComputing = false
   private _needsCompute = false
@@ -713,6 +717,13 @@ export class SessionStateModel {
     }
   }
 
+  setChatBusy(busy: boolean) {
+    if (this.chatBusy !== busy) {
+      this.chatBusy = busy
+      this.notify()
+    }
+  }
+
   toJSON() {
     return {
       type: "state",
@@ -720,6 +731,7 @@ export class SessionStateModel {
       topLevel: this.topLevel,
       changes: this.changes,
       previewPort: this.previewPort,
+      chatBusy: this.chatBusy,
     }
   }
 

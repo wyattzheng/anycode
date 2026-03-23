@@ -51,6 +51,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
     const [changes, setChanges] = useState<GitChange[]>([]);
     const [fileContext, setFileContext] = useState<FileContext | null>(null);
     const [previewPort, setPreviewPort] = useState<number | null>(null);
+    const [chatBusy, setChatBusy] = useState(false);
     const chatHandlerRef = useRef<((data: any) => void) | undefined>(undefined);
     const chatResetRef = useRef<(() => void) | undefined>(undefined);
     const channelRef = useRef<Channel | null>(null);
@@ -84,6 +85,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                     setTopLevel(data.topLevel || []);
                     setChanges(data.changes || []);
                     if (data.previewPort !== undefined) setPreviewPort(data.previewPort);
+                    if (data.chatBusy !== undefined) setChatBusy(data.chatBusy);
                 } else if (data.type === "windows.updated") {
                     onWindowsChanged();
                 } else if (data.type?.startsWith("chat.")) {
@@ -185,7 +187,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                         </div>
                     )}
                 </div>
-                <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} chatResetRef={chatResetRef} sendMessage={sendMessage} />
+                <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} chatResetRef={chatResetRef} chatBusy={chatBusy} sendMessage={sendMessage} />
             </div>
             <TabBar activeTab={activeTab} onTabChange={setActiveTab} changeCount={changes.length} />
         </div>

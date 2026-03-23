@@ -143,6 +143,7 @@ interface ConversationOverlayProps {
     fileContext?: FileContext | null;
     chatHandlerRef?: MutableRefObject<((data: any) => void) | undefined>;
     chatResetRef?: MutableRefObject<(() => void) | undefined>;
+    chatBusy?: boolean;
     sendMessage: (data: any) => void;
 }
 
@@ -171,12 +172,17 @@ function defaultSidebarWidth() {
     return 150;
 }
 
-export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, chatResetRef, sendMessage }: ConversationOverlayProps) {
+export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, chatResetRef, chatBusy: chatBusyProp, sendMessage }: ConversationOverlayProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [recording, setRecording] = useState(false);
     const [showTextInput, setShowTextInput] = useState(false);
     const [busy, setBusy] = useState(false);
+
+    // Sync busy state from server
+    useEffect(() => {
+        if (chatBusyProp !== undefined) setBusy(chatBusyProp);
+    }, [chatBusyProp]);
     const [inputNarrow, setInputNarrow] = useState(false);
     const inputBarRef = useRef<HTMLDivElement>(null);
     const textInputRef = useRef<HTMLInputElement>(null);
@@ -510,10 +516,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
                     setBusy(true);
                     break;
                 case "chat.event":
-                    if (data.event) {
-                        setBusy(true);
-                        handleEvent(data.event);
-                    }
+                    if (data.event) handleEvent(data.event);
                     break;
                 case "chat.done":
                     setBusy(false);
