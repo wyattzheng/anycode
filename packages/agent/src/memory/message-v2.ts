@@ -233,18 +233,6 @@ export namespace MessageV2 {
   })
   export type SubtaskPart = z.infer<typeof SubtaskPart>
 
-  export const RetryPart = PartBase.extend({
-    type: z.literal("retry"),
-    attempt: z.number(),
-    error: APIError.Schema,
-    time: z.object({
-      created: z.number(),
-    }),
-  }).meta({
-    ref: "RetryPart",
-  })
-  export type RetryPart = z.infer<typeof RetryPart>
-
   export const StepStartPart = PartBase.extend({
     type: z.literal("step-start"),
   }).meta({
@@ -392,7 +380,6 @@ export namespace MessageV2 {
       StepFinishPart,
       PatchPart,
       AgentPart,
-      RetryPart,
       CompactionPart,
     ])
     .meta({

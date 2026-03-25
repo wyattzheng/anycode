@@ -134,8 +134,8 @@ describe("Skill: auto-loading from designated directories", () => {
         expect(skill!.content).toContain("# Formatter Skill")
     })
 
-    it("should make auto-loaded skills visible via available()", async () => {
-        const availableSkills = await agent.agentContext.skill.available()
+    it("should make auto-loaded skills visible via all()", async () => {
+        const availableSkills = await agent.agentContext.skill.all()
 
         const names = availableSkills.map((s: any) => s.name)
         expect(names).toContain("greet")

@@ -15,7 +15,8 @@ import { setupServer } from "msw/node"
 import os from "os"
 import fs from "fs"
 import path from "path"
-import { CodeAgent, SqliteNoSqlDb } from "../src/index"
+import { CodeAgent, SqliteNoSqlDb, Tool } from "../src/index"
+import z from "zod"
 
 import { buildSetDirectoryFixtures } from "./fixtures/set-directory-stream"
 
@@ -141,6 +142,16 @@ describe("CodeAgent: set_user_watch_project via mock conversation", () => {
                 model: "gpt-4o",
                 baseUrl: "http://localhost:19283/v1",
             },
+            tools: [
+                Tool.define("set_user_watch_project", {
+                    description: "mock tool",
+                    parameters: z.object({ directory: z.string().nullable() }),
+                    async execute(params, ctx) {
+                        ctx.emit("directory.set", { directory: params.directory ?? "" })
+                        return { title: "ok", output: "ok", metadata: {} }
+                    }
+                })
+            ],
         })
 
         await agent.init()

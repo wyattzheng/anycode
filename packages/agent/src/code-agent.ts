@@ -412,7 +412,7 @@ export class CodeAgent extends EventEmitter {
             configOverrides: this.options.config as any,
             instructions: this.options.instructions,
             db: this._dbClient,
-            extraTools: this.options.extraTools,
+            extraTools: [...(this.options.extraTools ?? []), ...(this.options.tools ? Object.values(this.options.tools) : [])],
             containsPath: (filepath: string) => {
                 const normalized = path.resolve(filepath)
                 return normalized.startsWith(path.resolve(worktree)) ||
