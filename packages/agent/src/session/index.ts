@@ -121,6 +121,7 @@ export class SessionService extends EventEmitter {
 
   async create(input?: Session.CreateInput) {
     return this.createNext({
+      id: input?.id,
       parentID: input?.parentID,
       directory: this.ctx.directory,
       title: input?.title,
@@ -182,6 +183,13 @@ export class SessionService extends EventEmitter {
     const row = this.ctx.db.findOne("session", { op: "eq", field: "id", value: id })
     if (!row) throw new NotFoundError({ message: `Session not found: ${id}` })
     return fromRow(row)
+  }
+
+  async getOrCreate(id?: string) {
+    if (!id) return this.create()
+    const row = this.ctx.db.findOne("session", { op: "eq", field: "id", value: id })
+    if (row) return fromRow(row)
+    return this.create({ id: id as any })
   }
 
   async setTitle(input: any) {
@@ -410,6 +418,7 @@ export namespace Session {
   export type GlobalInfo = z.output<typeof GlobalInfo>
 
   export type CreateInput = {
+    id?: SessionID
     parentID?: SessionID
     title?: string
     workspaceID?: WorkspaceID

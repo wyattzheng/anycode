@@ -516,13 +516,8 @@ export class CodeAgent extends EventEmitter {
         this.initialized = true
 
         // Resume existing session or create a new one
-        if (this.options.sessionId) {
-            await this._context.session.get(this.options.sessionId)
-            this._currentSessionId = this.options.sessionId
-        } else {
-            const session = await this._context.session.create()
-            this._currentSessionId = session.id
-        }
+        const session = await this._context.session.getOrCreate(this.options.sessionId)
+        this._currentSessionId = session.id
     }
 
     /**
