@@ -285,6 +285,9 @@ export class CodeAgent extends EventEmitter {
     private _git: GitProvider
     private _context!: AgentContext
 
+    /** Promise that resolves when the current chat() finishes (for abort await) */
+    private _chatPromise: Promise<void> | null = null
+
     // ── Phase 0: stateless services (no context dependency) ──────
     readonly env: EnvService
     readonly scheduler: SchedulerService
@@ -537,12 +540,17 @@ export class CodeAgent extends EventEmitter {
         message: string,
     ): AsyncGenerator<CodeAgentEvent> {
         this.assertInitialized()
+        if (this._chatPromise) {
+            throw new Error('chat() is already running. Call abort() and await it first.')
+        }
         const sessionId = this._currentSessionId!
 
         // Set up event stream
         const events: CodeAgentEvent[] = []
         let resolve: (() => void) | null = null
         let done = false
+        let chatResolve!: () => void
+        this._chatPromise = new Promise<void>(r => { chatResolve = r })
 
         const push = (event: CodeAgentEvent) => {
             events.push(event)
@@ -726,6 +734,9 @@ export class CodeAgent extends EventEmitter {
                 for (const unsub of unsubs) {
                     unsub()
                 }
+                // Release the chat mutex
+                this._chatPromise = null
+                chatResolve()
             }
         })()
 
@@ -750,18 +761,27 @@ export class CodeAgent extends EventEmitter {
     }
 
     /**
-     * Cancel an ongoing chat in a session
+     * Cancel an ongoing chat in a session.
+     * Async — await guarantees the chat has fully stopped.
+     * Idempotent — calling abort() when idle is a no-op.
      */
     async abort(): Promise<void> {
         this.assertInitialized()
+        // Nothing to abort — return immediately
+        if (!this._chatPromise) return
+
         const sp = this.agentContext.sessionPrompt
         if (sp.abort) {
             sp.abort.abort()
             sp.abort = undefined
             sp.callbacks = []
         }
-        this.agentContext.sessionStatus = { type: "idle" }
-        this._context.session.emit("session.status", { sessionID: this._currentSessionId, status: { type: "idle" } })
+        if (this.agentContext.sessionStatus.type !== 'idle') {
+            this.agentContext.sessionStatus = { type: "idle" }
+            this._context.session.emit("session.status", { sessionID: this._currentSessionId, status: { type: "idle" } })
+        }
+        // Wait for the in-flight chat to fully drain
+        await this._chatPromise.catch(() => {})
     }
 
     /**
