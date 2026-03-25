@@ -13,15 +13,15 @@
         "dev": "pnpm --filter @any-code/agent build && tsup && node dist/cli.js"
     },
     "dependencies": {
-        "@anthropic-ai/claude-agent-sdk": "^0.2.81",
         "@lydell/node-pty": "1.2.0-beta.3",
-        "@openai/codex-sdk": "^0.116.0",
         "chokidar": "4.0.3",
         "ws": "^8.19.0",
         "zod": "4.1.8"
     },
     "devDependencies": {
         "@any-code/agent": "workspace:*",
+        "@any-code/claude-code-agent": "workspace:*",
+        "@any-code/codex-agent": "workspace:*",
         "@any-code/utils": "workspace:*",
         "@any-code/app": "workspace:*",
         "@types/node": "^25.5.0",

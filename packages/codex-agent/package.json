@@ -1,0 +1,22 @@
+{
+  "name": "@any-code/codex-agent",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@any-code/utils": "workspace:*",
+    "@openai/codex-sdk": "^0.116.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.0"
+  }
+}

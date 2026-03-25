@@ -248,6 +248,25 @@ importers:
         specifier: ^6.2.0
         version: 6.4.1(@types/node@25.5.0)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2)
 
+  packages/claude-code-agent:
+    dependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.2.81
+        version: 0.2.81(zod@4.1.8)
+      '@any-code/utils':
+        specifier: workspace:*
+        version: link:../utils
+    devDependencies:
+      '@types/node':
+        specifier: ^25.5.0
+        version: 25.5.0
+      tsup:
+        specifier: ^8.4.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.8.2)(yaml@2.8.2)
+      typescript:
+        specifier: ^5.7.0
+        version: 5.8.2
+
   packages/cli:
     dependencies:
       '@lydell/node-pty':
@@ -276,17 +295,30 @@ importers:
         specifier: ^5.7.0
         version: 5.8.2
 
-  packages/server:
+  packages/codex-agent:
     dependencies:
-      '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.2.81
-        version: 0.2.81(zod@4.1.8)
-      '@lydell/node-pty':
-        specifier: 1.2.0-beta.3
-        version: 1.2.0-beta.3
+      '@any-code/utils':
+        specifier: workspace:*
+        version: link:../utils
       '@openai/codex-sdk':
         specifier: ^0.116.0
         version: 0.116.0
+    devDependencies:
+      '@types/node':
+        specifier: ^25.5.0
+        version: 25.5.0
+      tsup:
+        specifier: ^8.4.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.8.2)(yaml@2.8.2)
+      typescript:
+        specifier: ^5.7.0
+        version: 5.8.2
+
+  packages/server:
+    dependencies:
+      '@lydell/node-pty':
+        specifier: 1.2.0-beta.3
+        version: 1.2.0-beta.3
       chokidar:
         specifier: 4.0.3
         version: 4.0.3
@@ -303,6 +335,12 @@ importers:
       '@any-code/app':
         specifier: workspace:*
         version: link:../app
+      '@any-code/claude-code-agent':
+        specifier: workspace:*
+        version: link:../claude-code-agent
+      '@any-code/codex-agent':
+        specifier: workspace:*
+        version: link:../codex-agent
       '@any-code/utils':
         specifier: workspace:*
         version: link:../utils

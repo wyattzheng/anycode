@@ -22,6 +22,9 @@ export type { StorageProvider, Migration } from "./storage"
 // VFS interfaces
 export type { VirtualFileSystem, VFSStat, VFSDirEntry, GrepOptions, GrepMatch as VFSGrepMatch } from "./vfs"
 
+// ChatAgent interfaces
+export type { IChatAgent, ChatAgentConfig, ChatAgentEvent } from "./chat-agent"
+
 // Implementations
 export { NodeFS } from "./vfs-node"
 export { NodeSearchProvider } from "./search-node"
