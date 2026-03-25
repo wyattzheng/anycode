@@ -274,6 +274,9 @@ export class CodexAgent implements IChatAgent {
 
           case "error": {
             const msg = (event as any).message ?? "Unknown error"
+            if (msg === "Unknown error") {
+              console.error("[CodexAgent] Unexpected error event:", JSON.stringify(event));
+            }
             // Codex CLI emits transient reconnection errors internally — suppress them
             if (/Reconnecting\.{3}/.test(msg)) {
               console.log(`[CodexAgent] ${msg}`)

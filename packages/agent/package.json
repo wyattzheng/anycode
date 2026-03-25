@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "name": "@any-code/agent",
   "type": "module",
   "license": "MIT",

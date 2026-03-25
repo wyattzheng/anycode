@@ -673,9 +673,10 @@ export class CodeAgent extends EventEmitter {
 
                     // ── Session error ──
                     if (type === "session.error") {
+                        const errorMsg = props.error?.data?.message || props.error?.message || "Unknown error";
                         push({
                             type: "error",
-                            error: props.error?.message ?? "Unknown error",
+                            error: errorMsg,
                         })
                     }
                 }

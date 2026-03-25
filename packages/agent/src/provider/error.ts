@@ -50,7 +50,7 @@ export namespace ProviderError {
           const err = STATUS_CODES[e.statusCode]
           if (err) return err
         }
-        return "Unknown error"
+        return e.statusCode ? `API error (${e.statusCode})` : "Unknown error"
       }
 
       if (!e.responseBody || (e.statusCode && msg !== STATUS_CODES[e.statusCode])) {
