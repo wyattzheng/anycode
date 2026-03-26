@@ -110,6 +110,21 @@ export class MemoryService extends EventEmitter {
       }
     }
   }
+
+  /**
+   * Remove specific messages by their IDs (CASCADE deletes parts).
+   */
+  async removeMessagesByIds(sessionID: any, messageIds: string[]) {
+    for (const id of messageIds) {
+      this.context.db.remove("message", {
+        op: "and",
+        conditions: [
+          { op: "eq", field: "id", value: id },
+          { op: "eq", field: "session_id", value: sessionID },
+        ],
+      })
+    }
+  }
 }
 
 /**

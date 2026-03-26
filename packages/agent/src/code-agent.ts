@@ -288,6 +288,9 @@ export class CodeAgent extends EventEmitter {
     /** Promise that resolves when the current chat() finishes (for abort await) */
     private _chatPromise: Promise<void> | null = null
 
+    /** Tracks message IDs created per chatId for selective cleanup */
+    private _chatMessageMap = new Map<string, string[]>()
+
     // ── Phase 0: stateless services (no context dependency) ──────
     readonly env: EnvService
     readonly scheduler: SchedulerService
@@ -533,7 +536,7 @@ export class CodeAgent extends EventEmitter {
      */
     async *chat(
         message: string,
-        options?: { ephemeral?: boolean },
+        options?: { ephemeral?: boolean; chatId?: string },
     ): AsyncGenerator<CodeAgentEvent> {
         this.assertInitialized()
         if (this._chatPromise) {
@@ -542,10 +545,9 @@ export class CodeAgent extends EventEmitter {
         const sessionId = this._currentSessionId!
         const ephemeral = options?.ephemeral ?? false
 
-        // Ephemeral mode: snapshot existing message IDs before this chat
-        const snapshot = ephemeral
-            ? this._context.memory.snapshotMessages(sessionId)
-            : null
+        // Use caller-provided chatId or auto-generate one
+        const chatId = options?.chatId ?? ulid()
+        const snapshot = new Set(this._context.memory.snapshotMessages(sessionId))
 
         // Set up event stream
         const events: CodeAgentEvent[] = []
@@ -737,9 +739,16 @@ export class CodeAgent extends EventEmitter {
                 for (const unsub of unsubs) {
                     unsub()
                 }
-                // Ephemeral mode: delete only messages created during this chat call
-                if (ephemeral && snapshot) {
-                    await this._context.memory.rollbackMessages(sessionId, snapshot).catch(() => {})
+                // Track which messages were created during this chat
+                const allIds = this._context.memory.snapshotMessages(sessionId)
+                const newIds = allIds.filter(id => !snapshot.has(id))
+                if (newIds.length > 0) {
+                    this._chatMessageMap.set(chatId, newIds)
+                }
+                // Ephemeral mode: auto-clean this chat's messages
+                if (ephemeral && newIds.length > 0) {
+                    await this._context.memory.rollbackMessages(sessionId, [...snapshot]).catch(() => {})
+                    this._chatMessageMap.delete(chatId)
                 }
                 // Release the chat mutex
                 this._chatPromise = null
@@ -909,6 +918,33 @@ export class CodeAgent extends EventEmitter {
             messages.push(simplified)
         }
         return messages
+    }
+
+
+    /**
+     * Clear session messages.
+     * - No args: clear ALL messages for this session
+     * - With chatId: clear only messages created during that specific chat() call
+     */
+    async clearMessages(chatId?: string): Promise<void> {
+        this.assertInitialized()
+        const sessionId = this._currentSessionId!
+
+        if (chatId) {
+            // Clear only this chat's messages
+            const messageIds = this._chatMessageMap.get(chatId)
+            if (messageIds && messageIds.length > 0) {
+                await this._context.memory.removeMessagesByIds(sessionId, messageIds)
+                this._chatMessageMap.delete(chatId)
+            }
+        } else {
+            // Clear all messages for this session
+            const allIds = this._context.memory.snapshotMessages(sessionId)
+            if (allIds.length > 0) {
+                await this._context.memory.removeMessagesByIds(sessionId, allIds)
+            }
+            this._chatMessageMap.clear()
+        }
     }
 
     /**
