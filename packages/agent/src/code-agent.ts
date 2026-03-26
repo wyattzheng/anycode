@@ -535,14 +535,13 @@ export class CodeAgent extends EventEmitter {
      */
     async *chat(
         message: string,
-        options?: { ephemeral?: boolean; chatId?: string },
+        options?: { chatId?: string },
     ): AsyncGenerator<CodeAgentEvent> {
         this.assertInitialized()
         if (this._chatPromise) {
             throw new Error('chat() is already running. Call abort() and await it first.')
         }
         const sessionId = this._currentSessionId!
-        const ephemeral = options?.ephemeral ?? false
 
         // Use caller-provided chatId or auto-generate one
         const chatId = options?.chatId ?? ulid()
@@ -738,12 +737,7 @@ export class CodeAgent extends EventEmitter {
                 for (const unsub of unsubs) {
                     unsub()
                 }
-                // Reset chatId context
                 // (chatId is persisted in message data, no mutable state to clear)
-                // Ephemeral mode: auto-clean this chat's messages
-                if (ephemeral) {
-                    await this._context.memory.clearMessagesByChatId(chatId).catch(() => {})
-                }
                 // Release the chat mutex
                 this._chatPromise = null
                 chatResolve()
@@ -922,14 +916,21 @@ export class CodeAgent extends EventEmitter {
      */
     async clearMessages(chatId?: string): Promise<void> {
         this.assertInitialized()
-        const sessionId = this._currentSessionId!
 
         if (chatId) {
             await this._context.memory.clearMessagesByChatId(chatId)
         } else {
-            const allIds = this._context.memory.snapshotMessages(sessionId)
-            if (allIds.length > 0) {
-                await this._context.memory.removeMessagesByIds(sessionId, allIds)
+            // Clear all messages for this session
+            const sessionId = this._currentSessionId!
+            const rows = this._context.db.findMany("message", { op: "eq", field: "session_id", value: sessionId })
+            for (const row of rows) {
+                this._context.db.remove("message", {
+                    op: "and",
+                    conditions: [
+                        { op: "eq", field: "id", value: row.id },
+                        { op: "eq", field: "session_id", value: sessionId },
+                    ],
+                })
             }
         }
     }
