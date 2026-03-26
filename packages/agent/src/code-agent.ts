@@ -543,8 +543,8 @@ export class CodeAgent extends EventEmitter {
         const ephemeral = options?.ephemeral ?? false
 
         // Ephemeral mode: snapshot existing message IDs before this chat
-        const existingMessageIds = ephemeral
-            ? new Set(this._context.memory.getMessageIds(sessionId))
+        const snapshot = ephemeral
+            ? this._context.memory.snapshotMessages(sessionId)
             : null
 
         // Set up event stream
@@ -738,12 +738,8 @@ export class CodeAgent extends EventEmitter {
                     unsub()
                 }
                 // Ephemeral mode: delete only messages created during this chat call
-                if (ephemeral && existingMessageIds) {
-                    const allIds = this._context.memory.getMessageIds(sessionId)
-                    const newIds = allIds.filter(id => !existingMessageIds.has(id))
-                    if (newIds.length > 0) {
-                        await this._context.memory.removeMessagesByIds(sessionId, newIds).catch(() => {})
-                    }
+                if (ephemeral && snapshot) {
+                    await this._context.memory.rollbackMessages(sessionId, snapshot).catch(() => {})
                 }
                 // Release the chat mutex
                 this._chatPromise = null

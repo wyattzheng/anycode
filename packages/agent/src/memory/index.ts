@@ -84,25 +84,30 @@ export class MemoryService extends EventEmitter {
   }
 
   /**
-   * Get all message IDs for a session.
+   * Snapshot current message IDs for a session.
+   * Call before ephemeral chat, then pass result to rollback() after.
    */
-  getMessageIds(sessionID: any): string[] {
+  snapshotMessages(sessionID: any): string[] {
     const rows = this.context.db.findMany("message", { op: "eq", field: "session_id", value: sessionID })
     return rows.map((r: any) => r.id)
   }
 
   /**
-   * Remove specific messages by their IDs.
+   * Remove messages created after the snapshot (i.e. not in the snapshot set).
    */
-  async removeMessagesByIds(sessionID: any, messageIds: string[]) {
-    for (const id of messageIds) {
-      this.context.db.remove("message", {
-        op: "and",
-        conditions: [
-          { op: "eq", field: "id", value: id },
-          { op: "eq", field: "session_id", value: sessionID },
-        ],
-      })
+  async rollbackMessages(sessionID: any, snapshot: string[]) {
+    const keep = new Set(snapshot)
+    const rows = this.context.db.findMany("message", { op: "eq", field: "session_id", value: sessionID })
+    for (const row of rows) {
+      if (!keep.has(row.id)) {
+        this.context.db.remove("message", {
+          op: "and",
+          conditions: [
+            { op: "eq", field: "id", value: row.id },
+            { op: "eq", field: "session_id", value: sessionID },
+          ],
+        })
+      }
     }
   }
 }
