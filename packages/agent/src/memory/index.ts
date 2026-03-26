@@ -82,6 +82,14 @@ export class MemoryService extends EventEmitter {
     result.reverse()
     return result
   }
+
+  /**
+   * Delete all messages (and their parts via CASCADE) for a session.
+   * Used by ephemeral chat mode to start each round with a clean slate.
+   */
+  async clearSessionMessages(sessionID: any) {
+    this.context.db.remove("message", { op: "eq", field: "session_id", value: sessionID })
+  }
 }
 
 /**

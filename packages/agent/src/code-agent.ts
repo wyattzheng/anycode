@@ -533,12 +533,14 @@ export class CodeAgent extends EventEmitter {
      */
     async *chat(
         message: string,
+        options?: { ephemeral?: boolean },
     ): AsyncGenerator<CodeAgentEvent> {
         this.assertInitialized()
         if (this._chatPromise) {
             throw new Error('chat() is already running. Call abort() and await it first.')
         }
         const sessionId = this._currentSessionId!
+        const ephemeral = options?.ephemeral ?? false
 
         // Set up event stream
         const events: CodeAgentEvent[] = []
@@ -729,6 +731,10 @@ export class CodeAgent extends EventEmitter {
                 // Cleanup subscriptions
                 for (const unsub of unsubs) {
                     unsub()
+                }
+                // Ephemeral mode: clear messages after completion
+                if (ephemeral) {
+                    await this._context.memory.clearSessionMessages(sessionId).catch(() => {})
                 }
                 // Release the chat mutex
                 this._chatPromise = null
