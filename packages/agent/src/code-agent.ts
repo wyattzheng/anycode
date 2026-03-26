@@ -966,11 +966,31 @@ export class CodeAgent extends EventEmitter {
 
             let msgs = await MessageV2.filterCompacted(MessageV2.stream(context, sessionID))
 
-            // Find latest user/assistant messages and pending tasks
+            // ── Compaction check (single point of compaction) ──
+            // Two triggers, both checked here before anything else:
+            //   1. Token overflow: latest finished assistant's token usage exceeds context limit
+            //   2. Message count > 200: fallback when API errors prevent token reporting
+            const recentAssistant = msgs.findLast(m => m.info.role === "assistant" && (m.info as MessageV2.Assistant).finish)?.info as MessageV2.Assistant | undefined
+            const recentUser = msgs.findLast(m => m.info.role === "user")
+            if (recentUser && recentAssistant && !recentAssistant.summary) {
+                const userInfo = recentUser.info as MessageV2.User
+                const model = await context.provider.getModel(userInfo.model.providerID, userInfo.model.modelID).catch((): null => null)
+                const tokenOverflow = model && recentAssistant.tokens && await ContextCompaction.isOverflow({ tokens: recentAssistant.tokens, model, context })
+                if (tokenOverflow || msgs.length > 200) {
+                    const compactResult = await ContextCompaction.process(context, {
+                        messages: msgs, parentID: recentUser.info.id, abort, sessionID,
+                        auto: true, overflow: !!tokenOverflow, context,
+                    })
+                    if (compactResult === "stop") break
+                    this._context.session.emit("session.compacted", { sessionID })
+                    continue
+                }
+            }
+
+            // Find latest user/assistant messages
             let lastUser: MessageV2.User | undefined
             let lastAssistant: MessageV2.Assistant | undefined
             let lastFinished: MessageV2.Assistant | undefined
-            let tasks: (MessageV2.CompactionPart | MessageV2.SubtaskPart)[] = []
             for (let i = msgs.length - 1; i >= 0; i--) {
                 const msg = msgs[i]
                 if (!lastUser && msg.info.role === "user") lastUser = msg.info as MessageV2.User
@@ -978,11 +998,8 @@ export class CodeAgent extends EventEmitter {
                 if (!lastFinished && msg.info.role === "assistant" && msg.info.finish)
                     lastFinished = msg.info as MessageV2.Assistant
                 if (lastUser && lastFinished) break
-                const task = msg.parts.filter((part) => part.type === "compaction" || part.type === "subtask")
-                if (task && !lastFinished) tasks.push(...task)
             }
             if (!lastUser) throw new Error("No user message found")
-            if (lastAssistant?.finish && !["tool-calls", "unknown"].includes(lastAssistant.finish) && lastUser.id < lastAssistant.id) break
 
             step++
             if (step === 1) {
@@ -999,25 +1016,9 @@ export class CodeAgent extends EventEmitter {
                 }
                 throw e
             })
-            const task = tasks.pop()
 
-
-            // ── Compaction ──
-            if (task?.type === "compaction") {
-                const result = await ContextCompaction.process(context, {
-                    messages: msgs, parentID: lastUser.id, abort, sessionID,
-                    auto: task.auto, overflow: task.overflow, context,
-                })
-                if (result === "stop") break
-                this._context.session.emit("session.compacted", { sessionID })
-                continue
-            }
-
-            // ── Overflow → auto compact ──
-            if (lastFinished && lastFinished.summary !== true && (await ContextCompaction.isOverflow({ tokens: lastFinished.tokens, model, context }))) {
-                await ContextCompaction.create(context, { sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
-                continue
-            }
+            // ── Conversation done? ──
+            if (lastAssistant?.finish && !["tool-calls", "unknown"].includes(lastAssistant.finish) && lastUser.id < lastAssistant.id) break
 
             // ── Reasoning + tool execution ──
             const result = await this.processStep({
@@ -1027,9 +1028,6 @@ export class CodeAgent extends EventEmitter {
 
             if (structuredOutput !== undefined) break
             if (result === "stop") break
-            if (result === "compact") {
-                await ContextCompaction.create(context, { sessionID, agent: lastUser.agent, model: lastUser.model, auto: true, overflow: true })
-            }
         }
 
         // Finalize

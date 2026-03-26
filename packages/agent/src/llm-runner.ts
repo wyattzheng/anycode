@@ -559,7 +559,7 @@ export namespace LLMRunner {
           }
           input.assistantMessage.time.completed = Date.now()
           await input.context.session.updateMessage(input.assistantMessage)
-          
+
           input.onStatusChange?.(input.sessionID, { type: "idle" })
 
           if (needsCompaction) return "compact"
