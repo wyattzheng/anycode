@@ -117,6 +117,7 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
     const [fileContent, setFileContent] = useState<string | null>(null);
     const [fileLoading, setFileLoading] = useState(false);
+    const resizeBorderRef = useRef<HTMLDivElement>(null);
 
     const onDragMove = useCallback((clientPos: number) => {
         if (!dragRef.current || !containerRef.current) return;
@@ -130,10 +131,12 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
 
     const onDragEnd = useCallback(() => {
         dragRef.current = null;
+        resizeBorderRef.current?.classList.remove('dragging');
     }, []);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         e.preventDefault();
+        resizeBorderRef.current?.classList.add('dragging');
         const defaultSize = containerRef.current
             ? (horizontal ? containerRef.current.getBoundingClientRect().width : containerRef.current.getBoundingClientRect().height) / 2
             : 200;
@@ -148,6 +151,7 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
 
     const handleTouchStart = (e: React.TouchEvent) => {
         const touch = e.touches[0];
+        resizeBorderRef.current?.classList.add('dragging');
         const defaultSize = containerRef.current
             ? (horizontal ? containerRef.current.getBoundingClientRect().width : containerRef.current.getBoundingClientRect().height) / 2
             : 200;
@@ -210,7 +214,7 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
                     )}
                 </div>
             </div>
-            <div className="fb-resize-border" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} />
+            <div className="fb-resize-border" ref={resizeBorderRef} onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} />
             <div className="file-browser-content">
                 {selectedFile ? (
                     <>

@@ -56,6 +56,7 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
     const [addedLines, setAddedLines] = useState<Set<number>>(new Set());
     const [scrollToLine, setScrollToLine] = useState<number | null>(null);
     const contentBodyRef = useRef<HTMLDivElement>(null);
+    const resizeBorderRef = useRef<HTMLDivElement>(null);
 
     // React to changes list updates: close if file gone, refresh if still present
     useEffect(() => {
@@ -92,10 +93,12 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
 
     const onDragEnd = useCallback(() => {
         dragRef.current = null;
+        resizeBorderRef.current?.classList.remove('dragging');
     }, []);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         e.preventDefault();
+        resizeBorderRef.current?.classList.add('dragging');
         const defaultSize = containerRef.current
             ? (horizontal ? containerRef.current.getBoundingClientRect().width : containerRef.current.getBoundingClientRect().height) / 2
             : 200;
@@ -110,6 +113,7 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
 
     const handleTouchStart = (e: React.TouchEvent) => {
         const touch = e.touches[0];
+        resizeBorderRef.current?.classList.add('dragging');
         const defaultSize = containerRef.current
             ? (horizontal ? containerRef.current.getBoundingClientRect().width : containerRef.current.getBoundingClientRect().height) / 2
             : 200;
@@ -191,7 +195,7 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
                     )}
                 </div>
             </div>
-            <div className="cv-resize-border" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} />
+            <div className="cv-resize-border" ref={resizeBorderRef} onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} />
             <div className="changes-diff">
                 {selectedFile ? (
                     <>

@@ -44,8 +44,7 @@
     pointer-events: none;
 }
 
-.cv-resize-border:hover::after,
-.cv-resize-border:active::after {
+.cv-resize-border.dragging::after {
     background: var(--color-accent);
 }
 

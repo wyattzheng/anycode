@@ -43,8 +43,7 @@
     pointer-events: none;
 }
 
-.fb-resize-border:hover::after,
-.fb-resize-border:active::after {
+.fb-resize-border.dragging::after {
     background: var(--color-accent);
 }
 
