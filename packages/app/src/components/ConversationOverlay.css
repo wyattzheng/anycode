@@ -64,6 +64,25 @@
     -webkit-tap-highlight-color: transparent;
 }
 
+.co-sidebar-border::after {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 13px;
+    width: 1px;
+    height: 20px;
+    background: var(--color-border);
+    pointer-events: none;
+}
+
+.co-sidebar-border.dragging::after {
+    top: 0;
+    left: 0;
+    width: 2px;
+    height: 100%;
+    background: var(--color-accent);
+}
+
 .co-sidebar-border.dragging ~ .conversation-header {
     border-left-color: var(--color-accent);
 }
