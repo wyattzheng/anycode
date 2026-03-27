@@ -824,6 +824,7 @@ class TerminalStateModel {
         if (msg.type === "terminal.input") {
           this.onInput?.(msg.data)
         } else if (msg.type === "terminal.resize") {
+          this.rawBuffer = []
           this.onResize?.(msg.cols, msg.rows)
         }
       } catch { /* ignore */ }
