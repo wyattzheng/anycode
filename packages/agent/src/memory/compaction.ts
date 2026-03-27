@@ -2,8 +2,8 @@
 import type { AgentContext } from "../context"
 import { SessionID, MessageID, PartID } from "../session/schema"
 import { MessageV2 } from "./message-v2"
-import { Provider, VendorRegistry } from "@any-code/provider"
-import { createLLMRunner } from "../code-agent"
+import { Provider, VendorRegistry, createLLMStream } from "@any-code/provider"
+import { Auth } from "../util/auth"
 import PROMPT_COMPACTION from "../prompt/compaction.txt"
 
 const COMPACTION_BUFFER = 20_000
@@ -147,14 +147,6 @@ export class CompactionService implements ICompactionService {
         created: Date.now(),
       },
     })) as MessageV2.Assistant
-    const processor = createLLMRunner({
-      assistantMessage: msg,
-      sessionID: input.sessionID,
-      model,
-      abort: input.abort,
-      context: input.context,
-    })
-    const compacting = { context: [] as string[], prompt: undefined as string | undefined }
     const defaultPrompt = `Provide a detailed prompt for continuing our conversation above.
 Focus on information that would be helpful for continuing the conversation, including what we did, what we're doing, which files we're working on, and what we're going to do next.
 The summary that you construct will be used so that another agent can read it and continue the work.
@@ -183,41 +175,83 @@ When constructing the summary, try to stick to this template:
 [Construct a structured list of relevant files that have been read, edited, or created that pertain to the task at hand. If all the files in a directory are relevant, include the path to the directory.]
 ---`
 
-    const promptText = compacting.prompt ?? [defaultPrompt, ...compacting.context].join("\n\n")
-    const result = await processor.process({
-      user: userMessage,
-      prompt: agent.prompt,
-      abort: input.abort,
-      sessionID: input.sessionID,
-      tools: {},
-      system: [],
-      messages: [
-        ...MessageV2.toModelMessages(messages, model, { stripMedia: true }),
+    const promptText = defaultPrompt
+    const l = context.log.create({ service: "compaction" })
+
+    let summaryText = ""
+    let needsCompaction = false
+
+    try {
+      const stream = await createLLMStream(
         {
-          role: "user",
-          content: [
+          provider: context.provider,
+          auth: { get: Auth.get },
+          config: context.config,
+          systemPrompt: context.systemPrompt,
+          log: { info: l.info.bind(l), error: l.error.bind(l) },
+        },
+        {
+          model,
+          sessionID: input.sessionID,
+          system: [agent.prompt],
+          messages: [
+            ...MessageV2.toModelMessages(messages, model, { stripMedia: true }),
             {
-              type: "text",
-              text: promptText,
+              role: "user",
+              content: [{ type: "text", text: promptText }],
             },
           ],
+          tools: {},
+          abort: input.abort,
         },
-      ],
-      model,
-    })
+      )
 
-    if (result === "compact") {
-      processor.message.error = new MessageV2.ContextOverflowError({
+      for await (const value of stream.fullStream) {
+        if (value.type === "text-delta") {
+          summaryText += value.text
+        } else if (value.type === "error") {
+          throw value.error
+        }
+      }
+    } catch (e: any) {
+      const error = MessageV2.fromError(e, { providerID: model.providerID })
+      if (MessageV2.ContextOverflowError.isInstance(error)) {
+        needsCompaction = true
+      } else {
+        msg.error = error
+      }
+    }
+
+    // Persist the summary text as a part
+    if (summaryText) {
+      await context.memory.updatePart({
+        id: PartID.ascending(),
+        messageID: msg.id,
+        sessionID: input.sessionID,
+        type: "text",
+        text: summaryText.trimEnd(),
+        time: { start: Date.now(), end: Date.now() },
+      })
+      msg.finish = "stop"
+    }
+
+    msg.time.completed = Date.now()
+    await context.memory.updateMessage(msg)
+
+    if (needsCompaction) {
+      msg.error = new MessageV2.ContextOverflowError({
         message: replay
           ? "Conversation history too large to compact - exceeds model context limit"
           : "Session too large to compact - context exceeds model limit even after stripping media",
       }).toObject()
-      processor.message.finish = "error"
-      await context.memory.updateMessage(processor.message)
+      msg.finish = "error"
+      await context.memory.updateMessage(msg)
       return "stop" as const
     }
 
-    if (result === "continue" && input.auto) {
+    if (msg.error) return "stop" as const
+
+    if (input.auto) {
       if (replay) {
         const original = replay.info as MessageV2.User
         const replayMsg = await context.memory.updateMessage({
@@ -273,7 +307,6 @@ When constructing the summary, try to stick to this template:
         })
       }
     }
-    if (processor.message.error) return "stop" as const
     return "continue" as const
   }
 
