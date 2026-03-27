@@ -1,4 +1,4 @@
-import type { AgentContext } from "../context"
+
 
 /**
  * EnvService — per-instance environment variable snapshot.
@@ -30,32 +30,4 @@ export class EnvService {
   }
 }
 
-// ── Backward-compatible namespace wrapper ──────────────────────────
-// During the migration, existing call sites still use `Env.get(context, key)`.
-// This wrapper delegates to the EnvService instance on context.
-// Once all call sites are updated, this namespace can be removed.
 
-
-
-export namespace Env {
-  function state(context: AgentContext) {
-    if (context.env) return context.env
-    return context.env
-  }
-
-  export function get(context: AgentContext, key: string) {
-    return context.env.get(key)
-  }
-
-  export function all(context: AgentContext) {
-    return context.env.all()
-  }
-
-  export function set(context: AgentContext, key: string, value: string) {
-    context.env.set(key, value)
-  }
-
-  export function remove(context: AgentContext, key: string) {
-    context.env.remove(key)
-  }
-}
