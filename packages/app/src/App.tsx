@@ -38,8 +38,8 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
     const [activeTab, setActiveTab] = useState<TabId>(() => {
         try {
             const saved = localStorage.getItem(`anycode:tab:${sessionId}`);
-            return (saved as TabId) || "chat";
-        } catch { return "chat"; }
+            return (saved as TabId) || "files";
+        } catch { return "files"; }
     });
 
     // Persist active tab per window
