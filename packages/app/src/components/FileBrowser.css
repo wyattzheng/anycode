@@ -69,17 +69,17 @@
     left: -8px;
     right: auto;
     width: 16px;
-    height: 36px;
+    height: 34px;
 }
 
 /* Second line: subtle hint only in hot zone area */
 .file-browser--horizontal .fb-resize-border::after {
-    top: 8px;
+    top: 9px;
     bottom: auto;
     left: 2px;
     right: auto;
     width: 1px;
-    height: 20px;
+    height: 16px;
     background: var(--color-border);
 }
 
