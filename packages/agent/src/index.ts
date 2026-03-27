@@ -60,7 +60,7 @@ export {
 } from "./project"
 
 // Skill
-export { Skill } from "./skill"
+export { Skill, SkillService, type ISkillService } from "./skill"
 
 // Context interfaces
 export type { TerminalProvider, ShellProvider, PreviewProvider } from "./context"
