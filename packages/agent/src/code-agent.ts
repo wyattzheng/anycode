@@ -42,7 +42,7 @@ import { MessageV2 } from "./memory/message-v2"
 import { MemoryService } from "./memory"
 import type { Settings } from "./settings"
 import { Provider } from "./provider/provider"
-import { ModelsDev } from "./provider/models"
+
 import { Skill } from "./skill"
 import type { Logger } from "@any-code/utils"
 import { NamedError } from "./util/error"
@@ -448,8 +448,6 @@ export class CodeAgent extends EventEmitter {
 
 
 
-        // Skip models.dev external fetch — all model metadata derived from CodeAgentProvider
-        ctx.modelsDev = { _promise: Promise.resolve({ data: {} }) } as any
         ctx.provider = new Provider.ProviderService(ctx, this.options.provider)
         ctx.toolRegistry = new ToolRegistry.ToolRegistryService(ctx)
         ctx.skill = new Skill.SkillService(ctx)

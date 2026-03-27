@@ -36,7 +36,6 @@
   },
   "dependencies": {
     "@any-code/utils": "workspace:*",
-    "@any-code/model-info": "workspace:*",
     "@ai-sdk/anthropic": "2.0.65",
     "@ai-sdk/google": "2.0.54",
     "@ai-sdk/openai": "2.0.89",
