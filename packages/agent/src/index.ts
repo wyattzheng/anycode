@@ -42,7 +42,6 @@ export {
   type FindManyOptions,
   SqliteNoSqlDb,
   NotFoundError,
-  Storage,
 } from "./storage"
 
 // Project
