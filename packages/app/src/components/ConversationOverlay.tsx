@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, type MutableRefObject } from "react";
 import { flushSync } from "react-dom";
 import type { FileContext } from "../App";
-import { MicIcon, KeyboardIcon, SendIcon, CloseIcon, ChatIcon, StopIcon, PinIcon, UndockIcon, MinimizeIcon } from "./Icons";
+import { MicIcon, KeyboardIcon, SendIcon, CloseIcon, ChatBubbleIcon, StopIcon, PinIcon, UndockIcon, MinimizeIcon } from "./Icons";
 import { getApiBase } from "../serverUrl";
 import "./ConversationOverlay.css";
 
@@ -775,7 +775,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
                 >
                     {floating && <div className="drag-grip" />}
                     <div className="conversation-header-content">
-                        <ChatIcon /> 对话
+                        <ChatBubbleIcon /> 对话
                         {floating ? (
                             <button
                                 className="co-float-toggle"
@@ -821,7 +821,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
         <div className="conversation-panel conversation-full">
             <div className="conversation-header">
                 <div className="conversation-header-content">
-                    <ChatIcon /> 对话
+                    <ChatBubbleIcon /> 对话
                     {onPopOut && (
                         <button
                             className="co-float-toggle"

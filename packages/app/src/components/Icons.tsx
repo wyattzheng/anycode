@@ -126,7 +126,17 @@ export function DeletedIcon({ size = 12, color = "currentColor" }: IconProps) {
     );
 }
 
-export function ChatIcon({ size = 14, color = "currentColor" }: IconProps) {
+export function ChatIcon({ size = 18, color = "currentColor" }: IconProps) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="2" width="20" height="20" rx="3" />
+            <line x1="7" y1="9" x2="15" y2="9" />
+            <line x1="9" y1="15" x2="17" y2="15" />
+        </svg>
+    );
+}
+
+export function ChatBubbleIcon({ size = 14, color = "currentColor" }: IconProps) {
     return (
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
