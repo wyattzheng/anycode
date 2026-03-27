@@ -3,7 +3,7 @@ import type { AgentContext } from "../context"
 import { SessionID, MessageID, PartID } from "../session/schema"
 import { MessageV2 } from "./message-v2"
 import { Provider, VendorRegistry } from "@any-code/provider"
-import { createLLMRunner } from "../llm-runner"
+import { createLLMRunner } from "../code-agent"
 import PROMPT_COMPACTION from "../prompt/compaction.txt"
 
 const COMPACTION_BUFFER = 20_000

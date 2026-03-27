@@ -21,7 +21,7 @@ import { pathToFileURL, fileURLToPath } from "url"
 import { ConfigMarkdown } from "../util/markdown"
 import { NamedError } from "../util/error"
 import { Tool } from "../tool/tool"
-import type { LLMRunnerInfo } from "../llm-runner"
+import type { LLMRunnerInfo } from "../code-agent"
 import { decodeDataUrl } from "../util/data-url"
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
