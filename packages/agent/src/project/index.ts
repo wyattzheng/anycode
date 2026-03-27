@@ -132,34 +132,6 @@ export class FileTimeService {
   }
 }
 
-export namespace FileTime {
-  function svc(context: AgentContext) {
-    if (context.fileTime) return context.fileTime
-    return context.fileTime
-  }
-
-  export function state(context: AgentContext) {
-    const s = svc(context)
-    return { read: (s as any).readTimes, locks: (s as any).locks }
-  }
-
-  export function read(context: AgentContext, sessionID: string, file: string) {
-    svc(context).read(sessionID, file)
-  }
-
-  export function get(context: AgentContext, sessionID: string, file: string) {
-    return svc(context).get(sessionID, file)
-  }
-
-  export async function withLock<T>(context: AgentContext, filepath: string, fn: () => Promise<T>): Promise<T> {
-    return svc(context).withLock(filepath, fn)
-  }
-
-  export async function assert(context: AgentContext, sessionID: string, filepath: string) {
-    return svc(context).assert(context, sessionID, filepath)
-  }
-}
-
 
 // ── Project ─────────────────────────────────────────────────────────────────
 
