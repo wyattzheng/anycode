@@ -35,6 +35,9 @@ importers:
       '@ai-sdk/provider-utils':
         specifier: 3.0.21
         version: 3.0.21(zod@4.1.8)
+      '@any-code/model-info':
+        specifier: workspace:*
+        version: link:../model-info
       '@any-code/utils':
         specifier: workspace:*
         version: link:../utils
@@ -303,6 +306,22 @@ importers:
       '@openai/codex-sdk':
         specifier: ^0.116.0
         version: 0.116.0
+    devDependencies:
+      '@types/node':
+        specifier: ^25.5.0
+        version: 25.5.0
+      tsup:
+        specifier: ^8.4.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.8.2)(yaml@2.8.2)
+      typescript:
+        specifier: ^5.7.0
+        version: 5.8.2
+
+  packages/model-info:
+    dependencies:
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^25.5.0
@@ -3586,6 +3605,9 @@ packages:
     peerDependencies:
       zod: ^3.24.1
 
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
   zod@4.1.8:
     resolution: {integrity: sha512-5R1P+WwQqmmMIEACyzSvo4JXHY5WiAFHRMg+zBZKgKS+Q1viRa0C1hmUKtHltoIFKtIdki3pRxkmpP74jnNYHQ==}
 
@@ -6659,6 +6681,8 @@ snapshots:
   zod-to-json-schema@3.24.5(zod@4.1.8):
     dependencies:
       zod: 4.1.8
+
+  zod@3.25.76: {}
 
   zod@4.1.8: {}
 
