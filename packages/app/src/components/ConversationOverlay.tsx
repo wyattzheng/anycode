@@ -254,17 +254,21 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
         const w = Math.max(120, Math.min(600, sidebarDragRef.current.origW + dw));
         setSidebarWidth(w);
     }, []);
+    const sidebarBorderRef = useRef<HTMLDivElement>(null);
+
     const onSidebarResizeEnd = useCallback(() => {
         if (sidebarDragRef.current) {
             hasUserWidth.current = true;
             setSidebarWidth((w: number) => { try { localStorage.setItem(STORAGE_KEY_SIDEBAR_W, String(w)); } catch { } return w; });
         }
         sidebarDragRef.current = null;
+        sidebarBorderRef.current?.classList.remove('dragging');
     }, []);
 
     const handleBorderMouseDown = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
         document.body.style.userSelect = 'none';
+        sidebarBorderRef.current?.classList.add('dragging');
         onSidebarResizeStart(e.clientX);
         const onMove = (ev: MouseEvent) => onSidebarResizeMove(ev.clientX);
         const onUp = () => { document.body.style.userSelect = ''; onSidebarResizeEnd(); window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
@@ -272,6 +276,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
     }, [onSidebarResizeStart, onSidebarResizeMove, onSidebarResizeEnd]);
     const handleBorderTouchStart = useCallback((e: React.TouchEvent) => {
         document.body.style.userSelect = 'none';
+        sidebarBorderRef.current?.classList.add('dragging');
         onSidebarResizeStart(e.touches[0].clientX);
         const onMove = (ev: TouchEvent) => { ev.preventDefault(); onSidebarResizeMove(ev.touches[0].clientX); };
         const onUp = () => { document.body.style.userSelect = ''; onSidebarResizeEnd(); window.removeEventListener('touchmove', onMove); window.removeEventListener('touchend', onUp); };
@@ -774,7 +779,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
 
         return (
             <div className={panelClass} style={panelStyle}>
-                {!floating && <div className="co-sidebar-border" onMouseDown={handleBorderMouseDown} onTouchStart={handleBorderTouchStart} />}
+                {!floating && <div className="co-sidebar-border" ref={sidebarBorderRef} onMouseDown={handleBorderMouseDown} onTouchStart={handleBorderTouchStart} />}
                 <div className="conversation-header"
                     {...(floating ? { onMouseDown: handleMouseDown, onTouchStart: handleTouchStart } : {})}
                 >

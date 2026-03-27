@@ -64,13 +64,11 @@
     -webkit-tap-highlight-color: transparent;
 }
 
-.co-sidebar-border:hover ~ .conversation-header,
-.co-sidebar-border:active ~ .conversation-header {
+.co-sidebar-border.dragging ~ .conversation-header {
     border-left-color: var(--color-accent);
 }
 
-.conversation-sidebar:has(.co-sidebar-border:hover),
-.conversation-sidebar:has(.co-sidebar-border:active) {
+.conversation-sidebar:has(.co-sidebar-border.dragging) {
     box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
