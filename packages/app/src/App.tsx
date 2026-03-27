@@ -152,6 +152,26 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
         }
     }, [sessionId]);
 
+    const [poppedOut, setPoppedOut] = useState(false);
+
+    // Compute conversation mode:
+    // - chat tab + not popped out = "full" (conversation fills the tab)
+    // - chat tab + popped out = "hidden" (conversation is in overlay, tab shows placeholder)
+    // - other tab + popped out = "overlay" (sidebar/floating)
+    // - other tab + not popped out = "hidden"
+    const convMode = activeTab === "chat"
+        ? (poppedOut ? "hidden" : "full")
+        : (poppedOut ? "overlay" : "hidden");
+
+    const handlePopOut = useCallback(() => {
+        setPoppedOut(true);
+        setActiveTab("files"); // switch away from chat tab
+    }, []);
+    const handlePopIn = useCallback(() => {
+        setPoppedOut(false);
+        setActiveTab("chat"); // switch back to chat tab
+    }, []);
+
     return (
         <div className="app-content" style={{ display: visible ? "flex" : "none" }}>
             {directory && (
@@ -160,37 +180,48 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                 </div>
             )}
             <div className="app-middle">
-                {activeTab === "chat" ? (
-                    <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} chatResetRef={chatResetRef} chatBusy={chatBusy} sendMessage={sendMessage} minimized={false} />
-                ) : (
-                    <div className="app-main">
-                        {directory ? (
-                            <MainView
-                                activeTab={activeTab}
-                                topLevel={topLevel}
-                                changes={changes}
-                                directory={directory}
-                                sessionId={sessionId}
-                                previewPort={previewPort}
-                                requestLs={requestLs}
-                                requestFile={requestFile}
-                                requestDiff={requestDiff}
-                                onFileContext={setFileContext}
-                            />
-                        ) : (
-                            <div className="main-view" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                <div style={{ textAlign: "center" }}>
-                                    <p style={{ color: "var(--color-text-dim)", fontSize: "14px", opacity: 0.4, fontWeight: 500 }}>
-                                        通过对话面板
-                                    </p>
-                                    <p style={{ color: "var(--color-text-dim)", fontSize: "11px", opacity: 0.3, marginTop: "6px" }}>
-                                        打开一个项目并开始
-                                    </p>
-                                </div>
+                <div className="app-main">
+                    {activeTab === "chat" && !poppedOut ? (
+                        <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} chatResetRef={chatResetRef} chatBusy={chatBusy} sendMessage={sendMessage} mode="full" onPopOut={handlePopOut} />
+                    ) : activeTab === "chat" && poppedOut ? (
+                        <div className="main-view" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <div style={{ textAlign: "center" }}>
+                                <p style={{ color: "var(--color-text-dim)", fontSize: "14px", opacity: 0.4, fontWeight: 500 }}>
+                                    对话已弹出到侧边栏
+                                </p>
+                                <p style={{ color: "var(--color-text-dim)", fontSize: "11px", opacity: 0.3, marginTop: "6px" }}>
+                                    点击侧边栏标题的 📌 收回
+                                </p>
                             </div>
-                        )}
-                        <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} chatResetRef={chatResetRef} chatBusy={chatBusy} sendMessage={sendMessage} minimized={true} />
-                    </div>
+                        </div>
+                    ) : directory ? (
+                        <MainView
+                            activeTab={activeTab}
+                            topLevel={topLevel}
+                            changes={changes}
+                            directory={directory}
+                            sessionId={sessionId}
+                            previewPort={previewPort}
+                            requestLs={requestLs}
+                            requestFile={requestFile}
+                            requestDiff={requestDiff}
+                            onFileContext={setFileContext}
+                        />
+                    ) : (
+                        <div className="main-view" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <div style={{ textAlign: "center" }}>
+                                <p style={{ color: "var(--color-text-dim)", fontSize: "14px", opacity: 0.4, fontWeight: 500 }}>
+                                    通过对话面板
+                                </p>
+                                <p style={{ color: "var(--color-text-dim)", fontSize: "11px", opacity: 0.3, marginTop: "6px" }}>
+                                    打开一个项目并开始
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                {poppedOut && activeTab !== "chat" && (
+                    <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} chatResetRef={chatResetRef} chatBusy={chatBusy} sendMessage={sendMessage} mode="overlay" onPopIn={handlePopIn} />
                 )}
             </div>
             <TabBar activeTab={activeTab} onTabChange={setActiveTab} changeCount={changes.length} chatBusy={chatBusy} />

@@ -71,19 +71,16 @@
 
 .tab-busy-dot {
     position: absolute;
-    top: -4px;
-    right: -7px;
-    width: 8px;
-    height: 8px;
+    top: -3px;
+    right: -6px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
-    background: transparent;
-    border: 1.5px solid transparent;
-    border-top-color: var(--color-accent);
-    border-right-color: var(--color-accent);
-    animation: tab-busy-spin 0.8s linear infinite;
-    box-shadow: 0 0 4px rgba(108, 182, 255, 0.3);
+    background: var(--color-accent);
+    animation: tab-busy-glow 1.5s ease-in-out infinite;
 }
 
-@keyframes tab-busy-spin {
-    to { transform: rotate(360deg); }
+@keyframes tab-busy-glow {
+    0%, 100% { opacity: 1; box-shadow: 0 0 3px var(--color-accent); }
+    50% { opacity: 0.35; box-shadow: none; }
 }

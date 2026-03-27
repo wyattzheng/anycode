@@ -145,8 +145,12 @@ interface ConversationOverlayProps {
     chatResetRef?: MutableRefObject<(() => void) | undefined>;
     chatBusy?: boolean;
     sendMessage: (data: any) => void;
-    /** When true, render only the compact input bar (default mode) */
-    minimized?: boolean;
+    /** Display mode: full (chat tab), overlay (sidebar/floating), hidden */
+    mode?: "full" | "overlay" | "hidden";
+    /** Called when user clicks pop-out from full mode */
+    onPopOut?: () => void;
+    /** Called when user clicks pop-in from overlay mode */
+    onPopIn?: () => void;
 }
 
 const STORAGE_KEY_POS = "anycode-conv-pos";
@@ -174,7 +178,7 @@ function defaultSidebarWidth() {
     return 150;
 }
 
-export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, chatResetRef, chatBusy: chatBusyProp, sendMessage, minimized = false }: ConversationOverlayProps) {
+export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, chatResetRef, chatBusy: chatBusyProp, sendMessage, mode = "full", onPopOut, onPopIn }: ConversationOverlayProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [recording, setRecording] = useState(false);
@@ -659,7 +663,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
         }
     };
 
-    // ── Render input bar (shared between minimized and full modes) ──
+    // ── Shared input bar ──
     const renderInputBar = () => (
         <div className={`conversation-input${inputNarrow && showTextInput ? ' conversation-input--stacked' : ''}`} ref={inputBarRef}>
             {showTextInput ? (
@@ -722,18 +726,9 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
         </div>
     );
 
-    // ── Minimized mode: just the input bar ──
-    if (minimized) {
-        return (
-            <div className="conversation-minimized">
-                {renderInputBar()}
-            </div>
-        );
-    }
-
-    // ── Full mode: complete chat panel ──
-    return (
-        <div className="conversation-panel conversation-full">
+    // ── Shared messages area ──
+    const renderMessages = () => (
+        <>
             <div className="conversation-messages" ref={msgsRef} onClick={handleMessagesClick}>
                 {messages.length === 0 && (
                     <div className="co-text" style={{ color: "var(--color-text-dim)" }}>
@@ -750,7 +745,6 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
                     )
                 )}
             </div>
-
             {fileContext && (
                 <div className="co-file-context">
                     <span className="co-file-context-text">
@@ -758,6 +752,76 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
                     </span>
                 </div>
             )}
+        </>
+    );
+
+    // ── Hidden mode: render nothing ──
+    if (mode === "hidden") return null;
+
+    // ── Overlay mode: sidebar or floating ──
+    if (mode === "overlay") {
+        const panelClass = floating
+            ? "conversation-panel conversation-floating"
+            : "conversation-panel conversation-sidebar";
+        const panelStyle = floating
+            ? { transform: `translate(${position.x}px, ${position.y}px)`, width: size.w, height: size.h }
+            : { width: sidebarWidth };
+
+        return (
+            <div className={panelClass} style={panelStyle}>
+                {!floating && <div className="co-sidebar-border" onMouseDown={handleBorderMouseDown} onTouchStart={handleBorderTouchStart} />}
+                <div className="conversation-header"
+                    {...(floating ? { onMouseDown: handleMouseDown, onTouchStart: handleTouchStart } : {})}
+                >
+                    {floating && <div className="drag-grip" />}
+                    <div className="conversation-header-content">
+                        <ChatIcon /> 对话
+                        <button
+                            className="co-float-toggle"
+                            onClick={onPopIn}
+                            title="收回到对话 Tab"
+                        >
+                            <PinIcon />
+                        </button>
+                        <button
+                            className="co-float-toggle"
+                            onClick={toggleFloating}
+                            title={floating ? "固定到侧边栏" : "浮动窗口"}
+                        >
+                            {floating ? <PinIcon /> : <UndockIcon />}
+                        </button>
+                    </div>
+                </div>
+                {renderMessages()}
+                {renderInputBar()}
+                {floating && (
+                    <>
+                        <div className="co-resize-grip co-resize-bl" onMouseDown={makeResizeMouseDown("bl")} onTouchStart={makeResizeTouchStart("bl")} />
+                        <div className="co-resize-grip co-resize-br" onMouseDown={makeResizeMouseDown("br")} onTouchStart={makeResizeTouchStart("br")} />
+                    </>
+                )}
+            </div>
+        );
+    }
+
+    // ── Full mode: fills entire parent (chat tab) ──
+    return (
+        <div className="conversation-panel conversation-full">
+            <div className="conversation-header">
+                <div className="conversation-header-content">
+                    <ChatIcon /> 对话
+                    {onPopOut && (
+                        <button
+                            className="co-float-toggle"
+                            onClick={onPopOut}
+                            title="弹出为侧边栏"
+                        >
+                            <UndockIcon />
+                        </button>
+                    )}
+                </div>
+            </div>
+            {renderMessages()}
             {renderInputBar()}
         </div>
     );
