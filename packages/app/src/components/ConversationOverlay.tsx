@@ -683,7 +683,6 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
                             placeholder={busy ? "正在处理中..." : "输入消息..."}
-                            autoFocus
                             disabled={busy}
                         />
                         <div className="text-buttons-row">
@@ -704,7 +703,6 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
                             placeholder={busy ? "正在处理中..." : "输入消息..."}
-                            autoFocus
                             disabled={busy}
                         />
                         {busy ? (
