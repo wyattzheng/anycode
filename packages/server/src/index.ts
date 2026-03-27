@@ -1068,17 +1068,33 @@ function createPreviewServer(cfg: ServerConfig): http.Server {
         headers: { ...req.headers, host: parsed.host },
       }
 
-      const proxyReq = http.request(options, (proxyRes) => {
-        res.writeHead(proxyRes.statusCode || 502, proxyRes.headers)
-        proxyRes.pipe(res)
-      })
+      // Buffer request body so we can replay on retry
+      const chunks: Buffer[] = []
+      req.on("data", (c: Buffer) => chunks.push(c))
+      req.on("end", () => {
+        const body = Buffer.concat(chunks)
+        const MAX_RETRIES = 5
+        const RETRY_DELAY = 500
 
-      proxyReq.on("error", (err) => {
-        if (!res.headersSent) res.writeHead(502, { "Content-Type": "text/plain" })
-        res.end(`Preview proxy error: ${err.message}`)
-      })
+        const attempt = (n: number) => {
+          const proxyReq = http.request(options, (proxyRes) => {
+            res.writeHead(proxyRes.statusCode || 502, proxyRes.headers)
+            proxyRes.pipe(res)
+          })
 
-      req.pipe(proxyReq)
+          proxyReq.on("error", (err: NodeJS.ErrnoException) => {
+            if (err.code === "ECONNREFUSED" && n < MAX_RETRIES) {
+              setTimeout(() => attempt(n + 1), RETRY_DELAY)
+            } else {
+              if (!res.headersSent) res.writeHead(502, { "Content-Type": "text/plain" })
+              res.end(`Preview proxy error: ${err.message}`)
+            }
+          })
+
+          proxyReq.end(body)
+        }
+        attempt(0)
+      })
     } catch (err: any) {
       res.writeHead(502, { "Content-Type": "text/plain" })
       res.end(`Invalid proxy target: ${err.message}`)
