@@ -1,6 +1,6 @@
 {
   "name": "@any-code/claude-code-agent",
-  "version": "0.0.4",
+  "version": "0.0.6",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

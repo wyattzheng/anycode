@@ -208,31 +208,7 @@ function createAgentConfig(cfg: ServerConfig, directory: string, sessionId?: str
       ...(cfg.baseUrl ? { baseUrl: cfg.baseUrl } : {}),
     },
     settings: cfg.userSettings,
-    config: {
-      model: `${cfg.provider}/${cfg.model}`,
-      small_model: `${cfg.provider}/${cfg.model}`,
-      provider: {
-        [cfg.provider]: {
-          npm: /claude/i.test(cfg.model) ? "@ai-sdk/anthropic" : "@ai-sdk/openai-compatible",
-          ...(cfg.baseUrl ? { api: cfg.baseUrl } : {}),
-          options: {
-            apiKey: cfg.apiKey,
-            ...(cfg.baseUrl ? { baseURL: cfg.baseUrl } : {}),
-          },
-          models: {
-            [cfg.model]: {
-              name: cfg.model,
-              attachment: true,
-              tool_call: true,
-              temperature: true,
-              reasoning: true,
-              limit: { context: 200000, output: 32000 },
-              cost: { input: 0, output: 0 },
-            },
-          },
-        },
-      },
-    },
+    config: {},
   }
 }
 

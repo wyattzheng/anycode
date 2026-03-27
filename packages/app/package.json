@@ -1,6 +1,6 @@
 {
     "name": "@any-code/app",
-    "version": "0.0.2",
+    "version": "0.0.4",
     "private": false,
     "type": "module",
     "files": [

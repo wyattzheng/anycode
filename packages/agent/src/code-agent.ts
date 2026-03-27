@@ -58,12 +58,19 @@ import { LLMRunner } from "./llm-runner"
 export interface CodeAgentProvider {
     /** Provider ID, e.g. "anthropic", "openai", "google" */
     id: string
-    /** API key for the provider */
-    apiKey: string
     /** Model ID, e.g. "claude-sonnet-4-20250514", "gpt-4o" */
     model: string
-    /** Optional base URL override */
+    /** API key for the provider */
+    apiKey: string
+    /** Optional base URL override (for proxies or compatible APIs) */
     baseUrl?: string
+    /** Model pricing in USD per million tokens */
+    cost?: {
+        input: number
+        output: number
+        cacheRead?: number
+        cacheWrite?: number
+    }
 }
 
 
@@ -261,6 +268,8 @@ export class CodeAgent extends EventEmitter {
     private options: CodeAgentOptions
     private initialized = false
     private _currentSessionId: string | null = null
+    private _providerId!: string
+    private _modelId!: string
     private _storageProvider: StorageProvider | undefined
     private _dbClient: any
     private _git: GitProvider
@@ -349,17 +358,21 @@ export class CodeAgent extends EventEmitter {
     async init(): Promise<void> {
         if (this.initialized) return
 
+        const p = this.options.provider
+        this._providerId = p.id
+        this._modelId = p.model
+
         // Set provider API key via environment variable (opencode convention)
-        const envKey = this.getProviderEnvKey(this.options.provider.id)
+        const envKey = this.getProviderEnvKey(p.id)
         if (envKey) {
-            this.env.set(envKey, this.options.provider.apiKey)
+            this.env.set(envKey, p.apiKey)
         }
 
         // Set base URL if provided
-        if (this.options.provider.baseUrl) {
-            const baseUrlEnv = this.getProviderBaseUrlEnv(this.options.provider.id)
+        if (p.baseUrl) {
+            const baseUrlEnv = this.getProviderBaseUrlEnv(p.id)
             if (baseUrlEnv) {
-                this.env.set(baseUrlEnv, this.options.provider.baseUrl)
+                this.env.set(baseUrlEnv, p.baseUrl)
             }
         }
 
@@ -435,14 +448,11 @@ export class CodeAgent extends EventEmitter {
 
 
 
-        ctx.modelsDev = new ModelsDev.ModelsDevService(ctx)
-        ctx.provider = new Provider.ProviderService(ctx)
+        // Skip models.dev external fetch — all model metadata derived from CodeAgentProvider
+        ctx.modelsDev = { _promise: Promise.resolve({ data: {} }) } as any
+        ctx.provider = new Provider.ProviderService(ctx, this.options.provider)
         ctx.toolRegistry = new ToolRegistry.ToolRegistryService(ctx)
         ctx.skill = new Skill.SkillService(ctx)
-
-
-
-
 
         ctx.provider.bind(ctx)
 
@@ -665,8 +675,8 @@ export class CodeAgent extends EventEmitter {
                 })
 
 
-                const providerID = this.options.provider.id
-                const modelID = this.options.provider.model
+                const providerID = this._providerId
+                const modelID = this._modelId
 
                 await this.runLoop({
                     sessionID: sessionId as any,

@@ -241,11 +241,28 @@ export namespace Provider {
    * ProviderService — manages provider initialization, SDK instances, and model resolution.
    * All logic is now in instance methods.
    */
+  /** Flat provider config from CodeAgent — no nested config needed */
+  export interface SimpleProvider {
+    id: string
+    model: string
+    apiKey: string
+    baseUrl?: string
+    cost?: { input: number; output: number; cacheRead?: number; cacheWrite?: number }
+  }
+
+  const NPM_MAP: Record<string, string> = {
+    anthropic: '@ai-sdk/anthropic',
+    openai: '@ai-sdk/openai',
+    google: '@ai-sdk/google',
+  }
+
   export class ProviderService {
     readonly _promise: ReturnType<ProviderService["init"]>
     private context!: AgentContext
+    private simpleProvider?: SimpleProvider
 
-    constructor(context: AgentContext) {
+    constructor(context: AgentContext, simpleProvider?: SimpleProvider) {
+      this.simpleProvider = simpleProvider
       this._promise = this.init(context)
     }
 
@@ -460,7 +477,6 @@ export namespace Provider {
           s.sdk.set(key, loaded)
           return loaded as SDK
         }
-
         throw new InitError({ providerID: model.providerID }, { cause: new Error(`Unsupported provider npm package: ${model.api.npm}. Only bundled providers are supported.`) })
       } catch (e) {
         throw new InitError({ providerID: model.providerID }, { cause: e })
@@ -469,6 +485,64 @@ export namespace Provider {
 
     private async init(context: AgentContext) {
       using _ = getLog(context).time("state")
+
+      // Short-circuit: when SimpleProvider is given, build directly from flat fields
+      if (this.simpleProvider) {
+        const sp = this.simpleProvider
+        const npm = NPM_MAP[sp.id] ?? '@ai-sdk/openai-compatible'
+        const providerID = ProviderID.make(sp.id)
+        const modelID = ModelID.make(sp.model)
+
+        const model: Model = {
+          id: modelID,
+          providerID,
+          api: { id: sp.model, npm, url: sp.baseUrl ?? '' },
+          name: sp.model,
+          status: 'active',
+          headers: {},
+          options: {},
+          cost: {
+            input: sp.cost?.input ?? 0,
+            output: sp.cost?.output ?? 0,
+            cache: { read: sp.cost?.cacheRead ?? 0, write: sp.cost?.cacheWrite ?? 0 },
+          },
+          limit: { context: 200000, output: 32000 },
+          capabilities: {
+            temperature: true,
+            reasoning: true,
+            attachment: true,
+            toolcall: true,
+            input: { text: true, audio: false, image: false, video: false, pdf: false },
+            output: { text: true, audio: false, image: false, video: false, pdf: false },
+            interleaved: false,
+          },
+          release_date: '',
+          family: '',
+          variants: {},
+        }
+
+        const info: Info = {
+          id: providerID,
+          name: sp.id,
+          source: 'config',
+          env: [],
+          key: sp.apiKey,
+          options: {
+            apiKey: sp.apiKey,
+            ...(sp.baseUrl ? { baseURL: sp.baseUrl } : {}),
+          },
+          models: { [sp.model]: model },
+        }
+
+        return {
+          models: new Map<string, LanguageModelV2>(),
+          providers: { [sp.id]: info } as { [providerID: string]: Info },
+          sdk: new Map<string, SDK>(),
+          modelLoaders: {} as { [providerID: string]: ProviderModelLoader },
+          varsLoaders: {} as { [providerID: string]: ProviderVarsLoader },
+        }
+      }
+
       const config = context.config
       const modelsDev = await ModelsDev.get(context)
       const database = mapValues(modelsDev, fromModelsDevProvider)
