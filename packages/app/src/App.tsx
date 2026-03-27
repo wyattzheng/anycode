@@ -152,7 +152,11 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
         }
     }, [sessionId]);
 
-    const [poppedOut, setPoppedOut] = useState(false);
+    const [poppedOut, setPoppedOut] = useState(() => {
+        try {
+            return localStorage.getItem(`anycode:poppedOut:${sessionId}`) === 'true';
+        } catch { return false; }
+    });
 
     // Compute conversation mode:
     // - chat tab + not popped out = "full" (conversation fills the tab)
@@ -162,6 +166,10 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
     const convMode = activeTab === "chat"
         ? (poppedOut ? "hidden" : "full")
         : (poppedOut ? "overlay" : "hidden");
+
+    useEffect(() => {
+        try { localStorage.setItem(`anycode:poppedOut:${sessionId}`, String(poppedOut)); } catch { }
+    }, [sessionId, poppedOut]);
 
     const handlePopOut = useCallback(() => {
         setPoppedOut(true);
