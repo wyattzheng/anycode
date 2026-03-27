@@ -50,7 +50,7 @@ import { defer } from "./util/fn"
 import { ulid } from "ulid"
 import { MessageID as MsgID, SessionID } from "./session/schema"
 import { SystemPrompt } from "./prompt"
-import { ContextCompaction } from "./memory/compaction"
+import { CompactionService } from "./memory/compaction"
 import { LLMRunner } from "./llm-runner"
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -446,6 +446,7 @@ export class CodeAgent extends EventEmitter {
 
         ctx.sessionPrompt = new SessionPrompt.SessionPromptService()
         ctx.systemPrompt = new SystemPrompt()
+        ctx.compaction = new CompactionService()
 
 
 
@@ -824,7 +825,7 @@ export class CodeAgent extends EventEmitter {
         if (!this._currentSessionId) {
             return { contextUsed: 0, contextLimit: 0, compactionThreshold: 0, compactions: 0 }
         }
-        return ContextCompaction.getStatus(this.agentContext, this._currentSessionId)
+        return this.agentContext.compaction.getStatus(this.agentContext, this._currentSessionId)
     }
 
     /**
@@ -971,9 +972,9 @@ export class CodeAgent extends EventEmitter {
             if (recentUser && recentAssistant && !recentAssistant.summary) {
                 const userInfo = recentUser.info as MessageV2.User
                 const model = await context.provider.getModel(userInfo.model.providerID, userInfo.model.modelID).catch((): null => null)
-                const tokenOverflow = model && await ContextCompaction.isOverflowForSession(context, sessionID, model)
+                const tokenOverflow = model && await context.compaction.isOverflowForSession(context, sessionID, model)
                 if (tokenOverflow || msgs.length > 200) {
-                    const compactResult = await ContextCompaction.process(context, {
+                    const compactResult = await context.compaction.process(context, {
                         messages: msgs, parentID: recentUser.info.id, abort, sessionID,
                         auto: true, overflow: !!tokenOverflow, context,
                     })

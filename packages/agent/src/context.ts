@@ -8,6 +8,7 @@ import type { Log } from "./util/log"
 import type { SchedulerService } from "./util/scheduler"
 import type { FileTimeService } from "./project"
 import type { MemoryService } from "./memory"
+import type { ICompactionService } from "./memory/compaction"
 
 import type { SessionStatus } from "./session"
 import type { SessionService } from "./session"
@@ -109,6 +110,7 @@ export interface AgentContext {
   scheduler: SchedulerService
   fileTime: FileTimeService
   memory: MemoryService
+  compaction: ICompactionService
 
   // Phase 1+: context-dependent services (created in CodeAgent.init())
   config: Record<string, any>

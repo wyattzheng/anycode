@@ -7,7 +7,7 @@ import { MessageV2 } from "./memory/message-v2"
 import { SessionService } from "./session"
 import { PartID, SessionID } from "./session/schema"
 import { SessionStatus } from "./session"
-import { ContextCompaction } from "./memory/compaction"
+
 
 export namespace LLM {
   export const OUTPUT_TOKEN_MAX = VendorRegistry.getModelProvider().getOutputTokenMax()
@@ -381,7 +381,7 @@ export namespace LLMRunner {
                       state: {
                         status: "completed",
                         input: value.input ?? match.state.input,
-                        output: ContextCompaction.truncateToolOutput((value.output as any).output),
+                        output: input.context.compaction.truncateToolOutput((value.output as any).output),
                         metadata: (value.output as any).metadata,
                         title: (value.output as any).title,
                         time: {
@@ -449,7 +449,7 @@ export namespace LLMRunner {
 
                   if (
                     !input.assistantMessage.summary &&
-                    (await ContextCompaction.isOverflow({ tokens: usage.tokens, model: input.model, context: input.context }))
+                    (await input.context.compaction.isOverflow({ tokens: usage.tokens, model: input.model, context: input.context }))
                   ) {
                     needsCompaction = true
                   }

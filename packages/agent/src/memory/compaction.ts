@@ -6,66 +6,70 @@ import { Provider, VendorRegistry } from "@any-code/provider"
 import { LLMRunner } from "../llm-runner"
 import PROMPT_COMPACTION from "../prompt/compaction.txt"
 
-export namespace ContextCompaction {
+const COMPACTION_BUFFER = 20_000
+const MAX_TOOL_OUTPUT_TOKENS = 40_000
+const CHARS_PER_TOKEN = 4
 
-  const COMPACTION_BUFFER = 20_000
-  const MAX_TOOL_OUTPUT_TOKENS = 40_000
-  const CHARS_PER_TOKEN = 4
+function getLimits(model: Provider.Model, config: any) {
+  const contextLimit = model.limit.context ?? 0
+  const modelProvider = VendorRegistry.getModelProvider({ model })
+  const reserved =
+    config.compaction?.reserved ?? Math.min(COMPACTION_BUFFER, modelProvider.getMaxOutputTokens())
+  const compactionThreshold = model.limit.input
+    ? model.limit.input - reserved
+    : contextLimit - modelProvider.getMaxOutputTokens()
+  return { contextLimit, compactionThreshold }
+}
 
-  /** Truncate tool output at write time if it exceeds the max size */
-  export function truncateToolOutput(output: string): string {
+function countInputTokens(tokens: MessageV2.Assistant["tokens"]) {
+  return tokens.total || tokens.input + tokens.output + tokens.cache.read + tokens.cache.write
+}
+
+function getLastStepTokens(context: AgentContext, sessionID: string) {
+  const parts = context.db.findMany("part", {
+    filter: { op: "eq", field: "session_id", value: sessionID },
+    orderBy: [{ field: "id", direction: "desc" }],
+  })
+  for (const row of parts) {
+    if (row.data?.type === "step-finish" && row.data.tokens) return row.data.tokens
+  }
+  return undefined
+}
+
+// ── Interface ─────────────────────────────────────────────────────────
+
+export interface ICompactionService {
+  truncateToolOutput(output: string): string
+  isOverflow(input: { tokens: MessageV2.StepFinishPart["tokens"]; model: Provider.Model; context: AgentContext }): Promise<boolean>
+  isOverflowForSession(context: AgentContext, sessionID: string, model: Provider.Model): Promise<boolean>
+  getStatus(context: AgentContext, sessionID: string): Promise<{ contextUsed: number; contextLimit: number; compactionThreshold: number; compactions: number }>
+  process(context: AgentContext, input: any): Promise<"continue" | "stop">
+  create(context: AgentContext, input: any): Promise<void>
+}
+
+// ── CompactionService ─────────────────────────────────────────────────
+
+export class CompactionService implements ICompactionService {
+  truncateToolOutput(output: string): string {
     const maxChars = MAX_TOOL_OUTPUT_TOKENS * CHARS_PER_TOKEN
     if (output.length <= maxChars) return output
     return output.slice(0, maxChars) + "\n\n[TRUNCATED - Content exceeds " + MAX_TOOL_OUTPUT_TOKENS.toLocaleString() + " token limit]"
   }
 
-  /** Shared: compute context limits and compaction threshold for a model */
-  function getLimits(model: Provider.Model, config: any) {
-    const contextLimit = model.limit.context ?? 0
-    const modelProvider = VendorRegistry.getModelProvider({ model })
-    const reserved =
-      config.compaction?.reserved ?? Math.min(COMPACTION_BUFFER, modelProvider.getMaxOutputTokens())
-    const compactionThreshold = model.limit.input
-      ? model.limit.input - reserved
-      : contextLimit - modelProvider.getMaxOutputTokens()
-    return { contextLimit, compactionThreshold }
-  }
-
-  /** Count input tokens from a step (= context window consumption) */
-  function countInputTokens(tokens: MessageV2.Assistant["tokens"]) {
-    return tokens.total || tokens.input + tokens.output + tokens.cache.read + tokens.cache.write
-  }
-
-  export async function isOverflow(input: { tokens: MessageV2.StepFinishPart["tokens"]; model: Provider.Model; context: AgentContext }) {
+  async isOverflow(input: { tokens: MessageV2.StepFinishPart["tokens"]; model: Provider.Model; context: AgentContext }) {
     if (input.context.config.compaction?.auto === false) return false
     const { contextLimit, compactionThreshold } = getLimits(input.model, input.context.config)
     if (contextLimit === 0) return false
     return countInputTokens(input.tokens) >= compactionThreshold
   }
 
-  /** Get the last step-finish part's tokens for a session (from DB) */
-  function getLastStepTokens(context: AgentContext, sessionID: string) {
-    const parts = context.db.findMany("part", {
-      filter: { op: "eq", field: "session_id", value: sessionID },
-      orderBy: [{ field: "id", direction: "desc" }],
-    })
-    for (const row of parts) {
-      if (row.data?.type === "step-finish" && row.data.tokens) return row.data.tokens
-    }
-    return undefined
-  }
-
-  /** Check overflow for a session (reads last step-finish from DB) */
-  export async function isOverflowForSession(context: AgentContext, sessionID: string, model: Provider.Model) {
+  async isOverflowForSession(context: AgentContext, sessionID: string, model: Provider.Model) {
     const tokens = getLastStepTokens(context, sessionID)
     if (!tokens) return false
-    return isOverflow({ tokens, model, context })
+    return this.isOverflow({ tokens, model, context })
   }
 
-  /**
-   * Get current context window status for a session.
-   */
-  export async function getStatus(context: AgentContext, sessionID: string) {
+  async getStatus(context: AgentContext, sessionID: string) {
     const msgs = await context.memory.messages({ sessionID: sessionID as any })
 
     let compactions = 0
@@ -73,7 +77,6 @@ export namespace ContextCompaction {
       if (msg.info.role === "assistant" && (msg.info as any).summary) compactions++
     }
 
-    // Context used = last step-finish's input tokens (from DB)
     const tokens = getLastStepTokens(context, sessionID)
     const contextUsed = tokens
       ? (tokens.input ?? 0) + (tokens.cache?.read ?? 0) + (tokens.cache?.write ?? 0)
@@ -92,7 +95,7 @@ export namespace ContextCompaction {
     return { contextUsed, contextLimit, compactionThreshold, compactions }
   }
 
-  export async function process(context: AgentContext, input: {
+  async process(context: AgentContext, input: {
     parentID: MessageID
     messages: MessageV2.WithParts[]
     sessionID: SessionID
@@ -123,7 +126,6 @@ export namespace ContextCompaction {
       }
     }
 
-    // Agent mode system removed — use the user message's model directly
     const agent = { name: "compaction", mode: "primary" as const, prompt: PROMPT_COMPACTION, options: {} }
     const model = await context.provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
     const msg = (await context.memory.updateMessage({
@@ -152,7 +154,6 @@ export namespace ContextCompaction {
       abort: input.abort,
       context: input.context,
     })
-    // Allow plugins to inject context or replace compaction prompt
     const compacting = { context: [] as string[], prompt: undefined as string | undefined }
     const defaultPrompt = `Provide a detailed prompt for continuing our conversation above.
 Focus on information that would be helpful for continuing the conversation, including what we did, what we're doing, which files we're working on, and what we're going to do next.
@@ -214,7 +215,7 @@ When constructing the summary, try to stick to this template:
       }).toObject()
       processor.message.finish = "error"
       await context.memory.updateMessage(processor.message)
-      return "stop"
+      return "stop" as const
     }
 
     if (result === "continue" && input.auto) {
@@ -273,28 +274,31 @@ When constructing the summary, try to stick to this template:
         })
       }
     }
-    if (processor.message.error) return "stop"
-    return "continue"
+    if (processor.message.error) return "stop" as const
+    return "continue" as const
   }
 
-  export async function create(context: AgentContext, input: any) {
-      const msg = await context.memory.updateMessage({
-        id: MessageID.ascending(),
-        role: "user",
-        model: input.model,
-        sessionID: input.sessionID,
-        agent: input.agent,
-        time: {
-          created: Date.now(),
-        },
-      })
-      await context.memory.updatePart({
-        id: PartID.ascending(),
-        messageID: msg.id,
-        sessionID: msg.sessionID,
-        type: "compaction",
-        auto: input.auto,
-        overflow: input.overflow,
-      })
+  async create(context: AgentContext, input: any) {
+    const msg = await context.memory.updateMessage({
+      id: MessageID.ascending(),
+      role: "user",
+      model: input.model,
+      sessionID: input.sessionID,
+      agent: input.agent,
+      time: {
+        created: Date.now(),
+      },
+    })
+    await context.memory.updatePart({
+      id: PartID.ascending(),
+      messageID: msg.id,
+      sessionID: msg.sessionID,
+      type: "compaction",
+      auto: input.auto,
+      overflow: input.overflow,
+    })
   }
 }
+
+// Keep backward-compat alias
+export { CompactionService as ContextCompaction }

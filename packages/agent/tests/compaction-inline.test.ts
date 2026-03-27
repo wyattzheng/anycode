@@ -21,9 +21,11 @@ import {
 } from "./fixtures/compaction-stream"
 import { RESPONSES_API_BODY } from "./fixtures/text-stream"
 import { SqlJsStorage } from "../src/storage-sqljs"
-import { ContextCompaction } from "../src/memory/compaction"
+import { CompactionService } from "../src/memory/compaction"
 
-describe("ContextCompaction.isOverflow", () => {
+const compaction = new CompactionService()
+
+describe("CompactionService.isOverflow", () => {
     it("should detect overflow when token count exceeds context limit", async () => {
         const model = {
             id: "test-model",
@@ -40,7 +42,7 @@ describe("ContextCompaction.isOverflow", () => {
             cache: { read: 0, write: 0 },
         }
 
-        const result = await ContextCompaction.isOverflow({
+        const result = await compaction.isOverflow({
             tokens,
             model,
             context: { config: {} } as any,
@@ -65,7 +67,7 @@ describe("ContextCompaction.isOverflow", () => {
             cache: { read: 0, write: 0 },
         }
 
-        const result = await ContextCompaction.isOverflow({
+        const result = await compaction.isOverflow({
             tokens,
             model,
             context: { config: {} } as any,
@@ -90,7 +92,7 @@ describe("ContextCompaction.isOverflow", () => {
             cache: { read: 0, write: 0 },
         }
 
-        const result = await ContextCompaction.isOverflow({
+        const result = await compaction.isOverflow({
             tokens,
             model,
             context: { config: { compaction: { auto: false } } } as any,
@@ -115,7 +117,7 @@ describe("ContextCompaction.isOverflow", () => {
             cache: { read: 0, write: 0 },
         }
 
-        const result = await ContextCompaction.isOverflow({
+        const result = await compaction.isOverflow({
             tokens,
             model,
             context: { config: {} } as any,
