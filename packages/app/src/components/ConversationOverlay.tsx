@@ -558,6 +558,8 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
         if (!text || busy) return;
         setInput("");
         setBusy(true);
+        scrollLocked.current = true;
+        msgsRef.current?.scrollTo(0, msgsRef.current.scrollHeight);
 
         const payload: Record<string, unknown> = { type: "chat.send", message: text };
         if (fileContext) payload.fileContext = fileContext;
