@@ -1,12 +1,10 @@
 import type { AgentContext } from "../context"
 import { type Provider, VendorRegistry } from "@any-code/provider"
-import { Skill } from "../skill"
 
 export interface ISystemPrompt {
   instructions(model: Provider.Model): string
   provider(model: Provider.Model): string[]
   environment(model: Provider.Model, context: AgentContext): Promise<string[]>
-  skills(context: AgentContext): Promise<string>
 }
 
 export class SystemPrompt implements ISystemPrompt {
@@ -39,15 +37,5 @@ export class SystemPrompt implements ISystemPrompt {
         `</directories>`,
       ].join("\n"),
     ]
-  }
-
-  async skills(context: AgentContext) {
-    const list = await context.skill.all()
-
-    return [
-      "Skills provide specialized instructions and workflows for specific tasks.",
-      "Use the skill tool to load a skill when a task matches its description.",
-      Skill.fmt(list, { verbose: true }),
-    ].join("\n")
   }
 }

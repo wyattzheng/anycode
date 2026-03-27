@@ -9,7 +9,7 @@ import { TodoWriteTool, TodoReadTool } from "./todo"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
-import { SkillTool } from "./skill"
+
 
 import { Tool } from "./tool"
 import type { AgentContext } from "../context"
@@ -109,7 +109,7 @@ export class ToolRegistryService implements IToolRegistryService {
       // TodoReadTool,
       WebSearchTool,
       CodeSearchTool,
-      SkillTool,
+
       ApplyPatchTool,
       ...(this.context.tools ?? []),
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),

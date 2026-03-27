@@ -43,7 +43,7 @@ import { MemoryService } from "./memory"
 import type { Settings } from "./settings"
 import { Provider } from "@any-code/provider"
 
-import { SkillService } from "./skill"
+
 import type { Logger } from "@any-code/utils"
 import { NamedError } from "./util/error"
 import { defer } from "./util/fn"
@@ -452,7 +452,7 @@ export class CodeAgent extends EventEmitter {
 
         ctx.provider = new Provider.ProviderService(ctx, this.options.provider)
         ctx.toolRegistry = new ToolRegistryService(ctx)
-        ctx.skill = new SkillService(ctx)
+
 
         ctx.provider.bind(ctx)
 
@@ -1115,10 +1115,8 @@ export class CodeAgent extends EventEmitter {
         }
 
         // Build system prompt
-        const skills = await context.systemPrompt.skills(context)
         const system = [
             ...(await context.systemPrompt.environment(model, context)),
-            ...(skills ? [skills] : []),
 
         ]
         const format = lastUser.format ?? { type: "text" }

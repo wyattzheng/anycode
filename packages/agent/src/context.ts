@@ -21,7 +21,7 @@ import type { ISystemPrompt } from "./prompt"
 import type { Provider } from "@any-code/provider"
 import type { IToolRegistryService } from "./tool/registry"
 import type { Tool } from "./tool/tool"
-import type { ISkillService } from "./skill"
+
 import type { Settings } from "./settings"
 
 
@@ -121,7 +121,7 @@ export interface AgentContext {
 
   provider: Provider.ProviderService
   toolRegistry: IToolRegistryService
-  skill: ISkillService
+
 
   /** User settings loaded from ~/.anycode/settings.json */
   settings: Settings.Info
