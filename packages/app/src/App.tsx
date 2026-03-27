@@ -38,8 +38,8 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
     const [activeTab, setActiveTab] = useState<TabId>(() => {
         try {
             const saved = localStorage.getItem(`anycode:tab:${sessionId}`);
-            return (saved as TabId) || "files";
-        } catch { return "files"; }
+            return (saved as TabId) || "chat";
+        } catch { return "chat"; }
     });
 
     // Persist active tab per window
@@ -160,36 +160,40 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                 </div>
             )}
             <div className="app-middle">
-                <div className="app-main">
-                    {directory ? (
-                        <MainView
-                            activeTab={activeTab}
-                            topLevel={topLevel}
-                            changes={changes}
-                            directory={directory}
-                            sessionId={sessionId}
-                            previewPort={previewPort}
-                            requestLs={requestLs}
-                            requestFile={requestFile}
-                            requestDiff={requestDiff}
-                            onFileContext={setFileContext}
-                        />
-                    ) : (
-                        <div className="main-view" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                            <div style={{ textAlign: "center" }}>
-                                <p style={{ color: "var(--color-text-dim)", fontSize: "14px", opacity: 0.4, fontWeight: 500 }}>
-                                    通过对话面板
-                                </p>
-                                <p style={{ color: "var(--color-text-dim)", fontSize: "11px", opacity: 0.3, marginTop: "6px" }}>
-                                    打开一个项目并开始
-                                </p>
+                {activeTab === "chat" ? (
+                    <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} chatResetRef={chatResetRef} chatBusy={chatBusy} sendMessage={sendMessage} minimized={false} />
+                ) : (
+                    <div className="app-main">
+                        {directory ? (
+                            <MainView
+                                activeTab={activeTab}
+                                topLevel={topLevel}
+                                changes={changes}
+                                directory={directory}
+                                sessionId={sessionId}
+                                previewPort={previewPort}
+                                requestLs={requestLs}
+                                requestFile={requestFile}
+                                requestDiff={requestDiff}
+                                onFileContext={setFileContext}
+                            />
+                        ) : (
+                            <div className="main-view" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                <div style={{ textAlign: "center" }}>
+                                    <p style={{ color: "var(--color-text-dim)", fontSize: "14px", opacity: 0.4, fontWeight: 500 }}>
+                                        通过对话面板
+                                    </p>
+                                    <p style={{ color: "var(--color-text-dim)", fontSize: "11px", opacity: 0.3, marginTop: "6px" }}>
+                                        打开一个项目并开始
+                                    </p>
+                                </div>
                             </div>
-                        </div>
-                    )}
-                </div>
-                <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} chatResetRef={chatResetRef} chatBusy={chatBusy} sendMessage={sendMessage} />
+                        )}
+                        <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} chatResetRef={chatResetRef} chatBusy={chatBusy} sendMessage={sendMessage} minimized={true} />
+                    </div>
+                )}
             </div>
-            <TabBar activeTab={activeTab} onTabChange={setActiveTab} changeCount={changes.length} />
+            <TabBar activeTab={activeTab} onTabChange={setActiveTab} changeCount={changes.length} chatBusy={chatBusy} />
         </div>
     );
 }

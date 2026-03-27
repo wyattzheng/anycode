@@ -145,6 +145,8 @@ interface ConversationOverlayProps {
     chatResetRef?: MutableRefObject<(() => void) | undefined>;
     chatBusy?: boolean;
     sendMessage: (data: any) => void;
+    /** When true, render only the compact input bar (default mode) */
+    minimized?: boolean;
 }
 
 const STORAGE_KEY_POS = "anycode-conv-pos";
@@ -172,7 +174,7 @@ function defaultSidebarWidth() {
     return 150;
 }
 
-export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, chatResetRef, chatBusy: chatBusyProp, sendMessage }: ConversationOverlayProps) {
+export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, chatResetRef, chatBusy: chatBusyProp, sendMessage, minimized = false }: ConversationOverlayProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [recording, setRecording] = useState(false);
@@ -657,32 +659,81 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
         }
     };
 
-    const panelClass = floating
-        ? "conversation-panel conversation-floating"
-        : "conversation-panel conversation-sidebar";
-    const panelStyle = floating
-        ? { transform: `translate(${position.x}px, ${position.y}px)`, width: size.w, height: size.h }
-        : { width: sidebarWidth };
+    // ── Render input bar (shared between minimized and full modes) ──
+    const renderInputBar = () => (
+        <div className={`conversation-input${inputNarrow && showTextInput ? ' conversation-input--stacked' : ''}`} ref={inputBarRef}>
+            {showTextInput ? (
+                inputNarrow ? (
+                    <>
+                        <input
+                            ref={textInputRef}
+                            type="text"
+                            value={busy ? "" : input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder={busy ? "正在处理中..." : "输入消息..."}
+                            autoFocus
+                            disabled={busy}
+                        />
+                        <div className="text-buttons-row">
+                            <button className="text-close-btn" onClick={() => setShowTextInput(false)}><CloseIcon /></button>
+                            {busy ? (
+                                <button className="text-send-btn text-stop-btn" onClick={handleStop}><StopIcon size={18} /></button>
+                            ) : (
+                                <button className="text-send-btn" onClick={handleSend}><SendIcon /></button>
+                            )}
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <input
+                            ref={textInputRef}
+                            type="text"
+                            value={busy ? "" : input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder={busy ? "正在处理中..." : "输入消息..."}
+                            autoFocus
+                            disabled={busy}
+                        />
+                        {busy ? (
+                            <button className="text-send-btn text-stop-btn" onClick={handleStop}><StopIcon size={18} /></button>
+                        ) : (
+                            <button className="text-send-btn" onClick={handleSend}><SendIcon /></button>
+                        )}
+                        <button className="text-close-btn" onClick={() => setShowTextInput(false)}><CloseIcon /></button>
+                    </>
+                )
+            ) : (
+                <>
+                    <div className="mic-wrapper">
+                        {recording && <div className="mic-tooltip">录音中 {elapsed}s</div>}
+                        <button
+                            className={`mic-btn ${recording ? "recording" : ""}`}
+                            onMouseDown={handleMicMouseDown}
+                            onTouchStart={handleMicTouchStart}
+                        >
+                            <MicIcon />
+                        </button>
+                    </div>
+                    <button className="text-toggle-btn" onClick={() => setShowTextInput(true)}><KeyboardIcon /></button>
+                </>
+            )}
+        </div>
+    );
 
-    return (
-        <div className={panelClass} style={panelStyle}>
-            {!floating && <div className="co-sidebar-border" onMouseDown={handleBorderMouseDown} onTouchStart={handleBorderTouchStart} />}
-            <div className="conversation-header"
-                {...(floating ? { onMouseDown: handleMouseDown, onTouchStart: handleTouchStart } : {})}
-            >
-                {floating && <div className="drag-grip" />}
-                <div className="conversation-header-content">
-                    <ChatIcon /> 对话
-                    <button
-                        className="co-float-toggle"
-                        onClick={toggleFloating}
-                        title={floating ? "固定到侧边栏" : "浮动窗口"}
-                    >
-                        {floating ? <PinIcon /> : <UndockIcon />}
-                    </button>
-                </div>
+    // ── Minimized mode: just the input bar ──
+    if (minimized) {
+        return (
+            <div className="conversation-minimized">
+                {renderInputBar()}
             </div>
+        );
+    }
 
+    // ── Full mode: complete chat panel ──
+    return (
+        <div className="conversation-panel conversation-full">
             <div className="conversation-messages" ref={msgsRef} onClick={handleMessagesClick}>
                 {messages.length === 0 && (
                     <div className="co-text" style={{ color: "var(--color-text-dim)" }}>
@@ -707,71 +758,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
                     </span>
                 </div>
             )}
-            <div className={`conversation-input${inputNarrow && showTextInput ? ' conversation-input--stacked' : ''}`} ref={inputBarRef}>
-                {showTextInput ? (
-                    inputNarrow ? (
-                        <>
-                            <input
-                                ref={textInputRef}
-                                type="text"
-                                value={busy ? "" : input}
-                                onChange={(e) => setInput(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                                placeholder={busy ? "正在处理中..." : "输入消息..."}
-                                autoFocus
-                                disabled={busy}
-                            />
-                            <div className="text-buttons-row">
-                                <button className="text-close-btn" onClick={() => setShowTextInput(false)}><CloseIcon /></button>
-                                {busy ? (
-                                    <button className="text-send-btn text-stop-btn" onClick={handleStop}><StopIcon size={18} /></button>
-                                ) : (
-                                    <button className="text-send-btn" onClick={handleSend}><SendIcon /></button>
-                                )}
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            <input
-                                ref={textInputRef}
-                                type="text"
-                                value={busy ? "" : input}
-                                onChange={(e) => setInput(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                                placeholder={busy ? "正在处理中..." : "输入消息..."}
-                                autoFocus
-                                disabled={busy}
-                            />
-                            {busy ? (
-                                <button className="text-send-btn text-stop-btn" onClick={handleStop}><StopIcon size={18} /></button>
-                            ) : (
-                                <button className="text-send-btn" onClick={handleSend}><SendIcon /></button>
-                            )}
-                            <button className="text-close-btn" onClick={() => setShowTextInput(false)}><CloseIcon /></button>
-                        </>
-                    )
-                ) : (
-                    <>
-                        <div className="mic-wrapper">
-                            {recording && <div className="mic-tooltip">录音中 {elapsed}s</div>}
-                            <button
-                                className={`mic-btn ${recording ? "recording" : ""}`}
-                                onMouseDown={handleMicMouseDown}
-                                onTouchStart={handleMicTouchStart}
-                            >
-                                <MicIcon />
-                            </button>
-                        </div>
-                        <button className="text-toggle-btn" onClick={() => setShowTextInput(true)}><KeyboardIcon /></button>
-                    </>
-                )}
-            </div>
-            {floating && (
-                <>
-                    <div className="co-resize-grip co-resize-bl" onMouseDown={makeResizeMouseDown("bl")} onTouchStart={makeResizeTouchStart("bl")} />
-                    <div className="co-resize-grip co-resize-br" onMouseDown={makeResizeMouseDown("br")} onTouchStart={makeResizeTouchStart("br")} />
-                </>
-            )}
+            {renderInputBar()}
         </div>
     );
 }

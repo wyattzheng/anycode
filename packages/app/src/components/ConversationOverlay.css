@@ -1,3 +1,24 @@
+/* ── Minimized mode: compact input bar at bottom of main area ── */
+.conversation-minimized {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+}
+
+/* ── Full mode: fills entire parent as a tab view ── */
+.conversation-full {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: 100%;
+    overflow: hidden;
+    background: var(--color-surface);
+}
+
 .conversation-panel {
     display: flex;
     flex-direction: column;

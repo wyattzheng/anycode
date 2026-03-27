@@ -68,3 +68,19 @@
 .tab-chat.active {
     color: var(--color-accent);
 }
+
+.tab-busy-dot {
+    position: absolute;
+    top: -3px;
+    right: -6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    animation: tab-busy-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes tab-busy-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.75); }
+}
