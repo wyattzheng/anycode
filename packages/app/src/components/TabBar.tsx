@@ -91,15 +91,6 @@ export function TabBar({ activeTab, onTabChange, changeCount, chatBusy, hideChat
             )}
 
             <button
-                className={`tab-item ${activeTab === "preview" ? "active" : ""}`}
-                data-tab="preview"
-                onClick={() => onTabChange("preview")}
-            >
-                <span className="tab-icon"><MonitorIcon /></span>
-                <span className="tab-label">预览</span>
-            </button>
-
-            <button
                 className={`tab-item ${activeTab === "terminal" ? "active" : ""}`}
                 data-tab="terminal"
                 onClick={() => onTabChange("terminal")}
@@ -129,6 +120,15 @@ export function TabBar({ activeTab, onTabChange, changeCount, chatBusy, hideChat
                     )}
                 </span>
                 <span className="tab-label">变更</span>
+            </button>
+
+            <button
+                className={`tab-item ${activeTab === "preview" ? "active" : ""}`}
+                data-tab="preview"
+                onClick={() => onTabChange("preview")}
+            >
+                <span className="tab-icon"><MonitorIcon /></span>
+                <span className="tab-label">预览</span>
             </button>
         </nav>
     );
