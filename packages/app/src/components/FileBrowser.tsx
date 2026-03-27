@@ -98,13 +98,17 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
     });
     const containerRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<{ startPos: number; startSize: number } | null>(null);
-    const [horizontal, setHorizontal] = useState(() => window.innerWidth >= HORIZONTAL_BREAKPOINT);
+    const [horizontal, setHorizontal] = useState(false);
 
     useEffect(() => {
-        const mq = window.matchMedia(`(min-width: ${HORIZONTAL_BREAKPOINT}px)`);
-        const handler = (e: MediaQueryListEvent) => setHorizontal(e.matches);
-        mq.addEventListener("change", handler);
-        return () => mq.removeEventListener("change", handler);
+        const el = containerRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver((entries) => {
+            const w = entries[0]?.contentRect.width ?? 0;
+            setHorizontal(w >= HORIZONTAL_BREAKPOINT);
+        });
+        ro.observe(el);
+        return () => ro.disconnect();
     }, []);
 
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
