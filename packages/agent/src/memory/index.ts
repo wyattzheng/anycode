@@ -1,11 +1,10 @@
 import type { AgentContext } from "../context"
 import { Decimal } from "decimal.js"
-import { type ProviderMetadata } from "ai"
 import { EventEmitter } from "events"
 
 import { MessageV2 } from "./message-v2"
 import type { Provider } from "@any-code/provider"
-import type { LanguageModelV2Usage } from "@ai-sdk/provider"
+import type { LLMUsage } from "../llm"
 
 import { iife } from "../util/fn"
 import { NotFoundError } from "../storage"
@@ -107,8 +106,8 @@ export class MemoryService extends EventEmitter {
  */
 export function getUsage(input: {
   model: Provider.Model
-  usage: LanguageModelV2Usage
-  metadata?: ProviderMetadata
+  usage: LLMUsage
+  metadata?: Record<string, any>
 }) {
   const safe = (value: number) => {
     if (!Number.isFinite(value)) return 0
@@ -121,9 +120,7 @@ export function getUsage(input: {
   const cacheReadInputTokens = safe(input.usage.cachedInputTokens ?? 0)
   const cacheWriteInputTokens = safe(
     (input.metadata?.["anthropic"]?.["cacheCreationInputTokens"] ??
-      // @ts-expect-error
       input.metadata?.["bedrock"]?.["usage"]?.["cacheWriteInputTokens"] ??
-      // @ts-expect-error
       input.metadata?.["venice"]?.["usage"]?.["cacheCreationInputTokens"] ??
       0) as number,
   )

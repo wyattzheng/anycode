@@ -1,4 +1,4 @@
-import { tool, jsonSchema, wrapLanguageModel, type ModelMessage, type StreamTextResult, type ToolSet, streamText } from "ai"
+import { tool as aiTool, jsonSchema, wrapLanguageModel, streamText } from "ai"
 import { mergeDeep, pipe } from "remeda"
 import type { AgentContext } from "./context"
 import { Provider, VendorRegistry } from "@any-code/provider"
@@ -7,30 +7,13 @@ import { MessageV2 } from "./memory/message-v2"
 import { SessionService } from "./session"
 import { PartID, SessionID } from "./session/schema"
 import { SessionStatus } from "./session"
+import type { LLMStreamInput, LLMStreamResult, LLMStreamChunk, LLMToolDef, LLMMessage } from "./llm"
 
-
+export type { LLMStreamInput, LLMStreamResult, LLMStreamChunk, LLMToolDef, LLMMessage }
 
 export const LLM_OUTPUT_TOKEN_MAX = VendorRegistry.getModelProvider().getOutputTokenMax()
 
-export type LLMStreamInput = {
-  user: MessageV2.User
-  sessionID: string
-  model: Provider.Model
-  /** Optional system prompt override (e.g. for compaction) */
-  prompt?: string
-  system: string[]
-  abort: AbortSignal
-  messages: ModelMessage[]
-  small?: boolean
-  tools: Record<string, ReturnType<typeof tool>>
-  retries?: number
-  toolChoice?: "auto" | "required" | "none"
-  context: AgentContext
-}
-
-export type LLMStreamOutput = StreamTextResult<ToolSet, unknown>
-
-export async function llmStream(context: AgentContext, input: LLMStreamInput) {
+export async function llmStream(context: AgentContext, input: LLMStreamInput): Promise<LLMStreamResult> {
   const l = context.log.create({ service: "llm" })
     .clone()
     .tag("providerID", input.model.providerID)
@@ -102,20 +85,29 @@ export async function llmStream(context: AgentContext, input: LLMStreamInput) {
     ? undefined
     : modelProvider.getMaxOutputTokens()
 
-  const tools = await resolveTools(input)
-
+  const resolvedToolDefs = await resolveTools(input)
   const isLiteLLMProxy = modelProvider.shouldAddNoopToolFallback()
 
-  if (isLiteLLMProxy && Object.keys(tools).length === 0 && hasToolCalls(input.messages)) {
-    tools["_noop"] = tool({
-      description:
-        "Placeholder for LiteLLM/Anthropic proxy compatibility - required when message history contains tool calls but no active tools are needed",
-      inputSchema: jsonSchema({ type: "object", properties: {} }),
+  if (isLiteLLMProxy && Object.keys(resolvedToolDefs).length === 0 && hasToolCalls(input.messages)) {
+    resolvedToolDefs["_noop"] = {
+      description: "Placeholder for LiteLLM/Anthropic proxy compatibility",
+      parameters: { type: "object", properties: {} },
       execute: async () => ({ output: "", title: "", metadata: {} }),
-    }) as any
+    }
   }
 
-  return streamText({
+  // Convert LLMToolDef → AI SDK tool()
+  const tools: Record<string, any> = {}
+  for (const [name, def] of Object.entries(resolvedToolDefs)) {
+    tools[name] = aiTool({
+      id: (def as any).id ?? name as any,
+      description: def.description,
+      inputSchema: jsonSchema(def.parameters as any),
+      execute: def.execute as any,
+    })
+  }
+
+  const sdkResult = streamText({
     onError(error) {
       l.error("stream error", {
         error,
@@ -158,13 +150,13 @@ export async function llmStream(context: AgentContext, input: LLMStreamInput) {
     maxRetries: input.retries ?? 0,
     messages: [
       ...system.map(
-        (x): ModelMessage => ({
+        (x): LLMMessage => ({
           role: "system",
           content: x,
         }),
       ),
       ...input.messages,
-    ],
+    ] as any,
     model: wrapLanguageModel({
       model: language,
       middleware: [
@@ -187,18 +179,23 @@ export async function llmStream(context: AgentContext, input: LLMStreamInput) {
       },
     },
   })
+
+  // Wrap AI SDK stream as LLMStreamResult
+  return {
+    fullStream: sdkResult.fullStream as AsyncIterable<LLMStreamChunk>,
+  }
 }
 
-async function resolveTools(input: Pick<LLMStreamInput, "tools" | "user">) {
-  for (const tool of Object.keys(input.tools)) {
-    if (input.user.tools?.[tool] === false) {
-      delete input.tools[tool]
+async function resolveTools(input: Pick<LLMStreamInput, "tools" | "user">): Promise<Record<string, LLMToolDef>> {
+  for (const name of Object.keys(input.tools)) {
+    if (input.user.tools?.[name] === false) {
+      delete input.tools[name]
     }
   }
   return input.tools
 }
 
-export function hasToolCalls(messages: ModelMessage[]): boolean {
+export function hasToolCalls(messages: LLMMessage[]): boolean {
   for (const msg of messages) {
     if (!Array.isArray(msg.content)) continue
     for (const part of msg.content) {
@@ -417,7 +414,7 @@ export function createLLMRunner(input: {
               case "finish-step":
                 const usage = SessionService.getUsage({
                   model: input.model,
-                  usage: value.usage,
+                  usage: value.usage as any,
                   metadata: value.providerMetadata,
                 })
                 input.assistantMessage.finish = value.finishReason
@@ -488,8 +485,8 @@ export function createLLMRunner(input: {
                 break
 
               default:
-                input.context.log.create({ service: "session.processor" }).info("unhandled", {
-                  ...value,
+                input.context.log.create({ service: "session.processor" }).info("unhandled stream chunk", {
+                  type: (value as any).type,
                 })
                 continue
             }
@@ -552,7 +549,29 @@ export namespace LLMRunner {
 export namespace LLM {
   export const OUTPUT_TOKEN_MAX = LLM_OUTPUT_TOKEN_MAX
   export type StreamInput = LLMStreamInput
-  export type StreamOutput = LLMStreamOutput
+  export type StreamOutput = LLMStreamResult
   export const stream = llmStream
   export const checkToolCalls = hasToolCalls
+}
+
+// ── AI SDK helpers (exposed so other agent modules don't need to import "ai") ──
+
+import { convertToModelMessages, APICallError, LoadAPIKeyError } from "ai"
+
+/** Convert UI messages to model messages (wraps AI SDK's convertToModelMessages) */
+export function convertUIToModelMessages(
+  messages: any[],
+  tools: Record<string, { toModelOutput: (output: unknown) => any }>,
+): LLMMessage[] {
+  return convertToModelMessages(messages, { tools } as any) as LLMMessage[]
+}
+
+/** Duck-type check for AI SDK's APICallError */
+export function isAPICallError(e: unknown): e is { name: string; message: string; statusCode?: number; responseHeaders?: Record<string, string>; responseBody?: string; isRetryable: boolean } {
+  return APICallError.isInstance(e)
+}
+
+/** Duck-type check for AI SDK's LoadAPIKeyError */
+export function isLoadAPIKeyError(e: unknown): e is { name: string; message: string } {
+  return LoadAPIKeyError.isInstance(e)
 }

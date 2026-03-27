@@ -17,9 +17,6 @@ importers:
 
   packages/agent:
     dependencies:
-      '@ai-sdk/provider':
-        specifier: 2.0.1
-        version: 2.0.1
       '@any-code/provider':
         specifier: workspace:*
         version: link:../provider

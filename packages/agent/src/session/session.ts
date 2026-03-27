@@ -8,44 +8,21 @@ import { MessageV2 } from "../memory/message-v2"
 import { Session, SessionService } from "."
 
 import { Provider, ModelID, ProviderID, VendorRegistry } from "@any-code/provider"
-import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, asSchema, wrapLanguageModel, type ModelMessage, type StreamTextResult, type ToolSet, streamText } from "ai"
-import { mergeDeep, pipe } from "remeda"
-import { SystemPrompt } from "../prompt"
+import type { LLMToolDef, LLMToolCallOptions } from "../llm"
 
 import { type AgentContext } from "../context"
-import PROMPT_PLAN from "../prompt/plan.txt"
-import BUILD_SWITCH from "../prompt/build-switch.txt"
-import MAX_STEPS from "../prompt/max-steps.txt"
-import { defer } from "../util/fn"
 
 // MCP module removed (agent mode)
 import { LSP } from "../util/lsp"
 import { ReadTool } from "../tool/read"
-import { FileTime } from "../project"
-import { Flag } from "../util/flag"
 import { Hooks } from "../hooks"
-import { ulid } from "ulid"
 
 import { pathToFileURL, fileURLToPath } from "url"
 import { ConfigMarkdown } from "../util/markdown"
-
 import { NamedError } from "../util/error"
-
 import { Tool } from "../tool/tool"
-
-import { SessionStatus } from "."
 import { LLMRunner, LLM } from "../llm-runner"
-import { iife } from "../util/fn"
-import { Truncate } from "../tool/truncation"
 import { decodeDataUrl } from "../util/data-url"
-
-
-
-
-import { Installation } from "../util/installation"
-
-import { Token } from "../util/fn"
-import { Auth } from "../util/auth"
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
 
@@ -177,10 +154,10 @@ export namespace SessionPrompt {
     onToolEvent?: (event: string, data?: any) => void
   }) {
     using _ = getLog(input.agentContext).time("resolveTools")
-    const tools: Record<string, AITool> = {}
+    const tools: Record<string, LLMToolDef> = {}
 
 
-    const context = (args: any, options: ToolCallOptions): Tool.Context => ({
+    const context = (args: any, options: LLMToolCallOptions): Tool.Context => ({
       ...input.agentContext,
       sessionID: input.session.id,
       abort: options.abortSignal!,
@@ -219,10 +196,10 @@ export namespace SessionPrompt {
 
     )) {
       const schema = VendorRegistry.getModelProvider({ model: input.model }).transformSchema(z.toJSONSchema(item.parameters))
-      tools[item.id] = tool({
-        id: item.id as any,
+      tools[item.id] = {
+        id: item.id,
         description: item.description,
-        inputSchema: jsonSchema(schema as any),
+        parameters: schema as Record<string, any>,
         async execute(args, options) {
           const ctx = context(args, options)
           const result = await item.execute(args, ctx)
@@ -248,7 +225,7 @@ export namespace SessionPrompt {
           }
           return output
         },
-      })
+      }
     }
 
     // MCP tools removed (agent mode)
@@ -260,14 +237,14 @@ export namespace SessionPrompt {
   export function createStructuredOutputTool(input: {
     schema: Record<string, any>
     onSuccess: (output: unknown) => void
-  }): AITool {
+  }): LLMToolDef {
     // Remove $schema property if present (not needed for tool input)
     const { $schema, ...toolSchema } = input.schema
 
-    return tool({
-      id: "StructuredOutput" as any,
+    return {
+      id: "StructuredOutput",
       description: STRUCTURED_OUTPUT_DESCRIPTION,
-      inputSchema: jsonSchema(toolSchema as any),
+      parameters: toolSchema as Record<string, any>,
       async execute(args) {
         // AI SDK validates args against inputSchema before calling execute()
         input.onSuccess(args)
@@ -277,13 +254,7 @@ export namespace SessionPrompt {
           metadata: { valid: true },
         }
       },
-      toModelOutput(result) {
-        return {
-          type: "text",
-          value: result.output,
-        }
-      },
-    })
+    }
   }
 
   export async function createUserMessage(context: AgentContext, input: PromptInput) {

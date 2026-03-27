@@ -1,7 +1,8 @@
 
 import { SessionID, MessageID, PartID } from "../session/schema"
 import { NamedError } from "../util/error"
-import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
+import { convertUIToModelMessages, isAPICallError, isLoadAPIKeyError } from "../llm-runner"
+import type { LLMMessage } from "../llm"
 
 import { NotFoundError } from "../storage"
 import type { Filter } from "../storage"
@@ -409,8 +410,8 @@ export namespace MessageV2 {
     input: WithParts[],
     model: Provider.Model,
     options?: { stripMedia?: boolean },
-  ): ModelMessage[] {
-    const result: UIMessage[] = []
+  ): LLMMessage[] {
+    const result: Array<{ id: string; role: string; parts: any[] }> = []
     const toolNames = new Set<string>()
     const supportsMediaInToolResults = (() => {
       if (model.api.npm === "@ai-sdk/anthropic") return true
@@ -461,7 +462,7 @@ export namespace MessageV2 {
       if (msg.parts.length === 0) continue
 
       if (msg.info.role === "user") {
-        const userMessage: UIMessage = {
+        const userMessage: { id: string; role: string; parts: any[] } = {
           id: msg.info.id,
           role: "user",
           parts: [],
@@ -517,7 +518,7 @@ export namespace MessageV2 {
         ) {
           continue
         }
-        const assistantMessage: UIMessage = {
+        const assistantMessage: { id: string; role: string; parts: any[] } = {
           id: msg.info.id,
           role: "assistant",
           parts: [],
@@ -615,12 +616,9 @@ export namespace MessageV2 {
 
     const tools = Object.fromEntries(Array.from(toolNames).map((toolName) => [toolName, { toModelOutput }]))
 
-    return convertToModelMessages(
-      result.filter((msg) => msg.parts.some((part) => part.type !== "step-start")),
-      {
-        //@ts-expect-error (convertToModelMessages expects a ToolSet but only actually needs tools[name]?.toModelOutput)
-        tools,
-      },
+    return convertUIToModelMessages(
+      result.filter((msg) => msg.parts.some((part: any) => part.type !== "step-start")),
+      tools,
     )
   }
 
@@ -718,7 +716,7 @@ export namespace MessageV2 {
         ).toObject()
       case MessageV2.OutputLengthError.isInstance(e):
         return e
-      case LoadAPIKeyError.isInstance(e):
+      case isLoadAPIKeyError(e):
         return new MessageV2.AuthError(
           {
             providerID: ctx.providerID,
@@ -739,10 +737,10 @@ export namespace MessageV2 {
           },
           { cause: e },
         ).toObject()
-      case APICallError.isInstance(e):
+      case isAPICallError(e):
         const parsed = ProviderError.parseAPICallError({
           providerID: ctx.providerID,
-          error: e,
+          error: e as any,
         })
         if (parsed.type === "context_overflow") {
           return new MessageV2.ContextOverflowError(
