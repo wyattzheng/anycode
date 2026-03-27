@@ -8,3 +8,7 @@ export { VendorRegistry } from "./vendors"
 // LLM stream adapter
 export { createLLMStream, convertUIToModelMessages, isAPICallError, isLoadAPIKeyError } from "./llm-stream"
 export type { StreamAdapterContext } from "./llm-stream"
+
+// Message converter
+export { toModelMessages } from "./message-converter"
+export type { ConvertibleMessage, ConvertiblePart, ToModelMessagesOptions } from "./message-converter"

@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest"
 import { MessageV2 } from "../src/memory/message-v2"
 import { SessionID, MessageID, PartID } from "../src/session/schema"
-import type { Provider } from "../src/provider/provider"
+import { toModelMessages, type Provider } from "@any-code/provider"
 
 // Minimal mock model for toModelMessages
 const mockModel: Provider.Model = {
@@ -92,7 +92,7 @@ describe("toModelMessages snapshot", () => {
             },
         ]
 
-        const result = MessageV2.toModelMessages(input, mockModel)
+        const result = toModelMessages(input, mockModel)
         expect(result).toMatchSnapshot()
     })
 
@@ -173,7 +173,7 @@ describe("toModelMessages snapshot", () => {
             },
         ]
 
-        const result = MessageV2.toModelMessages(input, mockModel)
+        const result = toModelMessages(input, mockModel)
         expect(result).toMatchSnapshot()
     })
 
@@ -245,7 +245,7 @@ describe("toModelMessages snapshot", () => {
             },
         ]
 
-        const result = MessageV2.toModelMessages(input, mockModel)
+        const result = toModelMessages(input, mockModel)
         expect(result).toMatchSnapshot()
     })
 
@@ -319,7 +319,7 @@ describe("toModelMessages snapshot", () => {
             },
         ]
 
-        const result = MessageV2.toModelMessages(input, mockModel)
+        const result = toModelMessages(input, mockModel)
         expect(result).toMatchSnapshot()
 
         // Verify error message was skipped — output should have user + assistant (good only)
@@ -386,7 +386,7 @@ describe("toModelMessages snapshot", () => {
             },
         ]
 
-        const result = MessageV2.toModelMessages(input, mockModel)
+        const result = toModelMessages(input, mockModel)
         expect(result).toMatchSnapshot()
     })
 
@@ -447,7 +447,7 @@ describe("toModelMessages snapshot", () => {
             },
         ]
 
-        const result = MessageV2.toModelMessages(input, mockModel)
+        const result = toModelMessages(input, mockModel)
         expect(result).toMatchSnapshot()
     })
 
@@ -476,7 +476,7 @@ describe("toModelMessages snapshot", () => {
             },
         ]
 
-        const result = MessageV2.toModelMessages(input, mockModel)
+        const result = toModelMessages(input, mockModel)
         expect(result).toMatchSnapshot()
 
         // Verify the compaction text is present

@@ -2,7 +2,7 @@
 import type { AgentContext } from "../context"
 import { SessionID, MessageID, PartID } from "../session/schema"
 import { MessageV2 } from "./message-v2"
-import { Provider, VendorRegistry, createLLMStream } from "@any-code/provider"
+import { Provider, VendorRegistry, createLLMStream, toModelMessages } from "@any-code/provider"
 import { Auth } from "../util/auth"
 import PROMPT_COMPACTION from "../prompt/compaction.txt"
 
@@ -195,7 +195,11 @@ When constructing the summary, try to stick to this template:
           sessionID: input.sessionID,
           system: [agent.prompt],
           messages: [
-            ...MessageV2.toModelMessages(messages, model, { stripMedia: true }),
+            ...toModelMessages(messages, model, {
+              stripMedia: true,
+              isAbortedError: (e: any) => e?.type === "MessageAbortedError",
+              generateId: () => MessageID.ascending(),
+            }),
             {
               role: "user",
               content: [{ type: "text", text: promptText }],

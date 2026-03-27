@@ -41,7 +41,7 @@ import { SessionPrompt, SessionPromptService } from "./session/session"
 import { MessageV2 } from "./memory/message-v2"
 import { MemoryService } from "./memory"
 import type { Settings } from "./settings"
-import { Provider, VendorRegistry, createLLMStream } from "@any-code/provider"
+import { Provider, VendorRegistry, createLLMStream, toModelMessages } from "@any-code/provider"
 import { Auth } from "./util/auth"
 import type { LLMToolDef, LLMMessage } from "@any-code/utils"
 
@@ -944,7 +944,10 @@ export class CodeAgent extends EventEmitter {
             }
         }
 
-        const modelMessages = MessageV2.toModelMessages(msgsWithReminders, model)
+        const modelMessages = toModelMessages(msgsWithReminders, model, {
+            isAbortedError: (e: any) => e?.type === "MessageAbortedError",
+            generateId: () => MsgID.ascending(),
+        })
 
         // ── Stream from provider ──
         const l = context.log.create({ service: "llm" })
