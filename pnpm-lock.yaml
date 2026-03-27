@@ -35,9 +35,9 @@ importers:
       '@ai-sdk/provider-utils':
         specifier: 3.0.21
         version: 3.0.21(zod@4.1.8)
-      '@any-code/model-info':
+      '@any-code/provider':
         specifier: workspace:*
-        version: link:../model-info
+        version: link:../provider
       '@any-code/utils':
         specifier: workspace:*
         version: link:../utils
@@ -317,11 +317,38 @@ importers:
         specifier: ^5.7.0
         version: 5.8.2
 
-  packages/model-info:
+  packages/provider:
     dependencies:
+      '@ai-sdk/anthropic':
+        specifier: 2.0.65
+        version: 2.0.65(zod@4.1.8)
+      '@ai-sdk/google':
+        specifier: 2.0.54
+        version: 2.0.54(zod@4.1.8)
+      '@ai-sdk/openai':
+        specifier: 2.0.89
+        version: 2.0.89(zod@4.1.8)
+      '@ai-sdk/openai-compatible':
+        specifier: 1.0.32
+        version: 1.0.32(zod@4.1.8)
+      '@ai-sdk/provider':
+        specifier: 2.0.1
+        version: 2.0.1
+      ai:
+        specifier: 5.0.124
+        version: 5.0.124(zod@4.1.8)
+      effect:
+        specifier: 4.0.0-beta.31
+        version: 4.0.0-beta.31
+      fuzzysort:
+        specifier: 3.1.0
+        version: 3.1.0
+      remeda:
+        specifier: 2.26.0
+        version: 2.26.0
       zod:
-        specifier: ^3.24.2
-        version: 3.25.76
+        specifier: 4.1.8
+        version: 4.1.8
     devDependencies:
       '@types/node':
         specifier: ^25.5.0
@@ -330,7 +357,7 @@ importers:
         specifier: ^8.4.0
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.8.2)(yaml@2.8.2)
       typescript:
-        specifier: ^5.7.0
+        specifier: 5.8.2
         version: 5.8.2
 
   packages/server:
@@ -3605,9 +3632,6 @@ packages:
     peerDependencies:
       zod: ^3.24.1
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
   zod@4.1.8:
     resolution: {integrity: sha512-5R1P+WwQqmmMIEACyzSvo4JXHY5WiAFHRMg+zBZKgKS+Q1viRa0C1hmUKtHltoIFKtIdki3pRxkmpP74jnNYHQ==}
 
@@ -6681,8 +6705,6 @@ snapshots:
   zod-to-json-schema@3.24.5(zod@4.1.8):
     dependencies:
       zod: 4.1.8
-
-  zod@3.25.76: {}
 
   zod@4.1.8: {}
 

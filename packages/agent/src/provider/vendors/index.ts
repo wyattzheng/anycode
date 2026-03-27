@@ -1,3 +1,1 @@
-export {
-  VendorRegistry,
-} from "./registry"
+export { VendorRegistry } from "@any-code/provider"

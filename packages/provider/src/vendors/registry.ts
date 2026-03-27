@@ -2,7 +2,7 @@ import type { JSONSchema7 } from "@ai-sdk/provider"
 import type { ModelMessage } from "ai"
 import { mergeDeep } from "remeda"
 import type { Provider } from "../provider"
-import { Flag } from "../../util/flag"
+import { Flag } from "../util/flag"
 import { anthropicVendor } from "./anthropic"
 import { githubCopilotVendor } from "./github-copilot"
 import { googleVendor } from "./google"
@@ -100,13 +100,13 @@ function getMatchingVendors(input: ModelProviderSelector) {
     return VENDORS.filter((vendor) =>
       matchesRuntimeVendor(vendor, {
         model: input.model as Provider.Model,
-        provider: input.provider,
+        provider: input.provider!,
         auth: input.auth,
       }),
     )
   }
   if (input.model) {
-    const runtimeProvider = { id: input.model.providerID, options: {} }
+    const runtimeProvider = { id: input.model.providerID, options: {} } as ProviderInfoLike
     return VENDORS.filter((vendor) =>
       matchesRuntimeVendor(vendor, {
         model: input.model as Provider.Model,
@@ -270,7 +270,7 @@ export const VendorRegistry = {
       },
 
       wrapProviderOptions(options: { [x: string]: any }) {
-        return { [model?.providerID]: options }
+        return { [model?.providerID ?? '']: options }
       },
 
       shouldUseInstructionPrompt() {

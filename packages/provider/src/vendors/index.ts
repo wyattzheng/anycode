@@ -1,0 +1,3 @@
+export {
+  VendorRegistry,
+} from "./registry"

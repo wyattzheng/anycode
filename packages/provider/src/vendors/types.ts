@@ -1,4 +1,4 @@
-import type { AgentContext } from "../../context"
+import type { ProviderContext } from "../context"
 import type { JSONSchema7 } from "@ai-sdk/provider"
 import type { ModelMessage, Provider as SDK } from "ai"
 import type { JSONSchema } from "zod/v4/core"
@@ -79,7 +79,7 @@ export interface ModelProvider {
   bundled?: Partial<Record<string, ProviderSDKFactory>>
   sdkKeys?: Partial<Record<string, string>>
   matchesRuntime?: (input: ProviderRuntimeInput) => boolean
-  customLoader?: (context: AgentContext, provider: ProviderInfoLike) => Promise<ProviderLoaderResult>
+  customLoader?: (context: ProviderContext, provider: ProviderInfoLike) => Promise<ProviderLoaderResult>
   patchRequest?: (input: ProviderRequestPatchInput) => void
   transform?: VendorTransform
   llm?: VendorLLM
@@ -89,7 +89,7 @@ export interface ModelProvider {
 export interface ModelProviderAccessor {
   all(): ModelProvider[]
   getBundledProvider(): ProviderSDKFactory | undefined
-  getCustomLoaders(): Record<string, (context: AgentContext, provider: ProviderInfoLike) => Promise<ProviderLoaderResult>>
+  getCustomLoaders(): Record<string, (context: ProviderContext, provider: ProviderInfoLike) => Promise<ProviderLoaderResult>>
   getOptionsKey(): string | undefined
   applyRequestPatch(patchInput: Omit<ProviderRequestPatchInput, "model"> & { model?: ProviderModelLike }): void
   applyMessageTransforms(msgs: ModelMessage[], options: Record<string, unknown>): ModelMessage[]

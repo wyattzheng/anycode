@@ -1,7 +1,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic"
 import type { ModelMessage } from "ai"
 import { mergeDeep, unique } from "remeda"
-import { Hash } from "../../util/hash"
+import { Hash } from "../util/hash"
 import type { ModelProvider } from "./types"
 
 export const anthropicVendor: ModelProvider = {
