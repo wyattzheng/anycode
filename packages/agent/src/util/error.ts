@@ -30,3 +30,7 @@ export abstract class NamedError extends Error {
 
   public static readonly Unknown = NamedError.create<"UnknownError", { message: string }>("UnknownError")
 }
+
+export const NotFoundError = NamedError.create<"NotFoundError", {
+  message: string
+}>("NotFoundError")

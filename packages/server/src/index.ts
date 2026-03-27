@@ -23,7 +23,7 @@ import os from "os"
 import fs from "fs"
 import fsPromises from "fs/promises"
 import { execFile, spawn as cpSpawn } from "child_process"
-import { CodeAgent, Database, type NoSqlDb, type TerminalProvider, type PreviewProvider } from "@any-code/agent"
+import { CodeAgent, type NoSqlDb, type TerminalProvider, type PreviewProvider } from "@any-code/agent"
 import { SetWorkingDirectoryTool } from "./tool-set-directory"
 import { TerminalWriteTool } from "./tool-terminal-write"
 import { TerminalReadTool } from "./tool-terminal-read"
@@ -1573,8 +1573,7 @@ export async function startServer() {
 
   // ── Initialise shared storage ──
   sharedStorage = new SqlJsStorage(DB_PATH)
-  const migrations = Database.getMigrations()
-  db = await sharedStorage.connect(migrations)
+  db = await sharedStorage.connect()
 
   // Server-specific table: maps user IDs to their windows/sessions.
   // Migrate from old schema (user_id PK, no is_default) to new schema

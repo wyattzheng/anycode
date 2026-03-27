@@ -7,7 +7,7 @@ import type { Provider } from "@any-code/provider"
 import type { LLMUsage } from "@any-code/utils"
 
 import { iife } from "../util/fn"
-import { NotFoundError } from "../storage"
+import { NotFoundError } from "../util/error"
 
 /**
  * MemoryService — manages message & part persistence + real-time event emission.

@@ -32,7 +32,7 @@ import { EnvService } from "./util/env"
 import { EventEmitter } from "events"
 import { SchedulerService } from "./util/scheduler"
 import { FileTimeService } from "./project"
-import { Database } from "./storage"
+
 import { Log } from "./util/log"
 import { ToolRegistryService } from "./tool/registry"
 import { Tool } from "./tool/tool"
@@ -80,15 +80,10 @@ export interface CodeAgentProvider {
  * StorageProvider — abstraction over the database backend.
  */
 export interface StorageProvider {
-    connect(migrations: Migration[]): Promise<any>
+    connect(): Promise<any>
     close(): void
 }
 
-export interface Migration {
-    sql: string
-    timestamp: number
-    name: string
-}
 
 export interface CodeAgentOptions {
     /** Working directory for the agent */
@@ -363,13 +358,11 @@ export class CodeAgent extends EventEmitter {
         this._providerId = p.id
         this._modelId = p.model
 
-        const migrations = Database.getMigrations()
-
         if (!this.options.storage) {
             throw new Error("CodeAgent requires a storage provider. Pass a StorageProvider via options.storage.")
         }
         this._storageProvider = this.options.storage
-        this._dbClient = await this._storageProvider.connect(migrations)
+        this._dbClient = await this._storageProvider.connect()
 
         // ── Build context with all services ──────────────────────────
         const worktree = this.options.worktree ?? this.options.directory

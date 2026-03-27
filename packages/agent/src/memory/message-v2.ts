@@ -2,8 +2,8 @@
 import { SessionID, MessageID, PartID } from "../session/schema"
 import { NamedError } from "../util/error"
 import { isAPICallError, isLoadAPIKeyError } from "@any-code/provider"
-import { NotFoundError } from "../storage"
-import type { Filter } from "../storage"
+import { NotFoundError } from "../util/error"
+import type { Filter } from "@any-code/utils"
 import { ProviderError, ModelID, ProviderID } from "@any-code/provider"
 
 interface SystemError extends Error { code?: string; errno?: number; syscall?: string; path?: string }

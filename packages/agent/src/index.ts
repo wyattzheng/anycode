@@ -11,7 +11,6 @@ export {
   type CodeAgentEvent,
   type CodeAgentEventType,
   type StorageProvider,
-  type Migration,
 } from "./code-agent"
 
 // Session & schema
@@ -33,16 +32,15 @@ export { Provider, ProviderID, ModelID } from "@any-code/provider"
 // Bus & logging
 export { Log } from "./util/log"
 
-// Storage
+// Storage (re-exported from @any-code/utils)
 export {
-  Database,
   type NoSqlDb,
   type RawSqliteDb,
   type Filter,
   type FindManyOptions,
   SqliteNoSqlDb,
-  NotFoundError,
-} from "./storage"
+} from "@any-code/utils"
+export { NotFoundError } from "./util/error"
 
 // Project
 export {

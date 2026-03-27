@@ -29,6 +29,7 @@ export type { IChatAgent, ChatAgentConfig, ChatAgentEvent } from "./chat-agent"
 export { NodeFS } from "./vfs-node"
 export { NodeSearchProvider } from "./search-node"
 export { SqlJsStorage } from "./storage-sqljs"
+export { getDefaultMigrations } from "./migrations"
 
 // LLM types
 export type {

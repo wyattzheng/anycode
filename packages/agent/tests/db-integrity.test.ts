@@ -21,7 +21,7 @@ import { InMemoryFS } from "./fixtures/in-memory-fs"
 import { buildHelloworldFixtures } from "./fixtures/helloworld-html-stream"
 import { RESPONSES_API_BODY } from "./fixtures/text-stream"
 
-import type { StorageProvider, Migration } from "@any-code/utils"
+import type { StorageProvider } from "@any-code/utils"
 import type { NoSqlDb } from "../src/index"
 import { SqlJsStorage } from "@any-code/utils"
 import { InMemorySearchProvider } from "./fixtures/search-memory"
@@ -36,9 +36,9 @@ class PersistentTestStorage implements StorageProvider {
     private inner = new SqlJsStorage()
     private db: NoSqlDb | null = null
 
-    async connect(migrations: Migration[]): Promise<NoSqlDb> {
+    async connect(): Promise<NoSqlDb> {
         if (!this.db) {
-            this.db = await this.inner.connect(migrations)
+            this.db = await this.inner.connect()
         }
         return this.db
     }

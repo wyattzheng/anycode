@@ -14,18 +14,21 @@ import fs from "fs"
 import nodePath from "path"
 import type { StorageProvider, Migration } from "./storage"
 import { SqliteNoSqlDb, type NoSqlDb, type RawSqliteDb } from "./nosql"
+import { getDefaultMigrations } from "./migrations"
 
 export class SqlJsStorage implements StorageProvider {
     private db: any = null
     private noSqlDb: NoSqlDb | null = null
     private dbPath: string | null
     private flushTimer: ReturnType<typeof setTimeout> | null = null
+    private migrations: Migration[]
 
-    constructor(dbPath?: string) {
+    constructor(dbPath?: string, migrations?: Migration[]) {
         this.dbPath = dbPath ?? null
+        this.migrations = migrations ?? getDefaultMigrations()
     }
 
-    async connect(migrations: Migration[]): Promise<NoSqlDb> {
+    async connect(): Promise<NoSqlDb> {
         // Idempotent: return cached client when already initialised
         if (this.noSqlDb) return this.noSqlDb
 
@@ -44,7 +47,7 @@ export class SqlJsStorage implements StorageProvider {
         this.db.run("PRAGMA foreign_keys = ON")
 
         // Apply migrations
-        this.applyMigrations(migrations)
+        this.applyMigrations(this.migrations)
 
         // Initial flush so the file exists even before the first write
         this.flushSync()

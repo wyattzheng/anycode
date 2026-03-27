@@ -1,30 +1,13 @@
-// ── NoSqlDb Interface (re-exported from @any-code/utils) ────────────────────
+/**
+ * Default database migrations for @any-code.
+ *
+ * These define the core schema used by the agent's session,
+ * message, and part storage. StorageProvider implementations
+ * should apply these migrations during connect().
+ */
+import type { Migration } from "./storage"
 
-// ── NoSqlDb Interface (re-exported from @any-code/utils) ────────────────────
-
-export type { Filter, FindManyOptions, NoSqlDb, RawSqliteDb } from "@any-code/utils"
-export { SqliteNoSqlDb } from "@any-code/utils"
-
-// ── Database ────────────────────────────────────────────────────────────────
-
-import { NamedError } from "../util/error"
-
-import { Flag } from "../util/flag"
-
-export const NotFoundError = NamedError.create<"NotFoundError", {
-  message: string
-}>("NotFoundError")
-
-export namespace Database {
-  /**
-   * The db client type — NoSqlDb interface.
-   */
-  export type Client = any
-  export type TxOrDb = any
-
-  type Journal = { sql: string; timestamp: number; name: string }[]
-
-  const INITIAL_MIGRATION = `-- project table
+const INITIAL_MIGRATION = `-- project table
 CREATE TABLE IF NOT EXISTS "project" (
   "id" TEXT PRIMARY KEY NOT NULL,
   "worktree" TEXT NOT NULL,
@@ -161,28 +144,11 @@ CREATE TABLE IF NOT EXISTS "control_account" (
   PRIMARY KEY ("email", "url")
 );`
 
-  /**
-   * Returns the migration entries.
-   */
-  export function getMigrations(): Journal {
-    const entries: Journal = [
-      { sql: INITIAL_MIGRATION, timestamp: Date.UTC(2024, 0, 1), name: "20240101000000_initial" },
-    ]
-    if (Flag.OPENCODE_SKIP_MIGRATIONS) {
-      for (const item of entries) {
-        item.sql = "select 1;"
-      }
-    }
-    return entries
-  }
-}
-
-
-
-
 /**
- * SqliteNoSqlDb — Translates NoSqlDb operations to raw SQL queries.
- *
- * Shared adapter for both sql.js and better-sqlite3 backends.
- * The backends only need to provide a minimal `RawSqliteDb` handle.
+ * Returns the default migration entries for the core schema.
  */
+export function getDefaultMigrations(): Migration[] {
+    return [
+        { sql: INITIAL_MIGRATION, timestamp: Date.UTC(2024, 0, 1), name: "20240101000000_initial" },
+    ]
+}
