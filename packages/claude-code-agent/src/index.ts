@@ -141,15 +141,15 @@ export class ClaudeCodeAgent implements IChatAgent {
     const activeToolCalls = new Map<number, { id: string, name: string, argsStr: string }>()
 
     try {
-      // Build MCP server with custom tools bridged from @any-code/agent extraTools
+      // Build MCP server with custom tools bridged from @any-code/agent tools
       let mcpConfig: Record<string, any> | undefined
       try {
         const sdkMod = await import("@anthropic-ai/claude-agent-sdk")
         const toolFn = sdkMod.tool
         const createServer = sdkMod.createSdkMcpServer
         if (toolFn && createServer) {
-          const extraTools = self.config.codeAgentOptions?.extraTools ?? []
-          if (extraTools.length > 0) {
+          const tools = self.config.codeAgentOptions?.tools ?? []
+          if (tools.length > 0) {
             // Lightweight context proxy for Tool.execute()
             const makeCtx = () => ({
               emit: (event: string, data?: any) => self._emitEvent(event, data),
@@ -160,7 +160,7 @@ export class ClaudeCodeAgent implements IChatAgent {
             })
 
             const sdkTools: any[] = []
-            for (const toolDef of extraTools) {
+            for (const toolDef of tools) {
               const info = await toolDef.init()
               // Extract Zod shape from z.object() for SDK tool() — SDK expects raw shape, not z.object()
               const shape = (info.parameters as any)?.shape ?? {}

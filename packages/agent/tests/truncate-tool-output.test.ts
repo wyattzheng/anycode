@@ -39,7 +39,7 @@ describe("truncateToolOutput via full chat()", () => {
                 model: "gpt-4o",
                 baseUrl: "http://localhost:19283/v1",
             },
-            extraTools: [
+            tools: [
                 {
                     id: "big_output",
                     init: async () => ({

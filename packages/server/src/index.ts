@@ -195,7 +195,7 @@ function createAgentConfig(cfg: ServerConfig, directory: string, sessionId?: str
     ...(sessionId ? { sessionId } : {}),
     ...(terminal ? { terminal } : {}),
     ...(preview ? { preview } : {}),
-    extraTools: [
+    tools: [
       SetWorkingDirectoryTool,
       TerminalWriteTool,
       TerminalReadTool,

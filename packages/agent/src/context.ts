@@ -100,7 +100,7 @@ export interface AgentContext {
   db: any
 
   /** Extra tools injected from outside (set_directory, terminal, preview, etc.) */
-  extraTools?: Tool.Info[]
+  tools?: Tool.Info[]
 
   // ── Service instances ──────────────────────────────────────────
   // Phase 0: stateless services (created in CodeAgent constructor)

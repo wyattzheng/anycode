@@ -93,9 +93,6 @@ export interface CodeAgentOptions {
     /** Custom system prompt (appended to the default prompt) */
     systemPrompt?: string
 
-    /** Custom tools the agent can use */
-    tools?: Record<string, any>
-
     /**
      * Pre-built configuration object.
      * When provided, bypasses all filesystem-based config loading
@@ -179,10 +176,10 @@ export interface CodeAgentOptions {
     preview?: PreviewProvider
 
     /**
-     * Extra tools to register (set_directory, terminal, preview, etc.).
+     * Custom tools to register.
      * Passed through to ToolRegistryService for inclusion in tool list.
      */
-    extraTools?: Tool.Info[]
+    tools?: Tool.Info[]
 
     /**
      * Logger implementation.
@@ -399,7 +396,7 @@ export class CodeAgent extends EventEmitter {
             configOverrides: this.options.config as any,
             instructions: this.options.instructions,
             db: this._dbClient,
-            extraTools: [...(this.options.extraTools ?? []), ...(this.options.tools ? Object.values(this.options.tools) : [])],
+            tools: [...(this.options.tools ?? [])],
             containsPath: (filepath: string) => {
                 const normalized = path.resolve(filepath)
                 return normalized.startsWith(path.resolve(worktree)) ||
@@ -452,26 +449,7 @@ export class CodeAgent extends EventEmitter {
 
         this._context = ctx
 
-        // Register custom tools
-        if (this.options.tools) {
-            for (const [name, def] of Object.entries(this.options.tools)) {
-                this._context.toolRegistry.register({
-                    id: name,
-                    init: async () => ({
-                        parameters: z.object(def.args),
-                        description: def.description,
-                        execute: async (args, toolCtx) => {
-                            const result = await def.execute(args as any, toolCtx as any)
-                            return {
-                                title: "",
-                                output: typeof result === "string" ? result : JSON.stringify(result),
-                                metadata: {},
-                            }
-                        },
-                    }),
-                })
-            }
-        }
+
 
         // Ensure the global project exists in DB
         if (!this._dbClient.findOne("project", { op: "eq", field: "id", value: "global" })) {
@@ -773,31 +751,18 @@ export class CodeAgent extends EventEmitter {
     }
 
     /**
-     * Register a custom tool at runtime
+     * Register a custom tool at runtime.
+     * Tool must follow the Tool.Info format: { id, init }.
      */
-    async registerTool(name: string, tool: any): Promise<void> {
+    async registerTool(tool: Tool.Info): Promise<void> {
         if (!this.options.tools) {
-            this.options.tools = {}
+            this.options.tools = []
         }
-        this.options.tools[name] = tool
+        this.options.tools.push(tool)
 
         // If already initialized, register dynamically
         if (this.initialized) {
-            this.agentContext.toolRegistry.register({
-                id: name,
-                init: async () => ({
-                    parameters: z.object(tool.args),
-                    description: tool.description,
-                    execute: async (args, ctx) => {
-                        const result = await tool.execute(args as any, ctx as any)
-                        return {
-                            title: "",
-                            output: typeof result === "string" ? result : JSON.stringify(result),
-                            metadata: {},
-                        }
-                    },
-                }),
-            })
+            this.agentContext.toolRegistry.register(tool)
         }
     }
 
