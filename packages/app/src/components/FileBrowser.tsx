@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import type { DirEntry, FileContext } from "../App";
-import { ChevronIcon } from "./Icons";
+import { ChevronIcon, FileDocIcon } from "./Icons";
 import { FileIcon } from "./FileIcon";
 import { CodeViewer } from "./CodeViewer";
 import "./FileBrowser.css";
@@ -164,7 +164,7 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
                 <div className="file-tree">
                     {isEmpty ? (
                         <div className="file-tree-empty">
-                            <FileIcon filename="" isDir size={40} />
+                            <FileDocIcon size={36} />
                             <p>加载中…</p>
                         </div>
                     ) : (
@@ -216,7 +216,7 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
                     </>
                 ) : (
                     <div className="file-empty">
-                        <FileIcon filename="file" size={36} />
+                        <FileDocIcon size={36} />
                         <p>选择文件查看内容</p>
                     </div>
                 )}

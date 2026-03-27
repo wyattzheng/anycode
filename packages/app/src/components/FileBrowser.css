@@ -21,14 +21,24 @@
     -webkit-tap-highlight-color: transparent;
 }
 
-.fb-resize-border::after {
+.fb-resize-border::before {
     content: '';
     position: absolute;
     top: -8px;
     left: 0;
     right: 0;
     height: 16px;
+}
+
+.fb-resize-border::after {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
     transition: background 0.15s;
+    pointer-events: none;
 }
 
 .fb-resize-border:hover::after,

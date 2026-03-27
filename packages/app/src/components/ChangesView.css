@@ -22,14 +22,24 @@
     -webkit-tap-highlight-color: transparent;
 }
 
-.cv-resize-border::after {
+.cv-resize-border::before {
     content: '';
     position: absolute;
     top: -8px;
     left: 0;
     right: 0;
     height: 16px;
+}
+
+.cv-resize-border::after {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
     transition: background 0.15s;
+    pointer-events: none;
 }
 
 .cv-resize-border:hover::after,
