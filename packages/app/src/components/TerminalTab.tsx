@@ -53,6 +53,7 @@ export function TerminalTab({ sessionId }: TerminalTabProps) {
             cursorInactiveStyle: "none",
             scrollback: 5000,
             allowProposedApi: true,
+            disableStdin: true,
         });
 
         const fitAddon = new FitAddon();
@@ -63,12 +64,7 @@ export function TerminalTab({ sessionId }: TerminalTabProps) {
         termRef.current = term;
         fitRef.current = fitAddon;
 
-        // Forward keyboard input to the server
-        term.onData((data) => {
-            if (ws?.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: "terminal.input", data }));
-            }
-        });
+
 
         // ── WebSocket with auto-reconnect ──
         let ws: WebSocket | null = null;
