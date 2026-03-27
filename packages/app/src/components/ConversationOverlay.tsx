@@ -199,7 +199,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
         if (!el) return;
         const ro = new ResizeObserver(([entry]) => {
             const w = entry.contentRect.width;
-            if (w > 0) setInputNarrow(w < 200);
+            if (w > 0) flushSync(() => setInputNarrow(w < 200));
         });
         ro.observe(el);
         return () => ro.disconnect();

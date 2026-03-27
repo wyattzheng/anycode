@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect } from "react";
+import { flushSync } from "react-dom";
 import type { DirEntry, FileContext } from "../App";
 import { ChevronIcon, FileDocIcon } from "./Icons";
 import { FileIcon } from "./FileIcon";
@@ -108,7 +109,7 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
         if (initW > 0) setHorizontal(initW >= HORIZONTAL_BREAKPOINT);
         const ro = new ResizeObserver((entries) => {
             const w = entries[0]?.contentRect.width ?? 0;
-            if (w > 0) setHorizontal(w >= HORIZONTAL_BREAKPOINT);
+            if (w > 0) flushSync(() => setHorizontal(w >= HORIZONTAL_BREAKPOINT));
         });
         ro.observe(el);
         return () => ro.disconnect();
