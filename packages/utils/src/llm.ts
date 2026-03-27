@@ -42,7 +42,86 @@ export interface LLMStreamResult {
 
 // ── Message & tool types ─────────────────────────────────────────────────────
 
-export type LLMMessage = { role: string; content: any }
+// Content part types — structural clones of AI SDK ModelMessage parts.
+// We mirror (not re-export) to keep @any-code/utils free of `ai` dependency.
+
+export interface LLMTextPart {
+  type: "text"
+  text: string
+  providerOptions?: Record<string, any>
+}
+
+export interface LLMImagePart {
+  type: "image"
+  image: string | Uint8Array | ArrayBuffer | URL
+  mediaType?: string
+  providerOptions?: Record<string, any>
+}
+
+export interface LLMFilePart {
+  type: "file"
+  data: string | Uint8Array | ArrayBuffer | URL
+  filename?: string
+  mediaType: string
+  providerOptions?: Record<string, any>
+}
+
+export interface LLMReasoningPart {
+  type: "reasoning"
+  text: string
+  providerOptions?: Record<string, any>
+}
+
+export interface LLMToolCallPart {
+  type: "tool-call"
+  toolCallId: string
+  toolName: string
+  input: unknown
+  providerOptions?: Record<string, any>
+  providerExecuted?: boolean
+}
+
+export interface LLMToolResultPart {
+  type: "tool-result"
+  toolCallId: string
+  toolName: string
+  output: unknown
+  providerOptions?: Record<string, any>
+}
+
+// Content aggregate types per role
+
+export type LLMUserContent = string | Array<LLMTextPart | LLMImagePart | LLMFilePart>
+export type LLMAssistantContent = string | Array<LLMTextPart | LLMFilePart | LLMReasoningPart | LLMToolCallPart | LLMToolResultPart>
+export type LLMToolContent = Array<LLMToolResultPart>
+
+// Role-discriminated message types
+
+export type LLMSystemMessage = {
+  role: "system"
+  content: string
+  providerOptions?: Record<string, any>
+}
+
+export type LLMUserMessage = {
+  role: "user"
+  content: LLMUserContent
+  providerOptions?: Record<string, any>
+}
+
+export type LLMAssistantMessage = {
+  role: "assistant"
+  content: LLMAssistantContent
+  providerOptions?: Record<string, any>
+}
+
+export type LLMToolMessage = {
+  role: "tool"
+  content: LLMToolContent
+  providerOptions?: Record<string, any>
+}
+
+export type LLMMessage = LLMSystemMessage | LLMUserMessage | LLMAssistantMessage | LLMToolMessage
 
 export interface LLMToolDef {
   id?: string
