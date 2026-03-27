@@ -445,6 +445,7 @@ export class CodeAgent extends EventEmitter {
         ctx.sessionStatus = { type: "idle" }
 
         ctx.sessionPrompt = new SessionPrompt.SessionPromptService()
+        ctx.systemPrompt = new SystemPrompt()
 
 
 
@@ -1113,9 +1114,9 @@ export class CodeAgent extends EventEmitter {
         }
 
         // Build system prompt
-        const skills = await SystemPrompt.skills(context)
+        const skills = await context.systemPrompt.skills(context)
         const system = [
-            ...(await SystemPrompt.environment(model, context)),
+            ...(await context.systemPrompt.environment(model, context)),
             ...(skills ? [skills] : []),
 
         ]

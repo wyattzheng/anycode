@@ -2,16 +2,23 @@ import type { AgentContext } from "../context"
 import { type Provider, VendorRegistry } from "@any-code/provider"
 import { Skill } from "../skill"
 
-export namespace SystemPrompt {
-  export function instructions(model: Provider.Model) {
+export interface ISystemPrompt {
+  instructions(model: Provider.Model): string
+  provider(model: Provider.Model): string[]
+  environment(model: Provider.Model, context: AgentContext): Promise<string[]>
+  skills(context: AgentContext): Promise<string>
+}
+
+export class SystemPrompt implements ISystemPrompt {
+  instructions(model: Provider.Model) {
     return VendorRegistry.getModelProvider({ model }).getInstructionPrompt()
   }
 
-  export function provider(model: Provider.Model) {
+  provider(model: Provider.Model) {
     return VendorRegistry.getModelProvider({ model }).getProviderSystemPrompt()
   }
 
-  export async function environment(model: Provider.Model, context: AgentContext) {
+  async environment(model: Provider.Model, context: AgentContext) {
     const project = context.project
     return [
       [
@@ -34,7 +41,7 @@ export namespace SystemPrompt {
     ]
   }
 
-  export async function skills(context: AgentContext) {
+  async skills(context: AgentContext) {
     const list = await context.skill.all()
 
     return [

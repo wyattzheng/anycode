@@ -2,7 +2,6 @@ import { tool, jsonSchema, wrapLanguageModel, type ModelMessage, type StreamText
 import { mergeDeep, pipe } from "remeda"
 import type { AgentContext } from "./context"
 import { Provider, VendorRegistry } from "@any-code/provider"
-import { SystemPrompt } from "./prompt"
 import { Auth } from "./util/auth"
 import { MessageV2 } from "./memory/message-v2"
 import { SessionService } from "./session"
@@ -58,7 +57,7 @@ export namespace LLM {
       [
         // use agent prompt otherwise provider prompt
         // Some providers send their system prompt via vendor-specific instructions.
-        ...(input.prompt ? [input.prompt] : includeProviderPrompt ? SystemPrompt.provider(input.model) : []),
+        ...(input.prompt ? [input.prompt] : includeProviderPrompt ? context.systemPrompt.provider(input.model) : []),
         // any custom prompt passed into this call
         ...input.system,
         // any custom prompt from last user message
@@ -88,7 +87,7 @@ export namespace LLM {
       mergeDeep(input.model.options),
     )
     if (useInstructions) {
-      options.instructions = SystemPrompt.instructions(input.model)
+      options.instructions = context.systemPrompt.instructions(input.model)
     }
 
     const params = {

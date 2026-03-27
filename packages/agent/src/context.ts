@@ -13,6 +13,7 @@ import type { SessionStatus } from "./session"
 import type { SessionService } from "./session"
 
 import type { SessionPrompt } from "./session/session"
+import type { ISystemPrompt } from "./prompt"
 
 
 
@@ -114,6 +115,7 @@ export interface AgentContext {
   sessionStatus: SessionStatus.Info
 
   sessionPrompt: SessionPrompt.SessionPromptService
+  systemPrompt: ISystemPrompt
 
   provider: Provider.ProviderService
   toolRegistry: ToolRegistry.ToolRegistryService
