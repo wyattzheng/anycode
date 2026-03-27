@@ -9,7 +9,7 @@ import { type ProviderMetadata } from "ai"
 
 import { Flag } from "../util/flag"
 import { Installation } from "../util/installation"
-import { Memory } from "../memory"
+import { getUsage } from "../memory"
 
 import { NotFoundError } from "../storage"
 import type { Filter } from "../storage"
@@ -116,7 +116,7 @@ export class SessionService extends EventEmitter {
 
   static fromRow = fromRow
   static toRow = toRow
-  static getUsage = Memory.getUsage
+  static getUsage = getUsage
 
   async create(input?: Session.CreateInput) {
     return this.createNext({

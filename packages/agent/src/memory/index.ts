@@ -105,77 +105,75 @@ export class MemoryService extends EventEmitter {
 }
 
 /**
- * Static utility functions (no context dependency).
+ * Compute usage tokens and cost from raw LLM response usage metadata.
  */
-export namespace Memory {
-  export const getUsage = fn(
-    z.object({
-      model: z.custom<Provider.Model>(),
-      usage: z.custom<LanguageModelV2Usage>(),
-      metadata: z.custom<ProviderMetadata>().optional(),
-    }),
-    (input) => {
-      const safe = (value: number) => {
-        if (!Number.isFinite(value)) return 0
-        return value
+export const getUsage = fn(
+  z.object({
+    model: z.custom<Provider.Model>(),
+    usage: z.custom<LanguageModelV2Usage>(),
+    metadata: z.custom<ProviderMetadata>().optional(),
+  }),
+  (input) => {
+    const safe = (value: number) => {
+      if (!Number.isFinite(value)) return 0
+      return value
+    }
+    const inputTokens = safe(input.usage.inputTokens ?? 0)
+    const outputTokens = safe(input.usage.outputTokens ?? 0)
+    const reasoningTokens = safe(input.usage.reasoningTokens ?? 0)
+
+    const cacheReadInputTokens = safe(input.usage.cachedInputTokens ?? 0)
+    const cacheWriteInputTokens = safe(
+      (input.metadata?.["anthropic"]?.["cacheCreationInputTokens"] ??
+        // @ts-expect-error
+        input.metadata?.["bedrock"]?.["usage"]?.["cacheWriteInputTokens"] ??
+        // @ts-expect-error
+        input.metadata?.["venice"]?.["usage"]?.["cacheCreationInputTokens"] ??
+        0) as number,
+    )
+
+    const excludesCachedTokens = !!(input.metadata?.["anthropic"] || input.metadata?.["bedrock"])
+    const adjustedInputTokens = safe(
+      excludesCachedTokens ? inputTokens : inputTokens - cacheReadInputTokens - cacheWriteInputTokens,
+    )
+
+    const total = iife(() => {
+      if (
+        input.model.api.npm === "@ai-sdk/anthropic" ||
+        input.model.api.npm === "@ai-sdk/amazon-bedrock" ||
+        input.model.api.npm === "@ai-sdk/google-vertex/anthropic"
+      ) {
+        return adjustedInputTokens + outputTokens + cacheReadInputTokens + cacheWriteInputTokens
       }
-      const inputTokens = safe(input.usage.inputTokens ?? 0)
-      const outputTokens = safe(input.usage.outputTokens ?? 0)
-      const reasoningTokens = safe(input.usage.reasoningTokens ?? 0)
+      return input.usage.totalTokens
+    })
 
-      const cacheReadInputTokens = safe(input.usage.cachedInputTokens ?? 0)
-      const cacheWriteInputTokens = safe(
-        (input.metadata?.["anthropic"]?.["cacheCreationInputTokens"] ??
-          // @ts-expect-error
-          input.metadata?.["bedrock"]?.["usage"]?.["cacheWriteInputTokens"] ??
-          // @ts-expect-error
-          input.metadata?.["venice"]?.["usage"]?.["cacheCreationInputTokens"] ??
-          0) as number,
-      )
+    const tokens = {
+      total,
+      input: adjustedInputTokens,
+      output: outputTokens,
+      reasoning: reasoningTokens,
+      cache: {
+        write: cacheWriteInputTokens,
+        read: cacheReadInputTokens,
+      },
+    }
 
-      const excludesCachedTokens = !!(input.metadata?.["anthropic"] || input.metadata?.["bedrock"])
-      const adjustedInputTokens = safe(
-        excludesCachedTokens ? inputTokens : inputTokens - cacheReadInputTokens - cacheWriteInputTokens,
-      )
-
-      const total = iife(() => {
-        if (
-          input.model.api.npm === "@ai-sdk/anthropic" ||
-          input.model.api.npm === "@ai-sdk/amazon-bedrock" ||
-          input.model.api.npm === "@ai-sdk/google-vertex/anthropic"
-        ) {
-          return adjustedInputTokens + outputTokens + cacheReadInputTokens + cacheWriteInputTokens
-        }
-        return input.usage.totalTokens
-      })
-
-      const tokens = {
-        total,
-        input: adjustedInputTokens,
-        output: outputTokens,
-        reasoning: reasoningTokens,
-        cache: {
-          write: cacheWriteInputTokens,
-          read: cacheReadInputTokens,
-        },
-      }
-
-      const costInfo =
-        input.model.cost?.experimentalOver200K && tokens.input + tokens.cache.read > 200_000
-          ? input.model.cost.experimentalOver200K
-          : input.model.cost
-      return {
-        cost: safe(
-          new Decimal(0)
-            .add(new Decimal(tokens.input).mul(costInfo?.input ?? 0).div(1_000_000))
-            .add(new Decimal(tokens.output).mul(costInfo?.output ?? 0).div(1_000_000))
-            .add(new Decimal(tokens.cache.read).mul(costInfo?.cache?.read ?? 0).div(1_000_000))
-            .add(new Decimal(tokens.cache.write).mul(costInfo?.cache?.write ?? 0).div(1_000_000))
-            .add(new Decimal(tokens.reasoning).mul(costInfo?.output ?? 0).div(1_000_000))
-            .toNumber(),
-        ),
-        tokens,
-      }
-    },
-  )
-}
+    const costInfo =
+      input.model.cost?.experimentalOver200K && tokens.input + tokens.cache.read > 200_000
+        ? input.model.cost.experimentalOver200K
+        : input.model.cost
+    return {
+      cost: safe(
+        new Decimal(0)
+          .add(new Decimal(tokens.input).mul(costInfo?.input ?? 0).div(1_000_000))
+          .add(new Decimal(tokens.output).mul(costInfo?.output ?? 0).div(1_000_000))
+          .add(new Decimal(tokens.cache.read).mul(costInfo?.cache?.read ?? 0).div(1_000_000))
+          .add(new Decimal(tokens.cache.write).mul(costInfo?.cache?.write ?? 0).div(1_000_000))
+          .add(new Decimal(tokens.reasoning).mul(costInfo?.output ?? 0).div(1_000_000))
+          .toNumber(),
+      ),
+      tokens,
+    }
+  },
+)
