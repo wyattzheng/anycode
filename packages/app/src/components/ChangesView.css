@@ -75,20 +75,22 @@
     transform: none;
 }
 
-/* Second line: subtle static hint alongside list border */
+/* Second line: subtle hint only in hot zone area */
 .changes-view--horizontal .cv-resize-border::after {
-    top: 0;
-    bottom: 0;
+    top: 8px;
+    bottom: auto;
     left: 2px;
     right: auto;
     width: 1px;
-    height: auto;
+    height: 20px;
     background: var(--color-border);
 }
 
 .changes-view--horizontal .cv-resize-border.dragging::after {
     left: -1px;
+    bottom: 0;
     width: 2px;
+    height: auto;
     background: var(--color-accent);
 }
 

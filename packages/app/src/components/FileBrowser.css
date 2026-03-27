@@ -73,20 +73,22 @@
     height: 36px;
 }
 
-/* Second line: subtle static hint alongside sidebar border */
+/* Second line: subtle hint only in hot zone area */
 .file-browser--horizontal .fb-resize-border::after {
-    top: 0;
-    bottom: 0;
+    top: 8px;
+    bottom: auto;
     left: 2px;
     right: auto;
     width: 1px;
-    height: auto;
+    height: 20px;
     background: var(--color-border);
 }
 
 .file-browser--horizontal .fb-resize-border.dragging::after {
     left: -1px;
+    bottom: 0;
     width: 2px;
+    height: auto;
     background: var(--color-accent);
 }
 
