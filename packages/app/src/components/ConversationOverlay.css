@@ -244,6 +244,8 @@
 .co-tool-icon {
     flex-shrink: 0;
     font-size: 9px;
+    width: 12px;
+    text-align: center;
 }
 
 .co-tool-name {

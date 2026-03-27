@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { DirEntry, FileContext } from "../App";
 import { ChevronIcon, FileDocIcon } from "./Icons";
 import { FileIcon } from "./FileIcon";
@@ -89,26 +89,37 @@ function LazyTreeItem({
     );
 }
 
+const HORIZONTAL_BREAKPOINT = 700;
+
 export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }: FileBrowserProps) {
-    const [sidebarHeight, setSidebarHeight] = useState<number | null>(() => {
+    const [sidebarSize, setSidebarSize] = useState<number | null>(() => {
         const saved = localStorage.getItem('fb-sidebar-height');
         return saved ? Number(saved) : null;
     });
     const containerRef = useRef<HTMLDivElement>(null);
-    const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+    const dragRef = useRef<{ startPos: number; startSize: number } | null>(null);
+    const [horizontal, setHorizontal] = useState(() => window.innerWidth >= HORIZONTAL_BREAKPOINT);
+
+    useEffect(() => {
+        const mq = window.matchMedia(`(min-width: ${HORIZONTAL_BREAKPOINT}px)`);
+        const handler = (e: MediaQueryListEvent) => setHorizontal(e.matches);
+        mq.addEventListener("change", handler);
+        return () => mq.removeEventListener("change", handler);
+    }, []);
 
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
     const [fileContent, setFileContent] = useState<string | null>(null);
     const [fileLoading, setFileLoading] = useState(false);
 
-    const onDragMove = useCallback((clientY: number) => {
+    const onDragMove = useCallback((clientPos: number) => {
         if (!dragRef.current || !containerRef.current) return;
         const containerRect = containerRef.current.getBoundingClientRect();
-        const delta = clientY - dragRef.current.startY;
-        const newHeight = Math.max(60, Math.min(dragRef.current.startHeight + delta, containerRect.height - 60));
-        setSidebarHeight(newHeight);
-        localStorage.setItem('fb-sidebar-height', String(newHeight));
-    }, []);
+        const delta = clientPos - dragRef.current.startPos;
+        const maxSize = horizontal ? containerRect.width - 60 : containerRect.height - 60;
+        const newSize = Math.max(60, Math.min(dragRef.current.startSize + delta, maxSize));
+        setSidebarSize(newSize);
+        localStorage.setItem('fb-sidebar-height', String(newSize));
+    }, [horizontal]);
 
     const onDragEnd = useCallback(() => {
         dragRef.current = null;
@@ -116,9 +127,13 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
 
     const handleMouseDown = (e: React.MouseEvent) => {
         e.preventDefault();
-        const currentHeight = sidebarHeight ?? (containerRef.current ? containerRef.current.getBoundingClientRect().height / 2 : 200);
-        dragRef.current = { startY: e.clientY, startHeight: currentHeight };
-        const onMove = (ev: MouseEvent) => onDragMove(ev.clientY);
+        const defaultSize = containerRef.current
+            ? (horizontal ? containerRef.current.getBoundingClientRect().width : containerRef.current.getBoundingClientRect().height) / 2
+            : 200;
+        const currentSize = sidebarSize ?? defaultSize;
+        const pos = horizontal ? e.clientX : e.clientY;
+        dragRef.current = { startPos: pos, startSize: currentSize };
+        const onMove = (ev: MouseEvent) => onDragMove(horizontal ? ev.clientX : ev.clientY);
         const onUp = () => { onDragEnd(); window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
         window.addEventListener("mousemove", onMove);
         window.addEventListener("mouseup", onUp);
@@ -126,9 +141,13 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
 
     const handleTouchStart = (e: React.TouchEvent) => {
         const touch = e.touches[0];
-        const currentHeight = sidebarHeight ?? (containerRef.current ? containerRef.current.getBoundingClientRect().height / 2 : 200);
-        dragRef.current = { startY: touch.clientY, startHeight: currentHeight };
-        const onMove = (ev: TouchEvent) => { ev.preventDefault(); onDragMove(ev.touches[0].clientY); };
+        const defaultSize = containerRef.current
+            ? (horizontal ? containerRef.current.getBoundingClientRect().width : containerRef.current.getBoundingClientRect().height) / 2
+            : 200;
+        const currentSize = sidebarSize ?? defaultSize;
+        const pos = horizontal ? touch.clientX : touch.clientY;
+        dragRef.current = { startPos: pos, startSize: currentSize };
+        const onMove = (ev: TouchEvent) => { ev.preventDefault(); onDragMove(horizontal ? ev.touches[0].clientX : ev.touches[0].clientY); };
         const onUp = () => { onDragEnd(); window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onUp); };
         window.addEventListener("touchmove", onMove, { passive: false });
         window.addEventListener("touchend", onUp);
@@ -158,9 +177,13 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
 
     const isEmpty = topLevel.length === 0;
 
+    const sidebarStyle = horizontal
+        ? (sidebarSize != null ? { width: sidebarSize, flex: 'none' } : { flex: 1 })
+        : (sidebarSize != null ? { height: sidebarSize, flex: 'none' } : { flex: 1 });
+
     return (
-        <div className="file-browser" ref={containerRef}>
-            <div className="file-browser-sidebar" style={sidebarHeight != null ? { height: sidebarHeight, flex: 'none' } : { flex: 1 }}>
+        <div className={`file-browser ${horizontal ? 'file-browser--horizontal' : ''}`} ref={containerRef}>
+            <div className="file-browser-sidebar" style={sidebarStyle as any}>
                 <div className="file-tree">
                     {isEmpty ? (
                         <div className="file-tree-empty">
@@ -180,7 +203,7 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
                     )}
                 </div>
             </div>
-            <div className="fb-resize-border" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} />
+            <div className={`fb-resize-border ${horizontal ? 'fb-resize-border--horizontal' : ''}`} onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} />
             <div className="file-browser-content">
                 {selectedFile ? (
                     <>

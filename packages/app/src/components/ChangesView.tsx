@@ -29,10 +29,20 @@ function statusLabel(status: string): string {
     }
 }
 
+const HORIZONTAL_BREAKPOINT = 700;
+
 export function ChangesView({ changes, requestFile, requestDiff, onFileContext }: ChangesViewProps) {
-    const [listHeight, setListHeight] = useState<number | null>(null);
+    const [listSize, setListSize] = useState<number | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+    const dragRef = useRef<{ startPos: number; startSize: number } | null>(null);
+    const [horizontal, setHorizontal] = useState(() => window.innerWidth >= HORIZONTAL_BREAKPOINT);
+
+    useEffect(() => {
+        const mq = window.matchMedia(`(min-width: ${HORIZONTAL_BREAKPOINT}px)`);
+        const handler = (e: MediaQueryListEvent) => setHorizontal(e.matches);
+        mq.addEventListener("change", handler);
+        return () => mq.removeEventListener("change", handler);
+    }, []);
 
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
     const [fileContent, setFileContent] = useState<string | null>(null);
@@ -65,13 +75,14 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
         return () => { cancelled = true; };
     }, [changes, selectedFile, onFileContext, requestFile, requestDiff]);
 
-    const onDragMove = useCallback((clientY: number) => {
+    const onDragMove = useCallback((clientPos: number) => {
         if (!dragRef.current || !containerRef.current) return;
         const containerRect = containerRef.current.getBoundingClientRect();
-        const delta = clientY - dragRef.current.startY;
-        const newHeight = Math.max(60, Math.min(dragRef.current.startHeight + delta, containerRect.height - 60));
-        setListHeight(newHeight);
-    }, []);
+        const delta = clientPos - dragRef.current.startPos;
+        const maxSize = horizontal ? containerRect.width - 60 : containerRect.height - 60;
+        const newSize = Math.max(60, Math.min(dragRef.current.startSize + delta, maxSize));
+        setListSize(newSize);
+    }, [horizontal]);
 
     const onDragEnd = useCallback(() => {
         dragRef.current = null;
@@ -79,9 +90,13 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
 
     const handleMouseDown = (e: React.MouseEvent) => {
         e.preventDefault();
-        const currentHeight = listHeight ?? (containerRef.current ? containerRef.current.getBoundingClientRect().height / 2 : 200);
-        dragRef.current = { startY: e.clientY, startHeight: currentHeight };
-        const onMove = (ev: MouseEvent) => onDragMove(ev.clientY);
+        const defaultSize = containerRef.current
+            ? (horizontal ? containerRef.current.getBoundingClientRect().width : containerRef.current.getBoundingClientRect().height) / 2
+            : 200;
+        const currentSize = listSize ?? defaultSize;
+        const pos = horizontal ? e.clientX : e.clientY;
+        dragRef.current = { startPos: pos, startSize: currentSize };
+        const onMove = (ev: MouseEvent) => onDragMove(horizontal ? ev.clientX : ev.clientY);
         const onUp = () => { onDragEnd(); window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
         window.addEventListener("mousemove", onMove);
         window.addEventListener("mouseup", onUp);
@@ -89,9 +104,13 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
 
     const handleTouchStart = (e: React.TouchEvent) => {
         const touch = e.touches[0];
-        const currentHeight = listHeight ?? (containerRef.current ? containerRef.current.getBoundingClientRect().height / 2 : 200);
-        dragRef.current = { startY: touch.clientY, startHeight: currentHeight };
-        const onMove = (ev: TouchEvent) => { ev.preventDefault(); onDragMove(ev.touches[0].clientY); };
+        const defaultSize = containerRef.current
+            ? (horizontal ? containerRef.current.getBoundingClientRect().width : containerRef.current.getBoundingClientRect().height) / 2
+            : 200;
+        const currentSize = listSize ?? defaultSize;
+        const pos = horizontal ? touch.clientX : touch.clientY;
+        dragRef.current = { startPos: pos, startSize: currentSize };
+        const onMove = (ev: TouchEvent) => { ev.preventDefault(); onDragMove(horizontal ? ev.touches[0].clientX : ev.touches[0].clientY); };
         const onUp = () => { onDragEnd(); window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onUp); };
         window.addEventListener("touchmove", onMove, { passive: false });
         window.addEventListener("touchend", onUp);
@@ -139,9 +158,13 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
 
     const isEmpty = changes.length === 0;
 
+    const listStyle = horizontal
+        ? (listSize != null ? { width: listSize, flex: 'none' } : { flex: 1 })
+        : (listSize != null ? { height: listSize, flex: 'none' } : { flex: 1 });
+
     return (
-        <div className="changes-view" ref={containerRef}>
-            <div className="changes-list" style={listHeight != null ? { height: listHeight, flex: 'none' } : { flex: 1 }}>
+        <div className={`changes-view ${horizontal ? 'changes-view--horizontal' : ''}`} ref={containerRef}>
+            <div className="changes-list" style={listStyle as any}>
                 <div className="change-items">
                     {isEmpty ? (
                         <div className="changes-empty">
@@ -162,7 +185,7 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
                     )}
                 </div>
             </div>
-            <div className="cv-resize-border" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} />
+            <div className={`cv-resize-border ${horizontal ? 'cv-resize-border--horizontal' : ''}`} onMouseDown={handleMouseDown} onTouchStart={handleTouchStart} />
             <div className="changes-diff">
                 {selectedFile ? (
                     <>
