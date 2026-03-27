@@ -44,7 +44,7 @@ export function MainView({ activeTab, topLevel, changes, directory, sessionId, p
                 </div>
 
                 {/* 动态 Tab：渲染 iframe 访问 agent web 项目路由 */}
-                {activeTab !== "files" && activeTab !== "changes" && activeTab !== "terminal" && activeTab !== "preview" && (
+                {activeTab !== "files" && activeTab !== "changes" && activeTab !== "terminal" && activeTab !== "preview" && activeTab !== "chat" && (
                     <iframe
                         className="main-view-iframe"
                         src={activeTab}

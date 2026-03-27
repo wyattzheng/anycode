@@ -189,21 +189,23 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
             )}
             <div className="app-middle">
                 <div className="app-main">
-                    {activeTab === "chat" ? null : directory ? (
-                        <MainView
-                            activeTab={activeTab}
-                            topLevel={topLevel}
-                            changes={changes}
-                            directory={directory}
-                            sessionId={sessionId}
-                            previewPort={previewPort}
-                            requestLs={requestLs}
-                            requestFile={requestFile}
-                            requestDiff={requestDiff}
-                            onFileContext={setFileContext}
-                        />
+                    {directory ? (
+                        <div style={{ display: activeTab === "chat" ? "none" : "flex", flex: 1 }}>
+                            <MainView
+                                activeTab={activeTab}
+                                topLevel={topLevel}
+                                changes={changes}
+                                directory={directory}
+                                sessionId={sessionId}
+                                previewPort={previewPort}
+                                requestLs={requestLs}
+                                requestFile={requestFile}
+                                requestDiff={requestDiff}
+                                onFileContext={setFileContext}
+                            />
+                        </div>
                     ) : (
-                        <div className="main-view" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <div className="main-view" style={{ display: activeTab === "chat" ? "none" : "flex", alignItems: "center", justifyContent: "center" }}>
                             <div style={{ textAlign: "center" }}>
                                 <p style={{ color: "var(--color-text-dim)", fontSize: "14px", opacity: 0.4, fontWeight: 500 }}>
                                     通过对话面板
