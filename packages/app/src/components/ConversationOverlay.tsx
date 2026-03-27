@@ -771,86 +771,64 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
         </>
     );
 
-    // ── Hidden mode: render nothing ──
-    if (mode === "hidden") return null;
+    // ── Single instance, always live ──
+    const isOverlay = mode === "overlay";
+    const isFull = mode === "full";
+    const isHidden = mode === "hidden";
 
-    // ── Overlay mode: sidebar or floating ──
-    if (mode === "overlay") {
-        const panelClass = floating
+    const panelClass = isFull
+        ? "conversation-panel conversation-full"
+        : floating
             ? "conversation-panel conversation-floating"
             : "conversation-panel conversation-sidebar";
-        const panelStyle = floating
-            ? { transform: `translate(${position.x}px, ${position.y}px)`, width: size.w, height: size.h }
-            : { width: sidebarWidth };
 
-        return (
-            <div className={panelClass} style={panelStyle}>
-                {!floating && <div className="co-sidebar-border" ref={sidebarBorderRef} onMouseDown={handleBorderMouseDown} onTouchStart={handleBorderTouchStart} />}
-                <div className="conversation-header"
-                    {...(floating ? { onMouseDown: handleMouseDown, onTouchStart: handleTouchStart } : {})}
-                >
-                    {floating && <div className="drag-grip" />}
-                    <div className="conversation-header-content">
-                        <ChatBubbleIcon /> 对话
-                        {floating ? (
-                            <button
-                                className="co-float-toggle"
-                                onClick={toggleFloating}
-                                title="固定到侧边栏"
-                            >
-                                <PinIcon />
-                            </button>
-                        ) : (
-                            <>
-                                <button
-                                    className="co-float-toggle"
-                                    onClick={onPopIn}
-                                    title="收回到对话 Tab"
-                                >
-                                    <MinimizeIcon />
-                                </button>
-                                <button
-                                    className="co-float-toggle"
-                                    onClick={toggleFloating}
-                                    title="浮动窗口"
-                                >
-                                    <UndockIcon />
-                                </button>
-                            </>
-                        )}
-                    </div>
-                </div>
-                {renderMessages()}
-                {renderInputBar()}
-                {floating && (
-                    <>
-                        <div className="co-resize-grip co-resize-bl" onMouseDown={makeResizeMouseDown("bl")} onTouchStart={makeResizeTouchStart("bl")} />
-                        <div className="co-resize-grip co-resize-br" onMouseDown={makeResizeMouseDown("br")} onTouchStart={makeResizeTouchStart("br")} />
-                    </>
-                )}
-            </div>
-        );
-    }
+    const panelStyle: React.CSSProperties = isHidden
+        ? { display: "none" }
+        : isFull
+            ? {}
+            : floating
+                ? { transform: `translate(${position.x}px, ${position.y}px)`, width: size.w, height: size.h }
+                : { width: sidebarWidth };
 
-    // ── Full mode: fills entire parent (chat tab) ──
     return (
-        <div className="conversation-panel conversation-full">
-            <div className="conversation-header">
+        <div className={panelClass} style={panelStyle}>
+            {isOverlay && !floating && <div className="co-sidebar-border" ref={sidebarBorderRef} onMouseDown={handleBorderMouseDown} onTouchStart={handleBorderTouchStart} />}
+            <div className="conversation-header"
+                {...(isOverlay && floating ? { onMouseDown: handleMouseDown, onTouchStart: handleTouchStart } : {})}
+            >
+                {isOverlay && floating && <div className="drag-grip" />}
                 <div className="conversation-header-content">
                     <ChatBubbleIcon /> 对话
-                    {onPopOut && (
-                        <button
-                            className="co-float-toggle"
-                            onClick={onPopOut}
-                            title="弹出为侧边栏"
-                        >
+                    {isFull && onPopOut && (
+                        <button className="co-float-toggle" onClick={onPopOut} title="弹出为侧边栏">
                             <PinIcon />
                         </button>
+                    )}
+                    {isOverlay && floating && (
+                        <button className="co-float-toggle" onClick={toggleFloating} title="固定到侧边栏">
+                            <PinIcon />
+                        </button>
+                    )}
+                    {isOverlay && !floating && (
+                        <>
+                            <button className="co-float-toggle" onClick={onPopIn} title="收回到对话 Tab">
+                                <MinimizeIcon />
+                            </button>
+                            <button className="co-float-toggle" onClick={toggleFloating} title="浮动窗口">
+                                <UndockIcon />
+                            </button>
+                        </>
                     )}
                 </div>
             </div>
             {renderMessages()}
             {renderInputBar()}
+            {isOverlay && floating && (
+                <>
+                    <div className="co-resize-grip co-resize-bl" onMouseDown={makeResizeMouseDown("bl")} onTouchStart={makeResizeTouchStart("bl")} />
+                    <div className="co-resize-grip co-resize-br" onMouseDown={makeResizeMouseDown("br")} onTouchStart={makeResizeTouchStart("br")} />
+                </>
+            )}
         </div>
     );
 }
