@@ -10,7 +10,7 @@ import { testPaths, testNodeDeps } from "./_test-paths"
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest"
 import path from "path"
-import { NodeFS } from "../src/vfs-node"
+import { NodeFS } from "@any-code/utils"
 import { CodeAgent, NodeSearchProvider } from "../src/index"
 import { createTempDir, cleanupTempDir } from "./setup"
 import { SqlJsStorage } from "@any-code/utils"
@@ -125,8 +125,7 @@ describe("VFS: NodeFS implementation", () => {
 
 describe("CodeAgent: VFS integration", () => {
     it("should use provided NodeFS", async () => {
-        const { NodeFS: NodeFSClass } = await import("../src/vfs-node")
-        const nodeFs = new NodeFSClass()
+        const nodeFs = new NodeFS()
         const agent = new CodeAgent({
             ...testNodeDeps(),
             storage: new SqlJsStorage(),

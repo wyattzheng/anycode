@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest"
-import { NodeSearchProvider } from "../src/search-node"
+import { NodeSearchProvider } from "@any-code/utils"
 import { InMemorySearchProvider } from "./fixtures/search-memory"
 import { InMemoryFS } from "./fixtures/in-memory-fs"
 import { createTempDir, cleanupTempDir } from "./setup"

@@ -67,6 +67,5 @@ export { SystemPrompt } from "./prompt"
 // Settings (type-only — loading is done by the host)
 export type { Settings } from "./settings"
 
-// Node.js implementations (used by tests and server)
-export { NodeFS } from "./vfs-node"
-export { NodeSearchProvider } from "./search-node"
+// Node.js implementations (re-export from utils)
+export { NodeFS, NodeSearchProvider } from "@any-code/utils"

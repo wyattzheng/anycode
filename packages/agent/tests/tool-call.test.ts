@@ -10,7 +10,7 @@ import { http, HttpResponse } from "msw"
 import { CodeAgent, NodeSearchProvider } from "../src/index"
 import { createTempDir, cleanupTempDir, server } from "./setup"
 import { TOOL_CALL_BODY, TOOL_RESULT_TEXT_BODY } from "./fixtures/tool-call-stream"
-import { SqlJsStorage } from "@any-code/utils"
+import { NodeFS, SqlJsStorage } from "@any-code/utils"
 
 describe("CodeAgent tool calling", () => {
     let agent: CodeAgent
@@ -46,7 +46,7 @@ describe("CodeAgent tool calling", () => {
                 model: "gpt-4o",
                 baseUrl: "http://localhost:19283/v1",
             },
-            fs: new (await import("../src/vfs-node")).NodeFS(),
+            fs: new NodeFS(),
             search: new NodeSearchProvider(),
             dataPath: testPaths(),
         })
