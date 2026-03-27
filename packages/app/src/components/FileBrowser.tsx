@@ -185,7 +185,7 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
     const isEmpty = topLevel.length === 0;
 
     const sidebarStyle = horizontal
-        ? (sidebarSize != null ? { width: sidebarSize, flex: 'none' } : { flex: 1 })
+        ? (sidebarSize != null ? { width: sidebarSize, flex: 'none' } : { flex: '0 0 35%' })
         : (sidebarSize != null ? { height: sidebarSize, flex: 'none' } : { flex: 1 });
 
     return (
@@ -214,7 +214,7 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
             <div className="file-browser-content">
                 {selectedFile ? (
                     <>
-                        <div className="file-content-header" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart}>
+                        <div className="file-content-header">
                             <FileIcon filename={selectedFile.split('/').pop() || selectedFile} />
                             <span className="file-content-path">{selectedFile}</span>
                             <div className="file-content-menu">

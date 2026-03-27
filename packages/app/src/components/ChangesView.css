@@ -22,12 +22,14 @@
     -webkit-tap-highlight-color: transparent;
 }
 
+/* Hot zone: centered small block */
 .cv-resize-border::before {
     content: '';
     position: absolute;
     top: -8px;
-    left: 0;
-    right: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
     height: 16px;
 }
 
@@ -63,15 +65,18 @@
     cursor: col-resize;
 }
 
+/* Hot zone: only header height at top */
 .changes-view--horizontal .cv-resize-border::before {
     top: 0;
-    bottom: 0;
+    bottom: auto;
     left: -8px;
     right: auto;
     width: 16px;
-    height: auto;
+    height: 36px;
+    transform: none;
 }
 
+/* Blue line: full height */
 .changes-view--horizontal .cv-resize-border::after {
     top: 0;
     bottom: 0;
@@ -79,10 +84,6 @@
     right: auto;
     width: 2px;
     height: auto;
-}
-
-.changes-view--horizontal .file-content-header {
-    cursor: col-resize;
 }
 
 .change-items {

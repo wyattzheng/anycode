@@ -165,7 +165,7 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
     const isEmpty = changes.length === 0;
 
     const listStyle = horizontal
-        ? (listSize != null ? { width: listSize, flex: 'none' } : { flex: 1 })
+        ? (listSize != null ? { width: listSize, flex: 'none' } : { flex: '0 0 35%' })
         : (listSize != null ? { height: listSize, flex: 'none' } : { flex: 1 });
 
     return (
@@ -195,7 +195,7 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
             <div className="changes-diff">
                 {selectedFile ? (
                     <>
-                        <div className="file-content-header" onMouseDown={handleMouseDown} onTouchStart={handleTouchStart}>
+                        <div className="file-content-header">
                             <FileIcon filename={selectedFile.split('/').pop() || selectedFile} />
                             <span className="file-content-path">{selectedFile}</span>
                             <div className="file-content-menu">
