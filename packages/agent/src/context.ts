@@ -1,6 +1,6 @@
 import { Project } from "./project"
 import { VFS } from "./util/vfs"
-import { SearchProvider } from "./util/search"
+import { SearchProvider } from "@any-code/utils"
 import type { GitProvider } from "./util/git"
 import type { EnvService } from "./util/env"
 import type { Log } from "./util/log"

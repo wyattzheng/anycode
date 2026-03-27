@@ -55,7 +55,7 @@ export {
 export type { TerminalProvider, ShellProvider, PreviewProvider } from "./context"
 
 // Util — search, git, markdown
-export type { SearchProvider, GrepMatch } from "./util/search"
+export type { SearchProvider, GrepMatch } from "@any-code/utils"
 export type { GitProvider, GitResult } from "./util/git"
 export { ConfigMarkdown } from "./util/markdown"
 
