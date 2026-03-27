@@ -2,8 +2,6 @@
 
 import { Schema } from "effect"
 import { withStatics } from "../util/schema"
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core"
-import { Timestamps } from "../storage"
 import type { AgentContext } from "../context"
 import * as path from "../util/path"
 import { Flag } from "../util/flag"
@@ -19,21 +17,6 @@ export const ProjectID = projectIdSchema.pipe(
     make: (id: string) => schema.makeUnsafe(id),
   })),
 )
-
-// ── ProjectTable (SQL) ──────────────────────────────────────────────────────
-
-export const ProjectTable = sqliteTable("project", {
-  id: text().$type<ProjectID>().primaryKey(),
-  worktree: text().notNull(),
-  vcs: text(),
-  name: text(),
-  icon_url: text(),
-  icon_color: text(),
-  ...Timestamps,
-  time_initialized: integer(),
-  sandboxes: text({ mode: "json" }).notNull().$type<string[]>(),
-  commands: text({ mode: "json" }).$type<{ start?: string }>(),
-})
 
 // ── Protected ───────────────────────────────────────────────────────────────
 

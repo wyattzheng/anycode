@@ -1,21 +1,4 @@
-// ── Schema SQL (Timestamps) ─────────────────────────────────────────────────
-
-import { integer } from "drizzle-orm/sqlite-core"
-
-export const Timestamps = {
-  time_created: integer()
-    .notNull()
-    .$default(() => Date.now()),
-  time_updated: integer()
-    .notNull()
-    .$onUpdate(() => Date.now()),
-}
-
-// ── Schema (table re-exports) ───────────────────────────────────────────────
-
-// Account tables removed (account module deleted)
-export { ProjectTable } from "../project"
-export { SessionTable, MessageTable, PartTable, TodoTable } from "../session/session.sql"
+// ── NoSqlDb Interface (re-exported from @any-code/utils) ────────────────────
 
 // ── NoSqlDb Interface (re-exported from @any-code/utils) ────────────────────
 
