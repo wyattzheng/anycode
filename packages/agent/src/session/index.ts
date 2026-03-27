@@ -2,31 +2,16 @@ import type { AgentContext } from "../context"
 import { EventEmitter } from "events"
 import { Slug } from "../util/slug"
 import * as path from "../util/path"
-
-import { Decimal } from "decimal.js"
 import z from "zod"
-import { type ProviderMetadata } from "ai"
-
-import { Flag } from "../util/flag"
 import { Installation } from "../util/installation"
 import { getUsage } from "../memory"
 
 import { NotFoundError } from "../storage"
 import type { Filter } from "../storage"
-
-import { Storage } from "../storage"
 import { MessageV2 } from "../memory/message-v2"
-
-import { fn } from "../util/fn"
-
 
 import { ProjectID } from "../project"
 import { SessionID, MessageID, PartID } from "./schema"
-
-import { type Provider, ModelID, ProviderID } from "@any-code/provider"
-
-import type { LanguageModelV2Usage } from "@ai-sdk/provider"
-import { iife } from "../util/fn"
 
 type WorkspaceID = string
 
@@ -50,11 +35,11 @@ function fromRow(row: SessionRow): Session.Info {
   const summary =
     row.summary_additions !== null || row.summary_deletions !== null || row.summary_files !== null
       ? {
-          additions: row.summary_additions ?? 0,
-          deletions: row.summary_deletions ?? 0,
-          files: row.summary_files ?? 0,
-          diffs: row.summary_diffs ?? undefined,
-        }
+        additions: row.summary_additions ?? 0,
+        deletions: row.summary_deletions ?? 0,
+        files: row.summary_files ?? 0,
+        diffs: row.summary_diffs ?? undefined,
+      }
       : undefined
   return {
     id: row.id,
@@ -240,7 +225,7 @@ export class SessionService extends EventEmitter {
       orderBy: [{ field: "time_updated", direction: "desc" }],
       limit,
     })
-    
+
     for (const row of rows) {
       yield fromRow(row)
     }
@@ -292,7 +277,7 @@ export class SessionService extends EventEmitter {
         filter: { op: "in", field: "id", values: ids },
         select: ["id", "name", "worktree"],
       })
-      
+
       for (const item of items) {
         projects.set(item.id, {
           id: item.id,
@@ -361,60 +346,43 @@ export class SessionService extends EventEmitter {
 // ── Session namespace (types/schemas only) ────────────────────────────
 
 export namespace Session {
-  export const Info = z
-    .object({
-      id: SessionID.zod,
-      slug: z.string(),
-      projectID: ProjectID.zod,
-      workspaceID: WorkspaceID.zod.optional(),
-      directory: z.string(),
-      parentID: SessionID.zod.optional(),
-      summary: z
-        .object({
-          additions: z.number(),
-          deletions: z.number(),
-          files: z.number(),
-          diffs: MessageV2.FileDiff.array().optional(),
-        })
-        .optional(),
-      title: z.string(),
-      version: z.string(),
-      time: z.object({
-        created: z.number(),
-        updated: z.number(),
-        compacting: z.number().optional(),
-        archived: z.number().optional(),
-      }),
-      revert: z
-        .object({
-          messageID: MessageID.zod,
-          partID: PartID.zod.optional(),
-          diff: z.string().optional(),
-        })
-        .optional(),
-    })
-    .meta({
-      ref: "Session",
-    })
-  export type Info = z.output<typeof Info>
+  export interface Info {
+    id: SessionID
+    slug: string
+    projectID: ProjectID
+    workspaceID?: string
+    directory: string
+    parentID?: SessionID
+    summary?: {
+      additions: number
+      deletions: number
+      files: number
+      diffs?: MessageV2.FileDiff[]
+    }
+    title: string
+    version: string
+    time: {
+      created: number
+      updated: number
+      compacting?: number
+      archived?: number
+    }
+    revert?: {
+      messageID: MessageID
+      partID?: PartID
+      diff?: string
+    }
+  }
 
-  export const ProjectInfo = z
-    .object({
-      id: ProjectID.zod,
-      name: z.string().optional(),
-      worktree: z.string(),
-    })
-    .meta({
-      ref: "ProjectSummary",
-    })
-  export type ProjectInfo = z.output<typeof ProjectInfo>
+  export interface ProjectInfo {
+    id: ProjectID
+    name?: string
+    worktree: string
+  }
 
-  export const GlobalInfo = Info.extend({
-    project: ProjectInfo.nullable(),
-  }).meta({
-    ref: "GlobalSession",
-  })
-  export type GlobalInfo = z.output<typeof GlobalInfo>
+  export interface GlobalInfo extends Info {
+    project: ProjectInfo | null
+  }
 
   export type CreateInput = {
     id?: SessionID
@@ -433,25 +401,10 @@ export namespace Session {
 
 // Merged from session/status.ts
 export namespace SessionStatus {
-  export const Info = z
-    .union([
-      z.object({
-        type: z.literal("idle"),
-      }),
-      z.object({
-        type: z.literal("retry"),
-        attempt: z.number(),
-        message: z.string(),
-        next: z.number(),
-      }),
-      z.object({
-        type: z.literal("busy"),
-      }),
-    ])
-    .meta({
-      ref: "SessionStatus",
-    })
-  export type Info = z.infer<typeof Info>
+  export type Info =
+    | { type: "idle" }
+    | { type: "retry"; attempt: number; message: string; next: number }
+    | { type: "busy" }
 }
 
 // Merged from session/todo.ts
@@ -465,3 +418,4 @@ export namespace Todo {
     .meta({ ref: "Todo" })
   export type Info = z.infer<typeof Info>
 }
+

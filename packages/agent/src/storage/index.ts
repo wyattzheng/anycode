@@ -25,17 +25,13 @@ export { SqliteNoSqlDb } from "@any-code/utils"
 // ── Database ────────────────────────────────────────────────────────────────
 
 import { NamedError } from "../util/error"
-import z from "zod"
 import * as path from "../util/path"
 
 import { Flag } from "../util/flag"
 
-export const NotFoundError = NamedError.create(
-  "NotFoundError",
-  z.object({
-    message: z.string(),
-  }),
-)
+export const NotFoundError = NamedError.create<"NotFoundError", {
+  message: string
+}>("NotFoundError")
 
 export namespace Database {
   /**
@@ -224,12 +220,9 @@ export namespace Storage {
 
   type Migration = (context: AgentContext, dir: string) => Promise<void>
 
-  export const NotFoundError = NamedError.create(
-    "NotFoundError",
-    z.object({
-      message: z.string(),
-    }),
-  )
+  export const NotFoundError = NamedError.create<"NotFoundError", {
+    message: string
+  }>("NotFoundError")
 
   const MIGRATIONS: Migration[] = [
     async (context, dir) => {

@@ -1,11 +1,8 @@
 
 import { SessionID, MessageID, PartID } from "../session/schema"
-import z from "zod"
 import { NamedError } from "../util/error"
 import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
 
-
-import { fn } from "../util/fn"
 import { NotFoundError } from "../storage"
 import type { Filter } from "../storage"
 import { STATUS_CODES } from "http"
@@ -19,446 +16,345 @@ export namespace MessageV2 {
     return mime.startsWith("image/") || mime === "application/pdf"
   }
 
-  export const OutputLengthError = NamedError.create("MessageOutputLengthError", z.object({}))
-  export const AbortedError = NamedError.create("MessageAbortedError", z.object({ message: z.string() }))
-  export const StructuredOutputError = NamedError.create(
-    "StructuredOutputError",
-    z.object({
-      message: z.string(),
-      retries: z.number(),
-    }),
-  )
-  export const AuthError = NamedError.create(
-    "ProviderAuthError",
-    z.object({
-      providerID: z.string(),
-      message: z.string(),
-    }),
-  )
-  export const APIError = NamedError.create(
-    "APIError",
-    z.object({
-      message: z.string(),
-      statusCode: z.number().optional(),
-      isRetryable: z.boolean(),
-      responseHeaders: z.record(z.string(), z.string()).optional(),
-      responseBody: z.string().optional(),
-      metadata: z.record(z.string(), z.string()).optional(),
-    }),
-  )
-  export type APIError = z.infer<typeof APIError.Schema>
-  export const ContextOverflowError = NamedError.create(
-    "ContextOverflowError",
-    z.object({ message: z.string(), responseBody: z.string().optional() }),
-  )
+  // --- Error types (NamedError with plain generics) ---
 
-  export const OutputFormatText = z
-    .object({
-      type: z.literal("text"),
-    })
-    .meta({
-      ref: "OutputFormatText",
-    })
+  export const OutputLengthError = NamedError.create<"MessageOutputLengthError", {}>("MessageOutputLengthError")
+  export const AbortedError = NamedError.create<"MessageAbortedError", { message: string }>("MessageAbortedError")
+  export const StructuredOutputError = NamedError.create<"StructuredOutputError", {
+    message: string
+    retries: number
+  }>("StructuredOutputError")
+  export const AuthError = NamedError.create<"ProviderAuthError", {
+    providerID: string
+    message: string
+  }>("ProviderAuthError")
 
-  export const OutputFormatJsonSchema = z
-    .object({
-      type: z.literal("json_schema"),
-      schema: z.record(z.string(), z.any()).meta({ ref: "JSONSchema" }),
-      retryCount: z.number().int().min(0).default(2),
-    })
-    .meta({
-      ref: "OutputFormatJsonSchema",
-    })
+  export interface APIErrorData {
+    message: string
+    statusCode?: number
+    isRetryable: boolean
+    responseHeaders?: Record<string, string>
+    responseBody?: string
+    metadata?: Record<string, string>
+  }
+  export const APIError = NamedError.create<"APIError", APIErrorData>("APIError")
 
-  export const Format = z.discriminatedUnion("type", [OutputFormatText, OutputFormatJsonSchema]).meta({
-    ref: "OutputFormat",
-  })
-  export type OutputFormat = z.infer<typeof Format>
+  export const ContextOverflowError = NamedError.create<"ContextOverflowError", {
+    message: string
+    responseBody?: string
+  }>("ContextOverflowError")
 
-  const PartBase = z.object({
-    id: PartID.zod,
-    sessionID: SessionID.zod,
-    messageID: MessageID.zod,
-  })
+  // --- Output format ---
 
-  export const FileDiff = z
-    .object({
-      file: z.string(),
-      before: z.string(),
-      after: z.string(),
-      additions: z.number(),
-      deletions: z.number(),
-      status: z.enum(["added", "deleted", "modified"]).optional(),
-    })
-    .meta({
-      ref: "FileDiff",
-    })
-  export type FileDiff = z.infer<typeof FileDiff>
+  export interface OutputFormatText {
+    type: "text"
+  }
 
+  export interface OutputFormatJsonSchema {
+    type: "json_schema"
+    schema: Record<string, any>
+    retryCount?: number
+  }
 
-  export const PatchPart = PartBase.extend({
-    type: z.literal("patch"),
-    hash: z.string(),
-    files: z.string().array(),
-  }).meta({
-    ref: "PatchPart",
-  })
-  export type PatchPart = z.infer<typeof PatchPart>
+  export type OutputFormat = OutputFormatText | OutputFormatJsonSchema
 
-  export const TextPart = PartBase.extend({
-    type: z.literal("text"),
-    text: z.string(),
-    synthetic: z.boolean().optional(),
-    ignored: z.boolean().optional(),
-    time: z
-      .object({
-        start: z.number(),
-        end: z.number().optional(),
-      })
-      .optional(),
-    metadata: z.record(z.string(), z.any()).optional(),
-  }).meta({
-    ref: "TextPart",
-  })
-  export type TextPart = z.infer<typeof TextPart>
+  // --- File diffs ---
 
-  export const ReasoningPart = PartBase.extend({
-    type: z.literal("reasoning"),
-    text: z.string(),
-    metadata: z.record(z.string(), z.any()).optional(),
-    time: z.object({
-      start: z.number(),
-      end: z.number().optional(),
-    }),
-  }).meta({
-    ref: "ReasoningPart",
-  })
-  export type ReasoningPart = z.infer<typeof ReasoningPart>
+  export interface FileDiff {
+    file: string
+    before: string
+    after: string
+    additions: number
+    deletions: number
+    status?: "added" | "deleted" | "modified"
+  }
 
-  const FilePartSourceBase = z.object({
-    text: z
-      .object({
-        value: z.string(),
-        start: z.number().int(),
-        end: z.number().int(),
-      })
-      .meta({
-        ref: "FilePartSourceText",
-      }),
-  })
+  // --- Part base ---
 
-  export const FileSource = FilePartSourceBase.extend({
-    type: z.literal("file"),
-    path: z.string(),
-  }).meta({
-    ref: "FileSource",
-  })
+  interface PartBase {
+    id: PartID
+    sessionID: SessionID
+    messageID: MessageID
+  }
 
-  export const SymbolSource = FilePartSourceBase.extend({
-    type: z.literal("symbol"),
-    path: z.string(),
-    range: z.object({
-      start: z.object({ line: z.number(), character: z.number() }),
-      end: z.object({ line: z.number(), character: z.number() }),
-    }),
-    name: z.string(),
-    kind: z.number().int(),
-  }).meta({
-    ref: "SymbolSource",
-  })
+  // --- Parts ---
 
-  export const ResourceSource = FilePartSourceBase.extend({
-    type: z.literal("resource"),
-    clientName: z.string(),
-    uri: z.string(),
-  }).meta({
-    ref: "ResourceSource",
-  })
+  export interface PatchPart extends PartBase {
+    type: "patch"
+    hash: string
+    files: string[]
+  }
 
-  export const FilePartSource = z.discriminatedUnion("type", [FileSource, SymbolSource, ResourceSource]).meta({
-    ref: "FilePartSource",
-  })
+  export interface TextPart extends PartBase {
+    type: "text"
+    text: string
+    synthetic?: boolean
+    ignored?: boolean
+    time?: {
+      start: number
+      end?: number
+    }
+    metadata?: Record<string, any>
+  }
 
-  export const FilePart = PartBase.extend({
-    type: z.literal("file"),
-    mime: z.string(),
-    filename: z.string().optional(),
-    url: z.string(),
-    source: FilePartSource.optional(),
-  }).meta({
-    ref: "FilePart",
-  })
-  export type FilePart = z.infer<typeof FilePart>
+  export interface ReasoningPart extends PartBase {
+    type: "reasoning"
+    text: string
+    metadata?: Record<string, any>
+    time: {
+      start: number
+      end?: number
+    }
+  }
 
-  export const AgentPart = PartBase.extend({
-    type: z.literal("agent"),
-    name: z.string(),
-    source: z
-      .object({
-        value: z.string(),
-        start: z.number().int(),
-        end: z.number().int(),
-      })
-      .optional(),
-  }).meta({
-    ref: "AgentPart",
-  })
-  export type AgentPart = z.infer<typeof AgentPart>
+  // --- File part sources ---
 
-  export const CompactionPart = PartBase.extend({
-    type: z.literal("compaction"),
-    auto: z.boolean(),
-    overflow: z.boolean().optional(),
-  }).meta({
-    ref: "CompactionPart",
-  })
-  export type CompactionPart = z.infer<typeof CompactionPart>
+  interface FilePartSourceText {
+    value: string
+    start: number
+    end: number
+  }
 
-  export const SubtaskPart = PartBase.extend({
-    type: z.literal("subtask"),
-    prompt: z.string(),
-    description: z.string(),
-    agent: z.string(),
-    model: z
-      .object({
-        providerID: ProviderID.zod,
-        modelID: ModelID.zod,
-      })
-      .optional(),
-    command: z.string().optional(),
-  }).meta({
-    ref: "SubtaskPart",
-  })
-  export type SubtaskPart = z.infer<typeof SubtaskPart>
+  export interface FileSource {
+    type: "file"
+    path: string
+    text: FilePartSourceText
+  }
 
-  export const StepStartPart = PartBase.extend({
-    type: z.literal("step-start"),
-  }).meta({
-    ref: "StepStartPart",
-  })
-  export type StepStartPart = z.infer<typeof StepStartPart>
+  export interface SymbolSource {
+    type: "symbol"
+    path: string
+    range: {
+      start: { line: number; character: number }
+      end: { line: number; character: number }
+    }
+    name: string
+    kind: number
+    text: FilePartSourceText
+  }
 
-  export const StepFinishPart = PartBase.extend({
-    type: z.literal("step-finish"),
-    reason: z.string(),
-    cost: z.number(),
-    tokens: z.object({
-      total: z.number().optional(),
-      input: z.number(),
-      output: z.number(),
-      reasoning: z.number(),
-      cache: z.object({
-        read: z.number(),
-        write: z.number(),
-      }),
-    }),
-  }).meta({
-    ref: "StepFinishPart",
-  })
-  export type StepFinishPart = z.infer<typeof StepFinishPart>
+  export interface ResourceSource {
+    type: "resource"
+    clientName: string
+    uri: string
+    text: FilePartSourceText
+  }
 
-  export const ToolStatePending = z
-    .object({
-      status: z.literal("pending"),
-      input: z.record(z.string(), z.any()),
-      raw: z.string(),
-    })
-    .meta({
-      ref: "ToolStatePending",
-    })
+  export type FilePartSource = FileSource | SymbolSource | ResourceSource
 
-  export type ToolStatePending = z.infer<typeof ToolStatePending>
+  export interface FilePart extends PartBase {
+    type: "file"
+    mime: string
+    filename?: string
+    url: string
+    source?: FilePartSource
+  }
 
-  export const ToolStateRunning = z
-    .object({
-      status: z.literal("running"),
-      input: z.record(z.string(), z.any()),
-      title: z.string().optional(),
-      metadata: z.record(z.string(), z.any()).optional(),
-      time: z.object({
-        start: z.number(),
-      }),
-    })
-    .meta({
-      ref: "ToolStateRunning",
-    })
-  export type ToolStateRunning = z.infer<typeof ToolStateRunning>
+  export interface AgentPart extends PartBase {
+    type: "agent"
+    name: string
+    source?: {
+      value: string
+      start: number
+      end: number
+    }
+  }
 
-  export const ToolStateCompleted = z
-    .object({
-      status: z.literal("completed"),
-      input: z.record(z.string(), z.any()),
-      output: z.string(),
-      title: z.string(),
-      metadata: z.record(z.string(), z.any()),
-      time: z.object({
-        start: z.number(),
-        end: z.number(),
-        compacted: z.number().optional(),
-      }),
-      attachments: FilePart.array().optional(),
-    })
-    .meta({
-      ref: "ToolStateCompleted",
-    })
-  export type ToolStateCompleted = z.infer<typeof ToolStateCompleted>
+  export interface CompactionPart extends PartBase {
+    type: "compaction"
+    auto: boolean
+    overflow?: boolean
+  }
 
-  export const ToolStateError = z
-    .object({
-      status: z.literal("error"),
-      input: z.record(z.string(), z.any()),
-      error: z.string(),
-      metadata: z.record(z.string(), z.any()).optional(),
-      time: z.object({
-        start: z.number(),
-        end: z.number(),
-      }),
-    })
-    .meta({
-      ref: "ToolStateError",
-    })
-  export type ToolStateError = z.infer<typeof ToolStateError>
+  export interface SubtaskPart extends PartBase {
+    type: "subtask"
+    prompt: string
+    description: string
+    agent: string
+    model?: {
+      providerID: ProviderID
+      modelID: ModelID
+    }
+    command?: string
+  }
 
-  export const ToolState = z
-    .discriminatedUnion("status", [ToolStatePending, ToolStateRunning, ToolStateCompleted, ToolStateError])
-    .meta({
-      ref: "ToolState",
-    })
+  export interface StepStartPart extends PartBase {
+    type: "step-start"
+  }
 
-  export const ToolPart = PartBase.extend({
-    type: z.literal("tool"),
-    callID: z.string(),
-    tool: z.string(),
-    state: ToolState,
-    metadata: z.record(z.string(), z.any()).optional(),
-  }).meta({
-    ref: "ToolPart",
-  })
-  export type ToolPart = z.infer<typeof ToolPart>
+  export interface StepFinishPart extends PartBase {
+    type: "step-finish"
+    reason: string
+    cost: number
+    tokens: {
+      total?: number
+      input: number
+      output: number
+      reasoning: number
+      cache: {
+        read: number
+        write: number
+      }
+    }
+  }
 
-  const Base = z.object({
-    id: MessageID.zod,
-    sessionID: SessionID.zod,
-  })
+  // --- Tool states ---
 
-  export const User = Base.extend({
-    role: z.literal("user"),
-    time: z.object({
-      created: z.number(),
-    }),
-    format: Format.optional(),
-    summary: z
-      .object({
-        title: z.string().optional(),
-        body: z.string().optional(),
-        diffs: MessageV2.FileDiff.array(),
-      })
-      .optional(),
-    agent: z.string(),
-    model: z.object({
-      providerID: ProviderID.zod,
-      modelID: ModelID.zod,
-    }),
-    system: z.string().optional(),
-    tools: z.record(z.string(), z.boolean()).optional(),
-    variant: z.string().optional(),
-  }).meta({
-    ref: "UserMessage",
-  })
-  export type User = z.infer<typeof User>
+  export interface ToolStatePending {
+    status: "pending"
+    input: Record<string, any>
+    raw: string
+  }
 
-  export const Part = z
-    .discriminatedUnion("type", [
-      TextPart,
-      SubtaskPart,
-      ReasoningPart,
-      FilePart,
-      ToolPart,
-      StepStartPart,
-      StepFinishPart,
-      PatchPart,
-      AgentPart,
-      CompactionPart,
-    ])
-    .meta({
-      ref: "Part",
-    })
-  export type Part = z.infer<typeof Part>
+  export interface ToolStateRunning {
+    status: "running"
+    input: Record<string, any>
+    title?: string
+    metadata?: Record<string, any>
+    time: {
+      start: number
+    }
+  }
 
-  export const Assistant = Base.extend({
-    role: z.literal("assistant"),
-    time: z.object({
-      created: z.number(),
-      completed: z.number().optional(),
-    }),
-    error: z
-      .discriminatedUnion("name", [
-        AuthError.Schema,
-        NamedError.Unknown.Schema,
-        OutputLengthError.Schema,
-        AbortedError.Schema,
-        StructuredOutputError.Schema,
-        ContextOverflowError.Schema,
-        APIError.Schema,
-      ])
-      .optional(),
-    parentID: MessageID.zod,
-    modelID: ModelID.zod,
-    providerID: ProviderID.zod,
-    /**
-     * @deprecated
-     */
-    mode: z.string(),
-    agent: z.string(),
-    path: z.object({
-      cwd: z.string(),
-      root: z.string(),
-    }),
-    summary: z.boolean().optional(),
-    cost: z.number().optional(),
-    tokens: z.object({
-      total: z.number().optional(),
-      input: z.number(),
-      output: z.number(),
-      reasoning: z.number(),
-      cache: z.object({
-        read: z.number(),
-        write: z.number(),
-      }),
-    }).optional(),
-    structured: z.any().optional(),
-    variant: z.string().optional(),
-    finish: z.string().optional(),
-  }).meta({
-    ref: "AssistantMessage",
-  })
-  export type Assistant = z.infer<typeof Assistant>
+  export interface ToolStateCompleted {
+    status: "completed"
+    input: Record<string, any>
+    output: string
+    title: string
+    metadata: Record<string, any>
+    time: {
+      start: number
+      end: number
+      compacted?: number
+    }
+    attachments?: FilePart[]
+  }
 
-  export const Info = z.discriminatedUnion("role", [User, Assistant]).meta({
-    ref: "Message",
-  })
-  export type Info = z.infer<typeof Info>
+  export interface ToolStateError {
+    status: "error"
+    input: Record<string, any>
+    error: string
+    metadata?: Record<string, any>
+    time: {
+      start: number
+      end: number
+    }
+  }
 
+  export type ToolState = ToolStatePending | ToolStateRunning | ToolStateCompleted | ToolStateError
 
+  export interface ToolPart extends PartBase {
+    type: "tool"
+    callID: string
+    tool: string
+    state: ToolState
+    metadata?: Record<string, any>
+  }
 
-  export const WithParts = z.object({
-    info: Info,
-    parts: z.array(Part),
-  })
-  export type WithParts = z.infer<typeof WithParts>
+  // --- Part union ---
 
-  const Cursor = z.object({
-    id: MessageID.zod,
-    time: z.number(),
-  })
-  type Cursor = z.infer<typeof Cursor>
+  export type Part =
+    | TextPart
+    | SubtaskPart
+    | ReasoningPart
+    | FilePart
+    | ToolPart
+    | StepStartPart
+    | StepFinishPart
+    | PatchPart
+    | AgentPart
+    | CompactionPart
+
+  // --- Message types ---
+
+  type ErrorObject =
+    | ReturnType<InstanceType<typeof AuthError>["toObject"]>
+    | ReturnType<InstanceType<typeof NamedError.Unknown>["toObject"]>
+    | ReturnType<InstanceType<typeof OutputLengthError>["toObject"]>
+    | ReturnType<InstanceType<typeof AbortedError>["toObject"]>
+    | ReturnType<InstanceType<typeof StructuredOutputError>["toObject"]>
+    | ReturnType<InstanceType<typeof ContextOverflowError>["toObject"]>
+    | ReturnType<InstanceType<typeof APIError>["toObject"]>
+
+  export interface User {
+    id: MessageID
+    sessionID: SessionID
+    role: "user"
+    time: {
+      created: number
+    }
+    format?: OutputFormat
+    summary?: {
+      title?: string
+      body?: string
+      diffs: FileDiff[]
+    }
+    agent: string
+    model: {
+      providerID: ProviderID
+      modelID: ModelID
+    }
+    system?: string
+    tools?: Record<string, boolean>
+    variant?: string
+  }
+
+  export interface Assistant {
+    id: MessageID
+    sessionID: SessionID
+    role: "assistant"
+    time: {
+      created: number
+      completed?: number
+    }
+    error?: ErrorObject
+    parentID: MessageID
+    modelID: ModelID
+    providerID: ProviderID
+    /** @deprecated */
+    mode: string
+    agent: string
+    path: {
+      cwd: string
+      root: string
+    }
+    summary?: boolean
+    cost?: number
+    tokens?: {
+      total?: number
+      input: number
+      output: number
+      reasoning: number
+      cache: {
+        read: number
+        write: number
+      }
+    }
+    structured?: any
+    variant?: string
+    finish?: string
+  }
+
+  export type Info = User | Assistant
+
+  export interface WithParts {
+    info: Info
+    parts: Part[]
+  }
+
+  // --- Cursor ---
+
+  interface Cursor {
+    id: MessageID
+    time: number
+  }
 
   export const cursor = {
     encode(input: Cursor) {
       return Buffer.from(JSON.stringify(input)).toString("base64url")
     },
-    decode(input: string) {
-      return Cursor.parse(JSON.parse(Buffer.from(input, "base64url").toString("utf8")))
+    decode(input: string): Cursor {
+      return JSON.parse(Buffer.from(input, "base64url").toString("utf8")) as Cursor
     },
   }
 
@@ -516,15 +412,6 @@ export namespace MessageV2 {
   ): ModelMessage[] {
     const result: UIMessage[] = []
     const toolNames = new Set<string>()
-    // Track media from tool results that need to be injected as user messages
-    // for providers that don't support media in tool results.
-    //
-    // OpenAI-compatible APIs only support string content in tool results, so we need
-    // to extract media and inject as user messages. Other SDKs (anthropic, google,
-    // bedrock) handle type: "content" with media parts natively.
-    //
-    // Only apply this workaround if the model actually supports image input -
-    // otherwise there's no point extracting images.
     const supportsMediaInToolResults = (() => {
       if (model.api.npm === "@ai-sdk/anthropic") return true
       if (model.api.npm === "@ai-sdk/openai") return true
@@ -586,7 +473,6 @@ export namespace MessageV2 {
               type: "text",
               text: part.text,
             })
-          // text/plain and directory files are converted into text parts, ignore them
           if (part.type === "file" && part.mime !== "text/plain" && part.mime !== "application/x-directory") {
             if (options?.stripMedia && isMedia(part.mime)) {
               userMessage.parts.push({
@@ -653,8 +539,6 @@ export namespace MessageV2 {
               const outputText = part.state.time.compacted ? "[Old tool result content cleared]" : part.state.output
               const attachments = part.state.time.compacted || options?.stripMedia ? [] : (part.state.attachments ?? [])
 
-              // For providers that don't support media in tool results, extract media files
-              // (images, PDFs) to be sent as a separate user message
               const mediaAttachments = attachments.filter((a) => isMedia(a.mime))
               const nonMediaAttachments = attachments.filter((a) => !isMedia(a.mime))
               if (!supportsMediaInToolResults && mediaAttachments.length > 0) {
@@ -688,8 +572,6 @@ export namespace MessageV2 {
                 errorText: part.state.error,
                 ...(differentModel ? {} : { callProviderMetadata: part.metadata }),
               })
-            // Handle pending/running tool calls to prevent dangling tool_use blocks
-            // Anthropic/Claude APIs require every tool_use to have a corresponding tool_result
             if (part.state.status === "pending" || part.state.status === "running")
               assistantMessage.parts.push({
                 type: ("tool-" + part.tool) as `tool-${string}`,
@@ -710,8 +592,6 @@ export namespace MessageV2 {
         }
         if (assistantMessage.parts.length > 0) {
           result.push(assistantMessage)
-          // Inject pending media as a user message for providers that don't support
-          // media (images, PDFs) in tool results
           if (media.length > 0) {
             result.push({
               id: MessageID.ascending(),

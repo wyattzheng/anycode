@@ -6,18 +6,9 @@ import { withStatics } from "../util/schema"
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core"
 import { Timestamps } from "../storage"
 import type { AgentContext } from "../context"
-
 import * as path from "../util/path"
-
-
 import { Flag } from "../util/flag"
-
-
-
 import { Glob } from "../util/glob"
-
-
-
 
 const projectIdSchema = Schema.String.pipe(Schema.brand("ProjectID"))
 
@@ -153,7 +144,7 @@ export class FileTimeService {
 
   async withLock<T>(filepath: string, fn: () => Promise<T>): Promise<T> {
     const currentLock = this.locks.get(filepath) ?? Promise.resolve()
-    let release: () => void = () => {}
+    let release: () => void = () => { }
     const nextLock = new Promise<void>((resolve) => { release = resolve })
     const chained = currentLock.then(() => nextLock)
     this.locks.set(filepath, chained)
@@ -202,33 +193,27 @@ export namespace FileTime {
 
 export namespace Project {
 
-  export const Info = z
-    .object({
-      id: ProjectID.zod,
-      worktree: z.string(),
-      vcs: z.literal("git").optional(),
-      name: z.string().optional(),
-      icon: z
-        .object({
-          url: z.string().optional(),
-          override: z.string().optional(),
-          color: z.string().optional(),
-        })
-        .optional(),
-      commands: z
-        .object({
-          start: z.string().optional().describe("Startup script to run when creating a new workspace (worktree)"),
-        })
-        .optional(),
-      time: z.object({
-        created: z.number(),
-        updated: z.number(),
-        initialized: z.number().optional(),
-      }),
-      sandboxes: z.array(z.string()),
-    })
-    .meta({ ref: "Project" })
-  export type Info = z.infer<typeof Info>
+  export interface Info {
+    id: ProjectID
+    worktree: string
+    vcs?: "git"
+    name?: string
+    icon?: {
+      url?: string
+      override?: string
+      color?: string
+    }
+    commands?: {
+      /** Startup script to run when creating a new workspace (worktree) */
+      start?: string
+    }
+    time: {
+      created: number
+      updated: number
+      initialized?: number
+    }
+    sandboxes: string[]
+  }
 
 
   type Row = Record<string, any>
@@ -241,7 +226,7 @@ export namespace Project {
     return {
       id: ProjectID.make(row.id),
       worktree: row.worktree,
-      vcs: row.vcs ? Info.shape.vcs.parse(row.vcs) : undefined,
+      vcs: row.vcs === "git" ? "git" : undefined,
       name: row.name ?? undefined,
       icon,
       time: {
@@ -280,8 +265,3 @@ export namespace Project {
     return valid
   }
 }
-
-
-
-
-

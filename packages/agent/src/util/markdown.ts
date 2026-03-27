@@ -1,6 +1,5 @@
 import type { AgentContext } from "../context"
 import { NamedError } from "./error"
-import { z } from "zod"
 
 
 /** Simple frontmatter parser — replaces gray-matter (CJS, depends on fs) */
@@ -105,11 +104,9 @@ export namespace ConfigMarkdown {
     }
   }
 
-  export const FrontmatterError = NamedError.create(
-    "ConfigFrontmatterError",
-    z.object({
-      path: z.string(),
-      message: z.string(),
-    }),
-  )
+  export const FrontmatterError = NamedError.create<"ConfigFrontmatterError", {
+    path: string
+    message: string
+  }>("ConfigFrontmatterError")
 }
+

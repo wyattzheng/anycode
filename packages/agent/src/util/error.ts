@@ -1,25 +1,12 @@
-import z from "zod"
-
 export abstract class NamedError extends Error {
-  abstract schema(): z.core.$ZodType
   abstract toObject(): { name: string; data: any }
 
-  static create<Name extends string, Data extends z.core.$ZodType>(name: Name, data: Data) {
-    const schema = z
-      .object({
-        name: z.literal(name),
-        data,
-      })
-      .meta({
-        ref: name,
-      })
+  static create<Name extends string, Data>(name: Name, _phantom?: Data) {
     const result = class extends NamedError {
-      public static readonly Schema = schema
-
       public override readonly name = name as Name
 
       constructor(
-        public readonly data: z.input<Data>,
+        public readonly data: Data,
         options?: ErrorOptions,
       ) {
         super(name, options)
@@ -28,10 +15,6 @@ export abstract class NamedError extends Error {
 
       static isInstance(input: any): input is InstanceType<typeof result> {
         return typeof input === "object" && "name" in input && input.name === name
-      }
-
-      schema() {
-        return schema
       }
 
       toObject() {
@@ -45,10 +28,5 @@ export abstract class NamedError extends Error {
     return result
   }
 
-  public static readonly Unknown = NamedError.create(
-    "UnknownError",
-    z.object({
-      message: z.string(),
-    }),
-  )
+  public static readonly Unknown = NamedError.create<"UnknownError", { message: string }>("UnknownError")
 }

@@ -1,6 +1,5 @@
 import * as path from "../util/path"
 
-
 import z from "zod"
 
 import { SessionID, MessageID, PartID } from "./schema"
@@ -31,7 +30,7 @@ import { pathToFileURL, fileURLToPath } from "url"
 import { ConfigMarkdown } from "../util/markdown"
 
 import { NamedError } from "../util/error"
-import { fn } from "../util/fn"
+
 import { Tool } from "../tool/tool"
 
 import { SessionStatus } from "."
@@ -85,73 +84,29 @@ export namespace SessionPrompt {
     if (context.sessionPrompt.abort) throw new Session.BusyError("session")
   }
 
-  export const PromptInput = z.object({
-    sessionID: SessionID.zod,
-    messageID: MessageID.zod.optional(),
-    chatId: z.string().optional(),
-    model: z
-      .object({
-        providerID: ProviderID.zod,
-        modelID: ModelID.zod,
-      })
-      .optional(),
-    agent: z.string().optional(),
-    noReply: z.boolean().optional(),
-    tools: z
-      .record(z.string(), z.boolean())
-      .optional()
-      .describe(
-        "@deprecated tools and permissions have been merged, you can set permissions on the session itself now",
-      ),
-    format: MessageV2.Format.optional(),
-    system: z.string().optional(),
-    variant: z.string().optional(),
-    parts: z.array(
-      z.discriminatedUnion("type", [
-        MessageV2.TextPart.omit({
-          messageID: true,
-          sessionID: true,
-        })
-          .partial({
-            id: true,
-          })
-          .meta({
-            ref: "TextPartInput",
-          }),
-        MessageV2.FilePart.omit({
-          messageID: true,
-          sessionID: true,
-        })
-          .partial({
-            id: true,
-          })
-          .meta({
-            ref: "FilePartInput",
-          }),
-        MessageV2.AgentPart.omit({
-          messageID: true,
-          sessionID: true,
-        })
-          .partial({
-            id: true,
-          })
-          .meta({
-            ref: "AgentPartInput",
-          }),
-        MessageV2.SubtaskPart.omit({
-          messageID: true,
-          sessionID: true,
-        })
-          .partial({
-            id: true,
-          })
-          .meta({
-            ref: "SubtaskPartInput",
-          }),
-      ]),
-    ),
-  })
-  export type PromptInput = z.infer<typeof PromptInput> & { context: AgentContext }
+  export type TextPartInput = Partial<Pick<MessageV2.TextPart, "id">> & Omit<MessageV2.TextPart, "id" | "messageID" | "sessionID">
+  export type FilePartInput = Partial<Pick<MessageV2.FilePart, "id">> & Omit<MessageV2.FilePart, "id" | "messageID" | "sessionID">
+  export type AgentPartInput = Partial<Pick<MessageV2.AgentPart, "id">> & Omit<MessageV2.AgentPart, "id" | "messageID" | "sessionID">
+  export type SubtaskPartInput = Partial<Pick<MessageV2.SubtaskPart, "id">> & Omit<MessageV2.SubtaskPart, "id" | "messageID" | "sessionID">
+
+  export interface PromptInput {
+    sessionID: SessionID
+    messageID?: MessageID
+    chatId?: string
+    model?: {
+      providerID: ProviderID
+      modelID: ModelID
+    }
+    agent?: string
+    noReply?: boolean
+    /** @deprecated tools and permissions have been merged, you can set permissions on the session itself now */
+    tools?: Record<string, boolean>
+    format?: MessageV2.OutputFormat
+    system?: string
+    variant?: string
+    parts: (TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput)[]
+    context: AgentContext
+  }
 
 
   export async function resolvePromptParts(context: AgentContext, template: string): Promise<PromptInput["parts"]> {
