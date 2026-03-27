@@ -181,18 +181,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
             )}
             <div className="app-middle">
                 <div className="app-main">
-                    {activeTab === "chat" && !poppedOut ? null : activeTab === "chat" && poppedOut ? (
-                        <div className="main-view" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                            <div style={{ textAlign: "center" }}>
-                                <p style={{ color: "var(--color-text-dim)", fontSize: "14px", opacity: 0.4, fontWeight: 500 }}>
-                                    对话已弹出到侧边栏
-                                </p>
-                                <p style={{ color: "var(--color-text-dim)", fontSize: "11px", opacity: 0.3, marginTop: "6px" }}>
-                                    点击侧边栏标题的 ─ 收回
-                                </p>
-                            </div>
-                        </div>
-                    ) : directory ? (
+                    {activeTab === "chat" ? null : directory ? (
                         <MainView
                             activeTab={activeTab}
                             topLevel={topLevel}
