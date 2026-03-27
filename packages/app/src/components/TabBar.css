@@ -23,9 +23,7 @@
     min-width: 56px;
 }
 
-.tab-item:active {
-    background: var(--color-surface-hover);
-}
+
 
 .tab-item.active {
     background: var(--color-surface-hover);
