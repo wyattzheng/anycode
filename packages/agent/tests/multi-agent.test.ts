@@ -14,7 +14,7 @@ import { createTempDir, cleanupTempDir, server } from "./setup"
 import { InMemoryFS } from "./fixtures/in-memory-fs"
 import { buildHelloworldFixtures } from "./fixtures/helloworld-html-stream"
 import { RESPONSES_API_BODY } from "./fixtures/text-stream"
-import { SqlJsStorage } from "../src/storage-sqljs"
+import { SqlJsStorage } from "@any-code/utils"
 
 describe("CodeAgent: multi-agent isolation", () => {
     let tmpDir: string

@@ -12,7 +12,7 @@ import { testPaths, testNodeDeps } from "./_test-paths"
 import { describe, it, expect, beforeAll, afterAll } from "vitest"
 import { CodeAgent, NodeFS, NodeSearchProvider } from "../src/index"
 import { createTempDir, cleanupTempDir } from "./setup"
-import { SqlJsStorage } from "../src/storage-sqljs"
+import { SqlJsStorage } from "@any-code/utils"
 import { MessageV2 } from "../src/memory/message-v2"
 
 describe("Real-time event emission during chat", () => {

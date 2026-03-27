@@ -15,7 +15,7 @@ import { CodeAgent } from "../src/index"
 import { InMemoryFS } from "./fixtures/in-memory-fs"
 import { InMemorySearchProvider } from "./fixtures/search-memory"
 import { ConfigMarkdown } from "../src/index"
-import { SqlJsStorage } from "../src/storage-sqljs"
+import { SqlJsStorage } from "@any-code/utils"
 
 describe("ConfigMarkdown", () => {
     let memfs: InMemoryFS

@@ -20,7 +20,7 @@ import {
     CONTINUATION_RESPONSE,
 } from "./fixtures/compaction-stream"
 import { RESPONSES_API_BODY } from "./fixtures/text-stream"
-import { SqlJsStorage } from "../src/storage-sqljs"
+import { SqlJsStorage } from "@any-code/utils"
 import { CompactionService } from "../src/memory/compaction"
 
 const compaction = new CompactionService()

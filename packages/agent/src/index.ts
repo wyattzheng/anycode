@@ -73,4 +73,3 @@ export type { Settings } from "./settings"
 // Node.js implementations (used by tests and server)
 export { NodeFS } from "./vfs-node"
 export { NodeSearchProvider } from "./search-node"
-export { SqlJsStorage } from "./storage-sqljs"

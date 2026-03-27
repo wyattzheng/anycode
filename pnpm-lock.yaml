@@ -47,9 +47,6 @@ importers:
       remeda:
         specifier: 2.26.0
         version: 2.26.0
-      sql.js:
-        specifier: ^1.14.1
-        version: 1.14.1
       turndown:
         specifier: 7.2.0
         version: 7.2.0

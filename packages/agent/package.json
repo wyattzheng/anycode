@@ -38,7 +38,6 @@
     "minimatch": "10.0.3",
     "mime-types": "3.0.2",
     "remeda": "2.26.0",
-    "sql.js": "^1.14.1",
     "turndown": "7.2.0",
     "ulid": "3.0.1",
     "which": "6.0.1",

@@ -13,7 +13,7 @@ import path from "path"
 import { NodeFS } from "../src/vfs-node"
 import { CodeAgent, NodeSearchProvider } from "../src/index"
 import { createTempDir, cleanupTempDir } from "./setup"
-import { SqlJsStorage } from "../src/storage-sqljs"
+import { SqlJsStorage } from "@any-code/utils"
 
 describe("VFS: NodeFS implementation", () => {
     let tmpDir: string

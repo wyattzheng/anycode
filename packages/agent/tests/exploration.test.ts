@@ -18,7 +18,7 @@ import { NodeSearchProvider } from "../src/search-node"
 import { createTempDir, cleanupTempDir, server } from "./setup"
 import { buildExplorationFixtures } from "./fixtures/exploration-stream"
 import { RESPONSES_API_BODY } from "./fixtures/text-stream"
-import { SqlJsStorage } from "../src/storage-sqljs"
+import { SqlJsStorage } from "@any-code/utils"
 
 /**
  * The secret key phrase hidden in the project files.

@@ -10,7 +10,7 @@ import { http, HttpResponse } from "msw"
 import { CodeAgent, NodeSearchProvider } from "../src/index"
 import { createTempDir, cleanupTempDir, server } from "./setup"
 import { TOOL_CALL_BODY, TOOL_RESULT_TEXT_BODY } from "./fixtures/tool-call-stream"
-import { SqlJsStorage } from "../src/storage-sqljs"
+import { SqlJsStorage } from "@any-code/utils"
 
 describe("CodeAgent tool calling", () => {
     let agent: CodeAgent

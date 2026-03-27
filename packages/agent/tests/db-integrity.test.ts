@@ -21,9 +21,9 @@ import { InMemoryFS } from "./fixtures/in-memory-fs"
 import { buildHelloworldFixtures } from "./fixtures/helloworld-html-stream"
 import { RESPONSES_API_BODY } from "./fixtures/text-stream"
 
-import type { StorageProvider, Migration } from "../src/code-agent"
+import type { StorageProvider, Migration } from "@any-code/utils"
 import type { NoSqlDb } from "../src/index"
-import { SqlJsStorage } from "../src/storage-sqljs"
+import { SqlJsStorage } from "@any-code/utils"
 import { InMemorySearchProvider } from "./fixtures/search-memory"
 
 /**

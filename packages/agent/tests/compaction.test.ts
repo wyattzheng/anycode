@@ -23,7 +23,7 @@ import {
     CONTINUATION_RESPONSE,
 } from "./fixtures/compaction-stream"
 import { RESPONSES_API_BODY } from "./fixtures/text-stream"
-import { SqlJsStorage } from "../src/storage-sqljs"
+import { SqlJsStorage } from "@any-code/utils"
 
 describe("CodeAgent: context compaction", () => {
     let agent: CodeAgent
