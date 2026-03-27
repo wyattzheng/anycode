@@ -11,7 +11,7 @@ export {
   type CodeAgentEvent,
   type CodeAgentEventType,
   type StorageProvider,
-} from "./code-agent"
+} from "./agent"
 
 // Session & schema
 export { Session, SessionService } from "./session"
