@@ -619,7 +619,7 @@ export class CodeAgent extends EventEmitter {
                         // ── Prepare: create assistant message, resolve tools ──
                         const msgsWithReminders = await SessionPrompt.insertReminders({ context, messages: msgs, session })
 
-                        const assistantMessage = (await context.session.updateMessage({
+                        const assistantMessage = (await context.memory.updateMessage({
                             id: MsgID.ascending(), parentID: lastUser.id, role: "assistant",
                             mode: "build", agent: "build", variant: lastUser.variant,
                             path: { cwd: context.directory, root: context.worktree },
@@ -755,7 +755,7 @@ export class CodeAgent extends EventEmitter {
                                             metadata: value.providerMetadata,
                                         }
                                         reasoningMap[value.id] = reasoningPart
-                                        await context.session.updatePart(reasoningPart)
+                                        await context.memory.updatePart(reasoningPart)
                                         push({ type: "thinking.start" })
                                         break
 
@@ -764,7 +764,7 @@ export class CodeAgent extends EventEmitter {
                                             const part = reasoningMap[value.id]
                                             part.text += value.text
                                             if (value.providerMetadata) part.metadata = value.providerMetadata
-                                            await context.session.updatePartDelta({
+                                            await context.memory.updatePartDelta({
                                                 sessionID: part.sessionID,
                                                 messageID: part.messageID,
                                                 partID: part.id,
@@ -781,14 +781,14 @@ export class CodeAgent extends EventEmitter {
                                             part.text = part.text.trimEnd()
                                             part.time = { ...part.time, end: Date.now() }
                                             if (value.providerMetadata) part.metadata = value.providerMetadata
-                                            await context.session.updatePart(part)
+                                            await context.memory.updatePart(part)
                                             push({ type: "thinking.end", thinkingDuration: part.time.end - part.time.start })
                                             delete reasoningMap[value.id]
                                         }
                                         break
 
                                     case "tool-input-start":
-                                        const toolPart = await context.session.updatePart({
+                                        const toolPart = await context.memory.updatePart({
                                             id: toolcalls[value.id]?.id ?? PartID.ascending(),
                                             messageID: assistantMessage.id,
                                             sessionID: assistantMessage.sessionID,
@@ -807,7 +807,7 @@ export class CodeAgent extends EventEmitter {
                                     case "tool-call": {
                                         const match = toolcalls[value.toolCallId]
                                         if (match) {
-                                            const part = await context.session.updatePart({
+                                            const part = await context.memory.updatePart({
                                                 ...match,
                                                 tool: value.toolName,
                                                 state: {
@@ -848,7 +848,7 @@ export class CodeAgent extends EventEmitter {
                                         const match = toolcalls[value.toolCallId]
                                         if (match && match.state.status === "running") {
                                             const endTime = Date.now()
-                                            await context.session.updatePart({
+                                            await context.memory.updatePart({
                                                 ...match,
                                                 state: {
                                                     status: "completed",
@@ -878,7 +878,7 @@ export class CodeAgent extends EventEmitter {
                                         const match = toolcalls[value.toolCallId]
                                         if (match && match.state.status === "running") {
                                             const endTime = Date.now()
-                                            await context.session.updatePart({
+                                            await context.memory.updatePart({
                                                 ...match,
                                                 state: {
                                                     status: "error",
@@ -903,7 +903,7 @@ export class CodeAgent extends EventEmitter {
                                         throw value.error
 
                                     case "start-step":
-                                        await context.session.updatePart({
+                                        await context.memory.updatePart({
                                             id: PartID.ascending(),
                                             messageID: assistantMessage.id,
                                             sessionID,
@@ -918,7 +918,7 @@ export class CodeAgent extends EventEmitter {
                                             metadata: value.providerMetadata,
                                         })
                                         assistantMessage.finish = value.finishReason
-                                        await context.session.updatePart({
+                                        await context.memory.updatePart({
                                             id: PartID.ascending(),
                                             reason: value.finishReason,
                                             messageID: assistantMessage.id,
@@ -927,7 +927,7 @@ export class CodeAgent extends EventEmitter {
                                             tokens: usage.tokens,
                                             cost: usage.cost,
                                         })
-                                        await context.session.updateMessage(assistantMessage)
+                                        await context.memory.updateMessage(assistantMessage)
                                         push({
                                             type: "message.done",
                                             usage: {
@@ -956,14 +956,14 @@ export class CodeAgent extends EventEmitter {
                                             time: { start: Date.now() },
                                             metadata: value.providerMetadata,
                                         }
-                                        await context.session.updatePart(currentText)
+                                        await context.memory.updatePart(currentText)
                                         break
 
                                     case "text-delta":
                                         if (currentText) {
                                             currentText.text += value.text
                                             if (value.providerMetadata) currentText.metadata = value.providerMetadata
-                                            await context.session.updatePartDelta({
+                                            await context.memory.updatePartDelta({
                                                 sessionID: currentText.sessionID,
                                                 messageID: currentText.messageID,
                                                 partID: currentText.id,
@@ -979,7 +979,7 @@ export class CodeAgent extends EventEmitter {
                                             currentText.text = currentText.text.trimEnd()
                                             currentText.time = { start: Date.now(), end: Date.now() }
                                             if (value.providerMetadata) currentText.metadata = value.providerMetadata
-                                            await context.session.updatePart(currentText)
+                                            await context.memory.updatePart(currentText)
                                         }
                                         currentText = undefined
                                         break
@@ -1016,7 +1016,7 @@ export class CodeAgent extends EventEmitter {
                         const pendingParts = await MessageV2.parts(context, assistantMessage.id)
                         for (const part of pendingParts) {
                             if (part.type === "tool" && part.state.status !== "completed" && part.state.status !== "error") {
-                                await context.session.updatePart({
+                                await context.memory.updatePart({
                                     ...part,
                                     state: {
                                         ...part.state,
@@ -1028,7 +1028,7 @@ export class CodeAgent extends EventEmitter {
                             }
                         }
                         assistantMessage.time.completed = Date.now()
-                        await context.session.updateMessage(assistantMessage)
+                        await context.memory.updateMessage(assistantMessage)
 
                         context.sessionStatus = { type: "idle" }
                         push({ type: "session.status", status: "idle" })
@@ -1043,7 +1043,7 @@ export class CodeAgent extends EventEmitter {
                             assistantMessage.error = new MessageV2.StructuredOutputError({
                                 message: "Model did not produce structured output", retries: 0,
                             }).toObject()
-                            await context.session.updateMessage(assistantMessage)
+                            await context.memory.updateMessage(assistantMessage)
                             break
                         }
 
