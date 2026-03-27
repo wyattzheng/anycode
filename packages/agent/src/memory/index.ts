@@ -6,7 +6,7 @@ import { MessageV2 } from "./message-v2"
 import type { Provider } from "@any-code/provider"
 import type { LLMUsage } from "@any-code/utils"
 
-import { iife } from "../util/fn"
+
 import { NotFoundError } from "../util/error"
 
 /**
@@ -130,7 +130,7 @@ export function getUsage(input: {
     excludesCachedTokens ? inputTokens : inputTokens - cacheReadInputTokens - cacheWriteInputTokens,
   )
 
-  const total = iife(() => {
+  const total = (() => {
     if (
       input.model.api.npm === "@ai-sdk/anthropic" ||
       input.model.api.npm === "@ai-sdk/amazon-bedrock" ||
@@ -139,7 +139,7 @@ export function getUsage(input: {
       return adjustedInputTokens + outputTokens + cacheReadInputTokens + cacheWriteInputTokens
     }
     return input.usage.totalTokens
-  })
+  })()
 
   const tokens = {
     total,

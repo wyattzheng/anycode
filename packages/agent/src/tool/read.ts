@@ -2,7 +2,7 @@ import z from "zod"
 import * as path from "../util/path"
 
 import { Tool } from "./tool"
-import { LSP } from "../util/lsp"
+
 
 const DESCRIPTION = `Read a file or directory from the local filesystem. If the path does not exist, an error is returned.
 
@@ -205,8 +205,7 @@ export const ReadTool = Tool.define("read", {
     }
     output += "\n</content>"
 
-    // just warms the lsp client
-    LSP.touchFile(filepath, false)
+    // LSP integration removed (agent mode)
     ctx.fileTime.read(ctx.sessionID, filepath)
 
 

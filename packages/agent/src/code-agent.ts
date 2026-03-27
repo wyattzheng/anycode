@@ -36,23 +36,22 @@ import { FileTimeService } from "./project"
 import { Log } from "./util/log"
 import { ToolRegistryService } from "./tool/registry"
 import { Tool } from "./tool/tool"
-import { Session, SessionService } from "./session"
+import { SessionService } from "./session"
 import { SessionPrompt, SessionPromptService } from "./session/session"
 import { MessageV2 } from "./memory/message-v2"
 import { MemoryService } from "./memory"
 import type { Settings } from "./settings"
 import { Provider, VendorRegistry, createLLMStream, toModelMessages } from "@any-code/provider"
-import { Auth } from "./util/auth"
-import type { LLMToolDef, LLMMessage } from "@any-code/utils"
+
+import type { LLMToolDef } from "@any-code/utils"
 
 import type { Logger } from "@any-code/utils"
 import { NamedError } from "./util/error"
-import { defer } from "./util/fn"
+
 import { ulid } from "ulid"
 import { MessageID as MsgID, PartID, SessionID } from "./session/schema"
 import { SystemPrompt } from "./prompt"
 import { CompactionService } from "./memory/compaction"
-import { SessionStatus } from "./session"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -958,7 +957,7 @@ export class CodeAgent extends EventEmitter {
             const stream = await createLLMStream(
                 {
                     provider: context.provider,
-                    auth: { get: Auth.get },
+                    auth: { get: async () => undefined },
                     config: context.config,
                     systemPrompt: context.systemPrompt,
                     log: { info: l.info.bind(l), error: l.error.bind(l) },

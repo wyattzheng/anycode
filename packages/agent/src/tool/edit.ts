@@ -6,7 +6,7 @@
 import z from "zod"
 import * as path from "../util/path"
 import { Tool } from "./tool"
-import { LSP } from "../util/lsp"
+
 import { createTwoFilesPatch, diffLines } from "diff"
 const DESCRIPTION = `Performs exact string replacements in files. 
 
@@ -139,21 +139,10 @@ export const EditTool = Tool.define("edit", {
     })
 
     let output = "Edit applied successfully."
-    await LSP.touchFile(filePath, true)
-    const diagnostics = await LSP.diagnostics()
-    const normalizedFilePath = filePath
-    const issues = diagnostics.get(normalizedFilePath) ?? []
-    const errors = issues.filter((item: any) => item.severity === 1)
-    if (errors.length > 0) {
-      const limited = errors.slice(0, MAX_DIAGNOSTICS_PER_FILE)
-      const suffix =
-        errors.length > MAX_DIAGNOSTICS_PER_FILE ? `\n... and ${errors.length - MAX_DIAGNOSTICS_PER_FILE} more` : ""
-      output += `\n\nLSP errors detected in this file, please fix:\n<diagnostics file="${filePath}">\n${limited.map(LSP.Diagnostic.pretty).join("\n")}${suffix}\n</diagnostics>`
-    }
 
     return {
       metadata: {
-        diagnostics,
+        diagnostics: {},
         diff,
         filediff,
       },

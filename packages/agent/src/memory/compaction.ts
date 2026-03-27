@@ -3,7 +3,7 @@ import type { AgentContext } from "../context"
 import { SessionID, MessageID, PartID } from "../session/schema"
 import { MessageV2 } from "./message-v2"
 import { Provider, VendorRegistry, createLLMStream, toModelMessages } from "@any-code/provider"
-import { Auth } from "../util/auth"
+
 import PROMPT_COMPACTION from "../prompt/compaction.txt"
 
 const COMPACTION_BUFFER = 20_000
@@ -88,7 +88,7 @@ export class CompactionService implements ICompactionService {
     if (lastUser?.info?.model) {
       try {
         const model = await context.provider.getModel(lastUser.info.model.providerID, lastUser.info.model.modelID)
-        ;({ contextLimit, compactionThreshold } = getLimits(model, context.config))
+          ; ({ contextLimit, compactionThreshold } = getLimits(model, context.config))
       } catch { /* model not found */ }
     }
 
@@ -185,7 +185,7 @@ When constructing the summary, try to stick to this template:
       const stream = await createLLMStream(
         {
           provider: context.provider,
-          auth: { get: Auth.get },
+          auth: { get: () => undefined },
           config: context.config,
           systemPrompt: context.systemPrompt,
           log: { info: l.info.bind(l), error: l.error.bind(l) },

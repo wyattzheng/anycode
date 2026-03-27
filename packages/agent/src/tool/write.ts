@@ -1,7 +1,7 @@
 import z from "zod"
 import * as path from "../util/path"
 import { Tool } from "./tool"
-import { LSP } from "../util/lsp"
+
 import { createTwoFilesPatch } from "diff"
 const DESCRIPTION = `Writes a file to the local filesystem.
 
@@ -16,9 +16,6 @@ Usage:
 
 import { trimDiff } from "./edit"
 import { assertExternalDirectory } from "./external-directory"
-
-const MAX_DIAGNOSTICS_PER_FILE = 20
-const MAX_PROJECT_DIAGNOSTICS_FILES = 5
 
 export const WriteTool = Tool.define("write", {
   description: DESCRIPTION,
@@ -50,30 +47,12 @@ export const WriteTool = Tool.define("write", {
 
     ctx.fileTime.read(ctx.sessionID, filepath)
 
-    let output = "Wrote file successfully."
-    await LSP.touchFile(filepath, true)
-    const diagnostics = await LSP.diagnostics()
-    const normalizedFilepath = filepath
-    let projectDiagnosticsCount = 0
-    for (const [file, issues] of Object.entries(diagnostics)) {
-      const errors = issues.filter((item: any) => item.severity === 1)
-      if (errors.length === 0) continue
-      const limited = errors.slice(0, MAX_DIAGNOSTICS_PER_FILE)
-      const suffix =
-        errors.length > MAX_DIAGNOSTICS_PER_FILE ? `\n... and ${errors.length - MAX_DIAGNOSTICS_PER_FILE} more` : ""
-      if (file === normalizedFilepath) {
-        output += `\n\nLSP errors detected in this file, please fix:\n<diagnostics file="${filepath}">\n${limited.map(LSP.Diagnostic.pretty).join("\n")}${suffix}\n</diagnostics>`
-        continue
-      }
-      if (projectDiagnosticsCount >= MAX_PROJECT_DIAGNOSTICS_FILES) continue
-      projectDiagnosticsCount++
-      output += `\n\nLSP errors detected in other files:\n<diagnostics file="${file}">\n${limited.map(LSP.Diagnostic.pretty).join("\n")}${suffix}\n</diagnostics>`
-    }
+    const output = "Wrote file successfully."
 
     return {
       title: path.relative(ctx.worktree, filepath),
       metadata: {
-        diagnostics,
+        diagnostics: {},
         filepath,
         exists: exists,
       },

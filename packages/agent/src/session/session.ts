@@ -13,7 +13,7 @@ import type { LLMToolDef, LLMToolCallOptions } from "@any-code/utils"
 import { type AgentContext } from "../context"
 
 // MCP module removed (agent mode)
-import { LSP } from "../util/lsp"
+
 import { ReadTool } from "../tool/read"
 import { Hooks } from "../hooks"
 
@@ -347,25 +347,7 @@ export namespace SessionPrompt {
                   const filePathURI = part.url.split("?")[0]
                   let start = parseInt(range.start)
                   let end = range.end ? parseInt(range.end) : undefined
-                  // some LSP servers (eg, gopls) don't give full range in
-                  // workspace/symbol searches, so we'll try to find the
-                  // symbol in the document to get the full range
-                  if (start === end) {
-                    const symbols = await LSP.documentSymbol(filePathURI).catch(() => [] as any[])
-                    for (const symbol of symbols as any[]) {
-                      let range: LSP.Range | undefined
-                      if ("range" in symbol) {
-                        range = symbol.range
-                      } else if ("location" in symbol) {
-                        range = symbol.location.range
-                      }
-                      if (range?.start?.line && range?.start?.line === start) {
-                        start = range.start.line
-                        end = range?.end?.line ?? start
-                        break
-                      }
-                    }
-                  }
+                  // LSP symbol resolution removed (agent mode)
                   offset = Math.max(start, 1)
                   if (end) {
                     limit = end - (offset - 1)
