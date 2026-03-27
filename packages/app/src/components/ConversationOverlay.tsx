@@ -183,12 +183,9 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
     const [input, setInput] = useState("");
     const [recording, setRecording] = useState(false);
     const [showTextInput, setShowTextInput] = useState(true);
-    const [busy, setBusy] = useState(false);
-
-    // Sync busy state from server
-    useEffect(() => {
-        if (chatBusyProp !== undefined) setBusy(chatBusyProp);
-    }, [chatBusyProp]);
+    const [localBusy, setLocalBusy] = useState(false);
+    // Server state is ground truth; local state is optimistic UI
+    const busy = chatBusyProp ?? localBusy;
     const [inputNarrow, setInputNarrow] = useState(true);
     const inputBarRef = useRef<HTMLDivElement>(null);
     const textInputRef = useRef<HTMLInputElement>(null);
@@ -310,7 +307,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
         if (!sessionId) return;
         // Clear previous session's state immediately
         setMessages([]);
-        setBusy(false);
+        setLocalBusy(false);
         toolMapRef.current.clear();
 
         (async () => {
@@ -514,7 +511,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
                 appendPart({ kind: "error", message: data.error || "unknown error" });
                 break;
             case "done":
-                setBusy(false);
+                setLocalBusy(false);
                 break;
         }
     }, [appendPart, updateLastPartOfKind, updateToolById]);
@@ -530,24 +527,24 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
                     { role: "user", text: data.text },
                     { role: "assistant", parts: [] },
                     ]);
-                    setBusy(true);
+                    setLocalBusy(true);
                     break;
                 case "chat.event":
                     if (data.event) handleEvent(data.event);
                     break;
                 case "chat.done":
-                    setBusy(false);
+                    setLocalBusy(false);
                     break;
             }
         };
         return () => { chatHandlerRef.current = undefined; };
     }, [handleEvent, chatHandlerRef]);
 
-    // Reset busy state when WebSocket reconnects (may have missed chat.done)
+    // Reset local busy state when WebSocket reconnects (server chatBusy will correct)
     useEffect(() => {
         if (!chatResetRef) return;
         chatResetRef.current = () => {
-            setBusy(false);
+            setLocalBusy(false);
         };
         return () => { chatResetRef.current = undefined; };
     }, [chatResetRef]);
@@ -557,7 +554,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
         const text = input.trim();
         if (!text || busy) return;
         setInput("");
-        setBusy(true);
+        setLocalBusy(true);
         scrollLocked.current = true;
         msgsRef.current?.scrollTo(0, msgsRef.current.scrollHeight);
 
