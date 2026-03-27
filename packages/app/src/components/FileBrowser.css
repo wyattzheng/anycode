@@ -2,7 +2,6 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    container-type: inline-size;
 }
 
 .file-browser-sidebar {
@@ -47,44 +46,42 @@
     background: var(--color-accent);
 }
 
-/* ── Horizontal layout (container query) ── */
-@container (min-width: 360px) {
-    .file-browser {
-        flex-direction: row;
-    }
+/* ── Horizontal layout ── */
+.file-browser--horizontal {
+    flex-direction: row;
+}
 
-    .file-browser-sidebar {
-        border-bottom: none;
-        border-right: 1px solid var(--color-border);
-    }
+.file-browser--horizontal .file-browser-sidebar {
+    border-bottom: none;
+    border-right: 1px solid var(--color-border);
+}
 
-    .fb-resize-border {
-        width: 0;
-        height: auto;
-        cursor: col-resize;
-    }
+.file-browser--horizontal .fb-resize-border {
+    width: 0;
+    height: auto;
+    cursor: col-resize;
+}
 
-    .fb-resize-border::before {
-        top: 0;
-        bottom: 0;
-        left: -8px;
-        right: auto;
-        width: 16px;
-        height: auto;
-    }
+.file-browser--horizontal .fb-resize-border::before {
+    top: 0;
+    bottom: 0;
+    left: -8px;
+    right: auto;
+    width: 16px;
+    height: auto;
+}
 
-    .fb-resize-border::after {
-        top: 0;
-        bottom: 0;
-        left: -1px;
-        right: auto;
-        width: 2px;
-        height: auto;
-    }
+.file-browser--horizontal .fb-resize-border::after {
+    top: 0;
+    bottom: 0;
+    left: -1px;
+    right: auto;
+    width: 2px;
+    height: auto;
+}
 
-    .file-content-header {
-        cursor: col-resize;
-    }
+.file-browser--horizontal .file-content-header {
+    cursor: col-resize;
 }
 
 

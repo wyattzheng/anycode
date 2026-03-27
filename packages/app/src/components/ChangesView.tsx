@@ -35,7 +35,7 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
     const [listSize, setListSize] = useState<number | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<{ startPos: number; startSize: number } | null>(null);
-    const [horizontal, setHorizontal] = useState(false);
+    const [horizontal, setHorizontal] = useState(true);
 
     useLayoutEffect(() => {
         const el = containerRef.current;
@@ -169,7 +169,7 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
         : (listSize != null ? { height: listSize, flex: 'none' } : { flex: 1 });
 
     return (
-        <div className="changes-view" ref={containerRef}>
+        <div className={`changes-view${horizontal ? ' changes-view--horizontal' : ''}`} ref={containerRef}>
             <div className="changes-list" style={listStyle as any}>
                 <div className="change-items">
                     {isEmpty ? (

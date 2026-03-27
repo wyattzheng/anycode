@@ -2,7 +2,6 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    container-type: inline-size;
 }
 
 .changes-list {
@@ -48,44 +47,42 @@
     background: var(--color-accent);
 }
 
-/* ── Horizontal layout (container query) ── */
-@container (min-width: 360px) {
-    .changes-view {
-        flex-direction: row;
-    }
+/* ── Horizontal layout ── */
+.changes-view--horizontal {
+    flex-direction: row;
+}
 
-    .changes-list {
-        border-bottom: none;
-        border-right: 1px solid var(--color-border);
-    }
+.changes-view--horizontal .changes-list {
+    border-bottom: none;
+    border-right: 1px solid var(--color-border);
+}
 
-    .cv-resize-border {
-        width: 0;
-        height: auto;
-        cursor: col-resize;
-    }
+.changes-view--horizontal .cv-resize-border {
+    width: 0;
+    height: auto;
+    cursor: col-resize;
+}
 
-    .cv-resize-border::before {
-        top: 0;
-        bottom: 0;
-        left: -8px;
-        right: auto;
-        width: 16px;
-        height: auto;
-    }
+.changes-view--horizontal .cv-resize-border::before {
+    top: 0;
+    bottom: 0;
+    left: -8px;
+    right: auto;
+    width: 16px;
+    height: auto;
+}
 
-    .cv-resize-border::after {
-        top: 0;
-        bottom: 0;
-        left: -1px;
-        right: auto;
-        width: 2px;
-        height: auto;
-    }
+.changes-view--horizontal .cv-resize-border::after {
+    top: 0;
+    bottom: 0;
+    left: -1px;
+    right: auto;
+    width: 2px;
+    height: auto;
+}
 
-    .file-content-header {
-        cursor: col-resize;
-    }
+.changes-view--horizontal .file-content-header {
+    cursor: col-resize;
 }
 
 .change-items {

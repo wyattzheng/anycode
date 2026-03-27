@@ -98,7 +98,7 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
     });
     const containerRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<{ startPos: number; startSize: number } | null>(null);
-    const [horizontal, setHorizontal] = useState(false);
+    const [horizontal, setHorizontal] = useState(true);
 
     useLayoutEffect(() => {
         const el = containerRef.current;
@@ -188,7 +188,7 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
         : (sidebarSize != null ? { height: sidebarSize, flex: 'none' } : { flex: 1 });
 
     return (
-        <div className="file-browser" ref={containerRef}>
+        <div className={`file-browser${horizontal ? ' file-browser--horizontal' : ''}`} ref={containerRef}>
             <div className="file-browser-sidebar" style={sidebarStyle as any}>
                 <div className="file-tree">
                     {isEmpty ? (
