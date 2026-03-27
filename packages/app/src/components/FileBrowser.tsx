@@ -164,7 +164,6 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
                 <div className="file-tree">
                     {isEmpty ? (
                         <div className="file-tree-empty">
-                            <FileDocIcon size={36} />
                             <p>加载中…</p>
                         </div>
                     ) : (
@@ -216,7 +215,6 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
                     </>
                 ) : (
                     <div className="file-empty">
-                        <FileDocIcon size={36} />
                         <p>选择文件查看内容</p>
                     </div>
                 )}

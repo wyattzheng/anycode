@@ -182,7 +182,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [recording, setRecording] = useState(false);
-    const [showTextInput, setShowTextInput] = useState(false);
+    const [showTextInput, setShowTextInput] = useState(true);
     const [busy, setBusy] = useState(false);
 
     // Sync busy state from server

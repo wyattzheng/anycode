@@ -145,7 +145,6 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
                 <div className="change-items">
                     {isEmpty ? (
                         <div className="changes-empty">
-                            <DiffIcon size={36} />
                             <p>暂无变更</p>
                         </div>
                     ) : (
