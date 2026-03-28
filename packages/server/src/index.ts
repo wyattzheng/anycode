@@ -767,7 +767,7 @@ class TerminalStateModel {
 
   constructor() {
     console.log("🖥  [TermModel] created headless 80×24, scrollback=5000")
-    this.headless = new xtermHeadless.Terminal({ cols: 80, rows: 24, scrollback: 5000 })
+    this.headless = new xtermHeadless.Terminal({ cols: 80, rows: 24, scrollback: 5000, allowProposedApi: true })
     this.serializer = new SerializeAddon()
     this.headless.loadAddon(this.serializer)
   }
@@ -804,7 +804,7 @@ class TerminalStateModel {
   reset(): void {
     console.log("🖥  [TermModel] reset: disposing + recreating headless")
     this.headless.dispose()
-    this.headless = new xtermHeadless.Terminal({ cols: 80, rows: 24, scrollback: 5000 })
+    this.headless = new xtermHeadless.Terminal({ cols: 80, rows: 24, scrollback: 5000, allowProposedApi: true })
     this.serializer = new SerializeAddon()
     this.headless.loadAddon(this.serializer)
   }
