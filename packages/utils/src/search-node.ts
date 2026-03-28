@@ -27,8 +27,15 @@ export class NodeSearchProvider implements SearchProvider {
                 args.push(`--include=${options.include}`)
             }
 
-            // Exclude .git directory
-            args.push("--exclude-dir=.git")
+            // Exclude common non-source directories (consistent with ls tool IGNORE_PATTERNS)
+            for (const dir of [
+                ".git", "node_modules", "__pycache__", "dist", "build", "target",
+                "vendor", "bin", "obj", ".idea", ".vscode", ".zig-cache", "zig-out",
+                ".coverage", "coverage", "tmp", "temp", ".cache", "cache", "logs",
+                ".venv", "venv", "env",
+            ]) {
+                args.push(`--exclude-dir=${dir}`)
+            }
 
             // Use -E for extended regex (more compatible with ripgrep patterns)
             args.push("-E")
