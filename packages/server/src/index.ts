@@ -821,14 +821,15 @@ class TerminalStateModel {
     // 1. Current state
     ws.send(JSON.stringify({ type: this.alive ? "terminal.ready" : "terminal.none" }))
 
-    // 2. Serialize headless terminal → snapshot (before joining live set)
-    const snapshot = this.serializer.serialize()
-    if (snapshot) {
-      ws.send(JSON.stringify({ type: "terminal.sync", data: snapshot }))
-    }
-
-    // 3. Add to live set
-    this.wsClients.add(ws)
+    // 2. Flush pending writes, then serialize and sync
+    this.headless.write("", () => {
+      const snapshot = this.serializer.serialize()
+      if (snapshot) {
+        ws.send(JSON.stringify({ type: "terminal.sync", data: snapshot }))
+      }
+      // 3. Add to live set AFTER sync
+      this.wsClients.add(ws)
+    })
 
     // 4. Messages
     ws.on("message", (raw: Buffer | string) => {
