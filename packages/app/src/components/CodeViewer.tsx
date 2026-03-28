@@ -160,31 +160,23 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
     // Subscribe to highlighter ready
     useEffect(() => hl?.onReady(() => setReady(true)), [hl]);
 
-    // Immediate plain-text HTML (no blocking)
-    const plainHtml = useMemo(() => hl?.plainHtml(code) ?? null, [code, hl]);
-
-    // Async syntax highlight: check cache first, then schedule highlight
-    const [rawHtml, setRawHtml] = useState<string | null>(null);
-    useEffect(() => {
-        if (!ready || !hl) { setRawHtml(null); return; }
-
+    // Synchronous highlight: cache hit → instant, cache miss → sync highlight
+    const rawHtml = useMemo(() => {
         // Check cache for pre-highlighted HTML
         const cached = fileCache?.getHighlight(filePath);
-        if (cached) { setRawHtml(cached); return; }
+        if (cached) return cached;
 
-        // Reset and schedule async highlight
-        setRawHtml(null);
-        const id = setTimeout(() => {
-            const highlighted = hl.highlight(code, filePath);
-            setRawHtml(highlighted);
-            // Store back into cache for future use
-            if (fileCache) {
-                if (!fileCache.hasContent(filePath)) fileCache.setContent(filePath, code);
-                fileCache.setHighlight(filePath, highlighted);
-            }
-        }, 0);
-        return () => clearTimeout(id);
-    }, [code, filePath, ready, hl]);
+        if (!ready || !hl) return null;
+
+        // Synchronous highlight (with preloading, most files hit cache above)
+        const highlighted = hl.highlight(code, filePath);
+        // Store back into cache for future use
+        if (fileCache) {
+            if (!fileCache.hasContent(filePath)) fileCache.setContent(filePath, code);
+            fileCache.setHighlight(filePath, highlighted);
+        }
+        return highlighted;
+    }, [code, filePath, ready, hl, fileCache]);
 
     // Clear selection when file changes
     useEffect(() => {
@@ -517,9 +509,7 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
         };
     }, [selectedLines, rawHtml]);
 
-    // Use highlighted HTML if available, otherwise plain text
-    const displayHtml = rawHtml ?? plainHtml;
-    if (!displayHtml) {
+    if (!rawHtml) {
         return <pre className="code-viewer-fallback">{code}</pre>;
     }
 
@@ -532,7 +522,7 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
             <div
                 ref={containerRef}
                 className={`code-viewer${wordWrap ? ' code-viewer--wrap' : ''}`}
-                dangerouslySetInnerHTML={{ __html: finalHtml ?? displayHtml }}
+                dangerouslySetInnerHTML={{ __html: finalHtml ?? rawHtml }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
