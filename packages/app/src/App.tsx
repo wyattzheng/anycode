@@ -132,6 +132,10 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
         };
     }, [sessionId, onWindowsChanged]);
 
+    // ── FileReadCache (must be before requestLs since it's a dependency) ──
+    const [fileCache] = useState(() => new FileReadCache());
+    const fileCacheRef = useRef(fileCache);
+
     // Unified batch file fetch — single endpoint for all file/dir reads
     const fetchBatch = useCallback(async (paths: string[], withDiff = false): Promise<Record<string, BatchFileResult>> => {
         try {
@@ -156,21 +160,23 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
         }
     }, [sessionId]);
 
-    // Directory listing via batch endpoint
+    // Directory listing: cache → batch fallback (same pattern as requestFile)
     const requestLs = useCallback(async (subPath: string): Promise<DirEntry[]> => {
+        const cached = fileCache.getEntries(subPath);
+        if (cached) return cached;
         const results = await fetchBatch([subPath]);
-        return results[subPath]?.entries ?? [];
-    }, [fetchBatch]);
+        const entries = results[subPath]?.entries ?? [];
+        if (entries.length > 0) fileCache.setEntries(subPath, entries);
+        return entries;
+    }, [fetchBatch, fileCache]);
 
     // FileTreeModel: owns all file tree state
     const fileTree = useMemo(() => new FileTreeModel(requestLs, sendMessage), [requestLs, sendMessage]);
     const fileTreeRef = useRef(fileTree);
     fileTreeRef.current = fileTree;
 
-    // ── FileReadCache + PreloadEngine ──
+    // ── Highlighter + PreloadEngine ──
     const codeHighlighter = useContext(HighlighterContext);
-    const [fileCache] = useState(() => new FileReadCache());
-    const fileCacheRef = useRef(fileCache);
 
     // Cache-aware requestFile: cache → batch fallback
     const requestFile = useCallback(async (filePath: string): Promise<string | null> => {

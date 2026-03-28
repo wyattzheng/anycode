@@ -16,15 +16,19 @@ import { createContext, useContext } from "react";
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
 interface CacheEntry {
-    content: string;        // raw file content
+    content?: string;       // raw file content (files only)
+    entries?: DirEntry[];   // directory listing (dirs only)
     highlightHtml?: string; // Shiki-highlighted HTML (may arrive later)
     diff?: { added: number[]; removed: number[] }; // git diff data
     size: number;           // estimated byte size of this entry
 }
 
-function estimateBytes(content: string, html?: string): number {
+function estimateBytes(content?: string, html?: string, entries?: DirEntry[]): number {
     // UTF-16: each char ≈ 2 bytes
-    return (content.length + (html?.length ?? 0)) * 2;
+    let bytes = ((content?.length ?? 0) + (html?.length ?? 0)) * 2;
+    // Entries: rough estimate per entry
+    if (entries) bytes += entries.length * 40;
+    return bytes;
 }
 
 export class FileReadCache {
@@ -43,7 +47,7 @@ export class FileReadCache {
         // LRU refresh
         this._map.delete(filePath);
         this._map.set(filePath, entry);
-        return entry.content;
+        return entry.content ?? null;
     }
 
     setContent(filePath: string, content: string): void {
@@ -87,6 +91,30 @@ export class FileReadCache {
         entry.highlightHtml = html;
         entry.size = newSize;
         this._totalSize += delta;
+    }
+
+    // ── Entries (directory listings) ──
+
+    getEntries(dirPath: string): DirEntry[] | null {
+        const entry = this._map.get(dirPath);
+        if (!entry?.entries) return null;
+        // LRU refresh
+        this._map.delete(dirPath);
+        this._map.set(dirPath, entry);
+        return entry.entries;
+    }
+
+    setEntries(dirPath: string, entries: DirEntry[]): void {
+        const old = this._map.get(dirPath);
+        if (old) {
+            this._totalSize -= old.size;
+            this._map.delete(dirPath);
+        }
+        const size = estimateBytes(undefined, undefined, entries);
+        this._evictUntil(size);
+        const entry: CacheEntry = { entries, size };
+        this._map.set(dirPath, entry);
+        this._totalSize += size;
     }
 
     // ── Diff ──
