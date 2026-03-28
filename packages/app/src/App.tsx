@@ -50,7 +50,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
         try { localStorage.setItem(`anycode:tab:${sessionId}`, activeTab); } catch { }
     }, [sessionId, activeTab]);
     const [directory, setDirectory] = useState("");
-    const [topLevel, setTopLevel] = useState<DirEntry[]>([]);
+
     const [changes, setChanges] = useState<GitChange[]>([]);
     const [fileContext, setFileContext] = useState<FileContext | null>(null);
     const [previewPort, setPreviewPort] = useState<number | null>(null);
@@ -86,8 +86,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
             ch.onmessage = (data) => {
                 if (data.type === "state") {
                     if (data.directory) setDirectory(data.directory);
-                    setTopLevel(data.topLevel || []);
-                    fileTreeRef.current.setTopLevel(data.topLevel || []);
+                    fileTreeRef.current?.loadRoot();
                     setChanges(data.changes || []);
                     if (data.previewPort !== undefined) {
                         setPreviewPort(data.previewPort);

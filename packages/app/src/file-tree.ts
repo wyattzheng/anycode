@@ -40,7 +40,9 @@ export class FileTreeModel {
 
     // ── Mutations ────────────────────────────────────────────
 
-    setTopLevel(entries: DirEntry[]) {
+    /** Load root directory via requestLs("") — same flow as any other directory. */
+    async loadRoot(): Promise<void> {
+        const entries = await this._requestLs("");
         this._topLevel = entries;
         this._notify();
     }
@@ -78,18 +80,18 @@ export class FileTreeModel {
         }
     }
 
-    /** Called when server reports file system changes. Re-fetches all expanded dirs. */
+    /** Called when server reports file system changes. Re-fetches root + all expanded dirs. */
     onFsChanged() {
         const expandedPaths = [...this._expanded.keys()];
-        if (expandedPaths.length === 0) return;
 
-        // Fire all re-fetches in parallel
-        Promise.all(
-            expandedPaths.map(async (p) => {
+        // Re-fetch root + all expanded dirs in parallel
+        Promise.all([
+            this.loadRoot(),
+            ...expandedPaths.map(async (p) => {
                 const children = await this._requestLs(p);
                 this._expanded.set(p, children);
-            })
-        ).then(() => this._notify());
+            }),
+        ]).then(() => this._notify());
     }
 
     // ── React integration (useSyncExternalStore) ─────────────
