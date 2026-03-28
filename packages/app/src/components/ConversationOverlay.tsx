@@ -302,55 +302,57 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
     const msgsRef = useRef<HTMLDivElement>(null);
     const toolMapRef = useRef<Map<string, number>>(new Map());
 
-    // Load history messages when session changes (including window switch)
-    useEffect(() => {
+    // Fetch full chat history from server
+    const fetchHistory = useCallback(async () => {
         if (!sessionId) return;
-        // Clear previous session's state immediately
-        setMessages([]);
-        setLocalBusy(false);
         toolMapRef.current.clear();
+        try {
+            const res = await fetch(`${getApiBase()}/api/messages?sessionId=${encodeURIComponent(sessionId)}`);
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!Array.isArray(data) || data.length === 0) {
+                setMessages([]);
+                return;
+            }
 
-        (async () => {
-            try {
-                const res = await fetch(`${getApiBase()}/api/messages?sessionId=${encodeURIComponent(sessionId)}`);
-                if (!res.ok) return;
-                const data = await res.json();
-                if (!Array.isArray(data) || data.length === 0) return;
-
-                const history: ChatMessage[] = [];
-                for (const msg of data) {
-                    if (msg.role === "user") {
-                        history.push({ role: "user", text: msg.text || "" });
-                    } else {
-                        const parts: ResponsePart[] = [];
-                        if (Array.isArray(msg.parts)) {
-                            for (const p of msg.parts) {
-                                if (p.type === "text") {
-                                    parts.push({ kind: "text", content: p.content || "" });
-                                } else if (p.type === "tool") {
-                                    parts.push({
-                                        kind: "tool",
-                                        id: "",
-                                        name: p.tool || "",
-                                        status: "done",
-                                        title: p.content || "",
-                                    });
-                                } else if (p.type === "thinking") {
-                                    parts.push({ kind: "thinking", content: p.content || "" });
-                                }
+            const history: ChatMessage[] = [];
+            for (const msg of data) {
+                if (msg.role === "user") {
+                    history.push({ role: "user", text: msg.text || "" });
+                } else {
+                    const parts: ResponsePart[] = [];
+                    if (Array.isArray(msg.parts)) {
+                        for (const p of msg.parts) {
+                            if (p.type === "text") {
+                                parts.push({ kind: "text", content: p.content || "" });
+                            } else if (p.type === "tool") {
+                                parts.push({
+                                    kind: "tool",
+                                    id: "",
+                                    name: p.tool || "",
+                                    status: "done",
+                                    title: p.content || "",
+                                });
+                            } else if (p.type === "thinking") {
+                                parts.push({ kind: "thinking", content: p.content || "" });
                             }
                         }
-                        if (parts.length > 0) {
-                            history.push({ role: "assistant", parts });
-                        }
+                    }
+                    if (parts.length > 0) {
+                        history.push({ role: "assistant", parts });
                     }
                 }
-                if (history.length > 0) {
-                    setMessages(history);
-                }
-            } catch { /* ignore */ }
-        })();
+            }
+            setMessages(history);
+        } catch { /* ignore */ }
     }, [sessionId]);
+
+    // Load history when session changes
+    useEffect(() => {
+        setMessages([]);
+        setLocalBusy(false);
+        fetchHistory();
+    }, [fetchHistory]);
 
     // Smart auto-scroll: locked (follow new messages) / unlocked (user scrolled up)
     const scrollLocked = useRef(true);
@@ -551,14 +553,15 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
         return () => { chatHandlerRef.current = undefined; };
     }, [handleEvent, chatHandlerRef]);
 
-    // Reset local busy state when WebSocket reconnects (server chatBusy will correct)
+    // On WebSocket reconnect: re-fetch full history so messages don't disappear
     useEffect(() => {
         if (!chatResetRef) return;
         chatResetRef.current = () => {
             setLocalBusy(false);
+            fetchHistory();
         };
         return () => { chatResetRef.current = undefined; };
-    }, [chatResetRef]);
+    }, [chatResetRef, fetchHistory]);
 
     // ── Send message ──
     const handleSend = useCallback(() => {
