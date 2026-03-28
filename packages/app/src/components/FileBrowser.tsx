@@ -137,19 +137,12 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
 
     const sidebarRef = useRef<HTMLDivElement>(null);
 
-    /** Get actual sidebar size — avoids first-drag jump when sidebarSize is null */
-    const getActualSidebarSize = useCallback(() => {
-        if (sidebarSize != null) return sidebarSize;
-        if (!sidebarRef.current) return 200;
-        const rect = sidebarRef.current.getBoundingClientRect();
-        return horizontal ? rect.width : rect.height;
-    }, [sidebarSize, horizontal]);
-
     const handleMouseDown = (e: React.MouseEvent) => {
         e.preventDefault();
         resizeBorderRef.current?.classList.add('dragging');
         const pos = horizontal ? e.clientX : e.clientY;
-        dragRef.current = { startPos: pos, startSize: getActualSidebarSize() };
+        const rect = sidebarRef.current!.getBoundingClientRect();
+        dragRef.current = { startPos: pos, startSize: horizontal ? rect.width : rect.height };
         const onMove = (ev: MouseEvent) => onDragMove(horizontal ? ev.clientX : ev.clientY);
         const onUp = () => { onDragEnd(); window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
         window.addEventListener("mousemove", onMove);
@@ -160,7 +153,8 @@ export function FileBrowser({ topLevel, requestLs, requestFile, onFileContext }:
         const touch = e.touches[0];
         resizeBorderRef.current?.classList.add('dragging');
         const pos = horizontal ? touch.clientX : touch.clientY;
-        dragRef.current = { startPos: pos, startSize: getActualSidebarSize() };
+        const rect = sidebarRef.current!.getBoundingClientRect();
+        dragRef.current = { startPos: pos, startSize: horizontal ? rect.width : rect.height };
         const onMove = (ev: TouchEvent) => { ev.preventDefault(); onDragMove(horizontal ? ev.touches[0].clientX : ev.touches[0].clientY); };
         const onUp = () => { onDragEnd(); window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onUp); };
         window.addEventListener("touchmove", onMove, { passive: false });
