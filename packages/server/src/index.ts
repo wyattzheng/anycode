@@ -766,6 +766,7 @@ class TerminalStateModel {
   onResize: ((cols: number, rows: number) => void) | null = null
 
   constructor() {
+    console.log("🖥  [TermModel] created headless 80×24, scrollback=5000")
     this.headless = new xtermHeadless.Terminal({ cols: 80, rows: 24, scrollback: 5000 })
     this.serializer = new SerializeAddon()
     this.headless.loadAddon(this.serializer)
@@ -773,30 +774,35 @@ class TerminalStateModel {
 
   /** Update alive state and notify clients */
   setAlive(alive: boolean): void {
+    console.log(`🖥  [TermModel] setAlive: ${this.alive} → ${alive}, clients=${this.wsClients.size}`)
     this.alive = alive
     this.notify({ type: alive ? "terminal.ready" : "terminal.none" })
   }
 
   /** Feed output to headless terminal and broadcast to clients */
   pushOutput(data: string): void {
+    console.log(`🖥  [TermModel] pushOutput: ${data.length}b → broadcast to ${this.wsClients.size} clients`)
     this.headless.write(data)
     this.notify({ type: "terminal.output", data })
   }
 
   /** Push a terminal exited event */
   pushExited(exitCode: number): void {
+    console.log(`🖥  [TermModel] exited: code=${exitCode}`)
     this.notify({ type: "terminal.exited", exitCode })
   }
 
   /** Resize the headless terminal to match PTY */
   resize(cols: number, rows: number): void {
     if (cols > 0 && rows > 0) {
+      console.log(`🖥  [TermModel] resize: headless → ${cols}×${rows}`)
       this.headless.resize(cols, rows)
     }
   }
 
   /** Reset: dispose old headless terminal and create a fresh one */
   reset(): void {
+    console.log("🖥  [TermModel] reset: disposing + recreating headless")
     this.headless.dispose()
     this.headless = new xtermHeadless.Terminal({ cols: 80, rows: 24, scrollback: 5000 })
     this.serializer = new SerializeAddon()
@@ -818,11 +824,13 @@ class TerminalStateModel {
 
     // 2. Snapshot
     const snapshot = this.serializer.serialize()
+    console.log(`🖥  [TermModel] handleClient: alive=${this.alive}, clients=${this.wsClients.size}`)
     if (snapshot) {
       ws.send(JSON.stringify({ type: "terminal.sync", data: snapshot }))
     }
 
     // 3. Join live broadcast
+    console.log(`🖥  [TermModel] serialize() → ${snapshot?.length ?? 0} chars`)
     this.wsClients.add(ws)
 
     // 4. Messages
@@ -839,7 +847,10 @@ class TerminalStateModel {
     })
 
     // 5. Cleanup
-    ws.on("close", () => { this.wsClients.delete(ws) })
+    ws.on("close", () => {
+      this.wsClients.delete(ws)
+      console.log(`🖥  [TermModel] client left, remaining=${this.wsClients.size}`)
+    })
   }
 }
 
