@@ -148,29 +148,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
     const codeHighlighter = useContext(HighlighterContext);
     const [fileCache] = useState(() => new FileReadCache());
 
-    const fetchFileFromServer = useCallback(async (filePath: string): Promise<string | null> => {
-        try {
-            const res = await fetch(
-                `${getApiBase()}/api/sessions/${sessionId}/file?path=${encodeURIComponent(filePath)}`
-            );
-            if (!res.ok) return null;
-            const data = await res.json();
-            return data.content ?? null;
-        } catch {
-            return null;
-        }
-    }, [sessionId]);
-
-    // Cache-aware requestFile: check cache first, then fetch + cache
-    const requestFile = useCallback(async (filePath: string): Promise<string | null> => {
-        const cached = fileCache.getContent(filePath);
-        if (cached != null) return cached;
-        const content = await fetchFileFromServer(filePath);
-        if (content != null) fileCache.setContent(filePath, content);
-        return content;
-    }, [fileCache, fetchFileFromServer]);
-
-    // Batch file fetch for preloading — sends one POST with all paths
+    // Unified batch file fetch — single endpoint for all file reads
     const fetchBatch = useCallback(async (paths: string[], withDiff = false): Promise<Record<string, BatchFileResult>> => {
         try {
             const res = await fetch(
@@ -192,6 +170,16 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
             return {};
         }
     }, [sessionId]);
+
+    // Cache-aware requestFile: cache → batch fallback
+    const requestFile = useCallback(async (filePath: string): Promise<string | null> => {
+        const cached = fileCache.getContent(filePath);
+        if (cached != null) return cached;
+        const results = await fetchBatch([filePath]);
+        const content = results[filePath]?.content ?? null;
+        if (content != null) fileCache.setContent(filePath, content);
+        return content;
+    }, [fileCache, fetchBatch]);
 
     // Preload engine: preloads visible files from expanded dirs
     const preloadRef = useRef<PreloadEngine | null>(null);
@@ -226,22 +214,20 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
         return unsub;
     }, [fileTree, fileCache]);
 
-    // Cache-aware requestDiff: check cache first, then fetch from server
+    // Cache-aware requestDiff: cache → batch fallback
     const requestDiff = useCallback(async (filePath: string): Promise<{ added: number[]; removed: number[] }> => {
         const cached = fileCache.getDiff(filePath);
         if (cached) return cached;
-        try {
-            const res = await fetch(
-                `${getApiBase()}/api/sessions/${sessionId}/diff?path=${encodeURIComponent(filePath)}`
-            );
-            if (!res.ok) return { added: [], removed: [] };
-            const diff = await res.json();
-            fileCache.setDiff(filePath, diff);
-            return diff;
-        } catch {
-            return { added: [], removed: [] };
+        const results = await fetchBatch([filePath], true);
+        const diff = results[filePath]?.diff ?? { added: [], removed: [] };
+        fileCache.setDiff(filePath, diff);
+        // Also cache content if we got it
+        const content = results[filePath]?.content;
+        if (content != null && !fileCache.hasContent(filePath)) {
+            fileCache.setContent(filePath, content);
         }
-    }, [sessionId, fileCache]);
+        return diff;
+    }, [fileCache, fetchBatch]);
 
     const [poppedOut, setPoppedOut] = useState(() => {
         try {

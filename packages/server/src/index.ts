@@ -1608,38 +1608,6 @@ function createMainServer(cfg: ServerConfig): http.Server {
         return
       }
 
-      // GET /api/sessions/:id/file?path=xxx — read single file content
-      if (sub === "file" && req.method === "GET") {
-        const filePath = url.searchParams.get("path") || ""
-        const dir = session.directory
-        if (!dir) {
-          res.writeHead(200, { "Content-Type": "application/json" })
-          res.end(JSON.stringify({ content: null, error: "No directory" }))
-          return
-        }
-        const target = path.resolve(dir, filePath)
-        if (!target.startsWith(path.resolve(dir))) {
-          res.writeHead(403, { "Content-Type": "application/json" })
-          res.end(JSON.stringify({ error: "Forbidden" }))
-          return
-        }
-        try {
-          const stat = await fsPromises.stat(target)
-          if (stat.size > 512 * 1024) {
-            res.writeHead(200, { "Content-Type": "application/json" })
-            res.end(JSON.stringify({ content: null, error: "File too large" }))
-            return
-          }
-          const content = await fsPromises.readFile(target, "utf-8")
-          res.writeHead(200, { "Content-Type": "application/json" })
-          res.end(JSON.stringify({ content }))
-        } catch {
-          res.writeHead(200, { "Content-Type": "application/json" })
-          res.end(JSON.stringify({ content: null, error: "读取失败" }))
-        }
-        return
-      }
-
       // POST /api/sessions/:id/files — batch read multiple files (optionally with diff)
       if (sub === "files" && req.method === "POST") {
         const dir = session.directory
@@ -1697,26 +1665,6 @@ function createMainServer(cfg: ServerConfig): http.Server {
 
         res.writeHead(200, { "Content-Type": "application/json" })
         res.end(JSON.stringify({ files: results }))
-        return
-      }
-
-      // GET /api/sessions/:id/diff?path=xxx — changed line numbers for a file
-      if (sub === "diff") {
-        const filePath = url.searchParams.get("path") || ""
-        const dir = session.directory
-        if (!dir) {
-          res.writeHead(200, { "Content-Type": "application/json" })
-          res.end(JSON.stringify({ added: [], removed: [] }))
-          return
-        }
-        try {
-          const diff = await computeFileDiff(dir, filePath)
-          res.writeHead(200, { "Content-Type": "application/json" })
-          res.end(JSON.stringify(diff))
-        } catch {
-          res.writeHead(200, { "Content-Type": "application/json" })
-          res.end(JSON.stringify({ added: [], removed: [] }))
-        }
         return
       }
 
