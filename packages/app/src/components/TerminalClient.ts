@@ -65,6 +65,8 @@ export class TerminalClient {
 
     private resizeObserver: ResizeObserver;
     private touchStartY: number | null = null;
+    private lastSentCols = 0;
+    private lastSentRows = 0;
 
     onAliveChange: ((alive: AliveState) => void) | null = null;
 
@@ -129,12 +131,12 @@ export class TerminalClient {
     // ── WebSocket ────────────────────────────────────────────────────────
 
     private sendResize(): void {
+        const { cols, rows } = this.term;
+        if (cols === this.lastSentCols && rows === this.lastSentRows) return;
+        this.lastSentCols = cols;
+        this.lastSentRows = rows;
         if (this.ws?.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({
-                type: "terminal.resize",
-                cols: this.term.cols,
-                rows: this.term.rows,
-            }));
+            this.ws.send(JSON.stringify({ type: "terminal.resize", cols, rows }));
         }
     }
 
