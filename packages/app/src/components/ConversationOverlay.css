@@ -127,6 +127,14 @@
     gap: 4px;
     -webkit-user-select: none;
     user-select: none;
+    position: relative;
+}
+
+.conv-loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--color-surface);
+    z-index: 5;
 }
 
 .conversation-messages * {

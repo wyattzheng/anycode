@@ -187,6 +187,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, co
     const [localBusy, setLocalBusy] = useState(false);
     // Server state is ground truth; local state is optimistic UI
     const busy = chatBusyProp ?? localBusy;
+    const [historyLoading, setHistoryLoading] = useState(true);
     const [inputNarrow, setInputNarrow] = useState(true);
     const inputBarRef = useRef<HTMLDivElement>(null);
     const textInputRef = useRef<HTMLInputElement>(null);
@@ -352,7 +353,11 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, co
     useEffect(() => {
         setMessages([]);
         setLocalBusy(false);
-        fetchHistory();
+        setHistoryLoading(true);
+        fetchHistory().finally(() => {
+            // Delay clearing loading so React can render messages + scroll to bottom first
+            requestAnimationFrame(() => setHistoryLoading(false));
+        });
     }, [fetchHistory, connectGeneration]);
 
     // Smart auto-scroll: locked (follow new messages) / unlocked (user scrolled up)
@@ -751,7 +756,10 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, co
     const renderMessages = () => (
         <>
             <div className="conversation-messages" ref={msgsRef} onClick={handleMessagesClick}>
-                {messages.length === 0 && (
+                {historyLoading && (
+                    <div className="conv-loading-overlay" />
+                )}
+                {messages.length === 0 && !historyLoading && (
                     <div className="co-text" style={{ color: "var(--color-text-dim)" }}>
                         你好！告诉我你想做什么
                     </div>
