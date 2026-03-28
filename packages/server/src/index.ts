@@ -779,6 +779,7 @@ class TerminalStateModel {
 
   /** Feed output to headless terminal and broadcast to clients */
   pushOutput(data: string): void {
+    console.log(`[term-debug] pushOutput: ${data.length} bytes`)
     this.headless.write(data)
     this.notify({ type: "terminal.output", data })
   }
@@ -791,6 +792,7 @@ class TerminalStateModel {
   /** Resize the headless terminal to match PTY */
   resize(cols: number, rows: number): void {
     if (cols > 0 && rows > 0) {
+      console.log(`[term-debug] headless resize: ${cols}x${rows}`)
       this.headless.resize(cols, rows)
     }
   }
@@ -814,8 +816,8 @@ class TerminalStateModel {
   /**
    * Register a new WebSocket client.
    *  1. Send current state (ready / none)
-   *  2. Send serialized snapshot from headless terminal
-   *  3. Add to live broadcast set AFTER sync
+   *  2. Join live broadcast immediately
+   *  3. Flush + serialize + send snapshot
    */
   handleClient(ws: WS): void {
     // 1. Current state
@@ -824,14 +826,14 @@ class TerminalStateModel {
     // 2. Join live broadcast immediately (no data gap)
     this.wsClients.add(ws)
 
-    // 3. Flush pending writes → serialize → send snapshot
-    //    Client does term.reset() + write, overwriting any interim broadcast
-    this.headless.write("", () => {
+    // 3. Serialize snapshot on next tick (let pending writes flush)
+    setTimeout(() => {
       const snapshot = this.serializer.serialize()
+      console.log(`[term-debug] sync snapshot length: ${snapshot?.length ?? 0}`)
       if (snapshot) {
         ws.send(JSON.stringify({ type: "terminal.sync", data: snapshot }))
       }
-    })
+    }, 50)
 
     // 4. Messages
     ws.on("message", (raw: Buffer | string) => {
