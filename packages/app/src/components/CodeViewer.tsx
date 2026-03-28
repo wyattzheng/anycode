@@ -2,18 +2,55 @@ import { useEffect, useLayoutEffect, useState, useMemo, useRef, useCallback, mem
 import { createHighlighter, type Highlighter } from "shiki";
 import "./CodeViewer.css";
 
-// Shared singleton highlighter — lazily created, reused across all instances
-let highlighterPromise: Promise<Highlighter> | null = null;
-const loadedLangs = new Set<string>();
+class CodeHighlighter {
+    instance: Highlighter | null = null;
+    private _ready = false;
+    private _listeners: (() => void)[] = [];
 
-function getHighlighter(): Promise<Highlighter> {
-    if (!highlighterPromise) {
-        highlighterPromise = createHighlighter({
+    async init() {
+        if (this.instance) return;
+        this.instance = await createHighlighter({
             themes: ["github-dark"],
-            langs: ["text"],
+            langs: [
+                "text", "typescript", "tsx", "javascript", "jsx",
+                "json", "markdown", "css", "scss", "html", "xml",
+                "python", "ruby", "rust", "go", "java", "kotlin", "swift",
+                "c", "cpp", "bash", "sql", "yaml", "toml",
+                "dockerfile", "makefile", "vue", "svelte",
+                "graphql", "lua", "php", "r",
+            ],
         });
+        this._ready = true;
+        this._listeners.forEach(fn => fn());
+        this._listeners = [];
     }
-    return highlighterPromise;
+
+    get ready() { return this._ready; }
+
+    /** Subscribe to ready event. Returns unsubscribe. */
+    onReady(fn: () => void): () => void {
+        if (this._ready) { fn(); return () => {}; }
+        this._listeners.push(fn);
+        return () => { this._listeners = this._listeners.filter(f => f !== fn); };
+    }
+
+    highlight(code: string, filePath: string): string {
+        if (!this.instance) {
+            const escaped = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            const lines = escaped.split("\n").map(l => `<span class="line">${l}</span>`).join("\n");
+            return `<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8"><code>${lines}</code></pre>`;
+        }
+        const lang = extToLang(filePath);
+        const effectiveLang = this.instance.getLoadedLanguages().includes(lang) ? lang : "text";
+        return this.instance.codeToHtml(code, { lang: effectiveLang, theme: "github-dark" });
+    }
+}
+
+export const highlighter = new CodeHighlighter();
+
+/** Call this once at app startup */
+export function initHighlighter() {
+    highlighter.init();
 }
 
 /** Map file extension to shiki language id */
@@ -88,8 +125,7 @@ export interface CodeViewerProps {
 }
 
 export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines, removedLines, onSelectionChange, scrollToLine, wordWrap }: CodeViewerProps) {
-    const [rawHtml, setRawHtml] = useState<string | null>(null);
-    const [error, setError] = useState(false);
+    const [ready, setReady] = useState(highlighter.ready);
     const [selectedLines, setSelectedLines] = useState<Set<number>>(new Set());
     const containerRef = useRef<HTMLDivElement>(null);
     const wrapperRef = useRef<HTMLDivElement>(null);
@@ -113,25 +149,14 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
     const dragRangeRef = useRef<{ start: number; end: number } | null>(null);
     const handleAtTopRef = useRef(false);
 
-    // Shiki highlight
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                const hl = await getHighlighter();
-                const lang = extToLang(filePath);
-                if (lang !== "text" && !loadedLangs.has(lang)) {
-                    try { await hl.loadLanguage(lang as any); loadedLangs.add(lang); } catch { /* text fallback */ }
-                }
-                const effectiveLang = loadedLangs.has(lang) ? lang : "text";
-                const result = hl.codeToHtml(code, { lang: effectiveLang, theme: "github-dark" });
-                if (!cancelled) setRawHtml(result);
-            } catch {
-                if (!cancelled) setError(true);
-            }
-        })();
-        return () => { cancelled = true; };
-    }, [code, filePath]);
+    // Subscribe to highlighter ready
+    useEffect(() => highlighter.onReady(() => setReady(true)), []);
+
+    // Synchronous highlight
+    const rawHtml = useMemo(() => {
+        if (!ready) return null;
+        return highlighter.highlight(code, filePath);
+    }, [code, filePath, ready]);
 
     // Clear selection when file changes
     useEffect(() => {
@@ -464,12 +489,8 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
         };
     }, [selectedLines, rawHtml]);
 
-    if (error) {
+    if (!rawHtml) {
         return <pre className="code-viewer-fallback">{code}</pre>;
-    }
-
-    if (!finalHtml) {
-        return <div className="code-viewer-loading">...</div>;
     }
 
     // Hide wrapper until scroll is in position — prevents any visible jump
@@ -481,7 +502,7 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
             <div
                 ref={containerRef}
                 className={`code-viewer${wordWrap ? ' code-viewer--wrap' : ''}`}
-                dangerouslySetInnerHTML={{ __html: finalHtml }}
+                dangerouslySetInnerHTML={{ __html: finalHtml! }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
