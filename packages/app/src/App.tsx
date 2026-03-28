@@ -6,7 +6,7 @@ import { MainView } from "./components/MainView";
 import { ConversationOverlay } from "./components/ConversationOverlay";
 import { WindowSwitcher } from "./components/WindowSwitcher";
 import { createCodeHighlighter, HighlighterContext } from "./components/CodeViewer";
-import { FileTreeModel, FileTreeContext } from "./fsEvents";
+import { FileTreeModel, FileTreeContext } from "./fileTree";
 import { FileReadCache, FileReadCacheContext, PreloadEngine } from "./fileReadCache";
 import type { WindowInfo } from "./components/WindowSwitcher";
 

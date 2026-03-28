@@ -8,7 +8,7 @@
  */
 
 import type { CodeHighlighter } from "./components/CodeViewer";
-import type { FileTreeModel } from "./fsEvents";
+import type { FileTreeModel } from "./fileTree";
 import { createContext, useContext } from "react";
 
 // ── FileReadCache ────────────────────────────────────────────────────────────
