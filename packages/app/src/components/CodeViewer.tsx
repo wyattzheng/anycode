@@ -6,6 +6,8 @@ export interface CodeHighlighter {
     ready: boolean;
     onReady(fn: () => void): () => void;
     highlight(code: string, filePath: string): string;
+    /** Plain-text fallback (no syntax colors, same HTML structure) */
+    plainHtml(code: string): string;
 }
 
 export function createCodeHighlighter(): CodeHighlighter {
@@ -31,6 +33,12 @@ export function createCodeHighlighter(): CodeHighlighter {
         listeners = [];
     });
 
+    function makePlainHtml(code: string): string {
+        const escaped = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const lines = escaped.split("\n").map(l => `<span class="line">${l}</span>`).join("\n");
+        return `<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8"><code>${lines}</code></pre>`;
+    }
+
     return {
         get ready() { return ready; },
         onReady(fn: () => void) {
@@ -38,12 +46,9 @@ export function createCodeHighlighter(): CodeHighlighter {
             listeners.push(fn);
             return () => { listeners = listeners.filter(f => f !== fn); };
         },
+        plainHtml: makePlainHtml,
         highlight(code: string, filePath: string): string {
-            if (!instance) {
-                const escaped = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-                const lines = escaped.split("\n").map(l => `<span class="line">${l}</span>`).join("\n");
-                return `<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8"><code>${lines}</code></pre>`;
-            }
+            if (!instance) return makePlainHtml(code);
             const lang = extToLang(filePath);
             const effectiveLang = instance.getLoadedLanguages().includes(lang) ? lang : "text";
             return instance.codeToHtml(code, { lang: effectiveLang, theme: "github-dark" });
@@ -153,10 +158,21 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
     // Subscribe to highlighter ready
     useEffect(() => hl?.onReady(() => setReady(true)), [hl]);
 
-    // Synchronous highlight
-    const rawHtml = useMemo(() => {
-        if (!ready || !hl) return null;
-        return hl.highlight(code, filePath);
+    // Immediate plain-text HTML (no blocking)
+    const plainHtml = useMemo(() => hl?.plainHtml(code) ?? null, [code, hl]);
+
+    // Async syntax highlight: show plain text first, then swap in highlighted version
+    const [rawHtml, setRawHtml] = useState<string | null>(null);
+    useEffect(() => {
+        if (!ready || !hl) { setRawHtml(null); return; }
+        // Reset to plain on file change so we don't show stale highlights
+        setRawHtml(null);
+        // Schedule highlighting off the critical path
+        const id = setTimeout(() => {
+            const highlighted = hl.highlight(code, filePath);
+            setRawHtml(highlighted);
+        }, 0);
+        return () => clearTimeout(id);
     }, [code, filePath, ready, hl]);
 
     // Clear selection when file changes
@@ -490,7 +506,9 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
         };
     }, [selectedLines, rawHtml]);
 
-    if (!rawHtml) {
+    // Use highlighted HTML if available, otherwise plain text
+    const displayHtml = rawHtml ?? plainHtml;
+    if (!displayHtml) {
         return <pre className="code-viewer-fallback">{code}</pre>;
     }
 
@@ -503,7 +521,7 @@ export const CodeViewer = memo(function CodeViewer({ code, filePath, addedLines,
             <div
                 ref={containerRef}
                 className={`code-viewer${wordWrap ? ' code-viewer--wrap' : ''}`}
-                dangerouslySetInnerHTML={{ __html: finalHtml! }}
+                dangerouslySetInnerHTML={{ __html: finalHtml ?? displayHtml }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
