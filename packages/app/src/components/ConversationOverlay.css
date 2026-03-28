@@ -117,6 +117,10 @@
     margin-left: auto;
 }
 
+.ctx-ring ~ .co-float-toggle {
+    margin-left: 0;
+}
+
 .co-float-toggle:hover {
     opacity: 1;
 }

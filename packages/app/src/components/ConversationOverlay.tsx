@@ -11,7 +11,7 @@ function ContextRing({ contextUsed, compactionThreshold }: { contextUsed: number
     const pctText = Math.round(pct * 100);
     const r = 7, stroke = 2, size = (r + stroke) * 2;
     const circ = 2 * Math.PI * r;
-    const color = pct < 0.6 ? 'rgba(255,255,255,0.5)' : pct < 0.85 ? '#e0a030' : 'var(--color-danger)';
+    const color = pct < 0.6 ? 'rgba(255,255,255,0.5)' : '#e0a030';
     return (
         <span className="ctx-ring" title={`上下文 ${pctText}%（${contextUsed.toLocaleString()} / ${compactionThreshold.toLocaleString()} tokens）`}>
             <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
