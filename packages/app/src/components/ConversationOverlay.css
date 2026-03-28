@@ -69,6 +69,19 @@
     border-left-color: var(--color-accent);
 }
 
+.ctx-ring {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: auto;
+}
+
+.ctx-ring-text {
+    font-size: 9px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
 .conversation-sidebar:has(.co-sidebar-border.dragging) {
     box-shadow: inset 2px 0 0 var(--color-accent);
 }

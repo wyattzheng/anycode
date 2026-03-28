@@ -54,6 +54,8 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
     const [previewPort, setPreviewPort] = useState<number | null>(null);
     const [previewNotify, setPreviewNotify] = useState(false);
     const [chatBusy, setChatBusy] = useState(false);
+    const [contextUsed, setContextUsed] = useState(0);
+    const [compactionThreshold, setCompactionThreshold] = useState(0);
     const chatHandlerRef = useRef<((data: any) => void) | undefined>(undefined);
     const [connectGeneration, setConnectGeneration] = useState(0);
     const channelRef = useRef<Channel | null>(null);
@@ -89,6 +91,8 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                         if (data.previewPort != null) setPreviewNotify(true);
                     }
                     if (data.chatBusy !== undefined) setChatBusy(data.chatBusy);
+                    if (data.contextUsed !== undefined) setContextUsed(data.contextUsed);
+                    if (data.compactionThreshold !== undefined) setCompactionThreshold(data.compactionThreshold);
                 } else if (data.type === "windows.updated") {
                     onWindowsChanged();
                 } else if (data.type?.startsWith("chat.")) {
@@ -221,7 +225,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                         </div>
                     )}
                 </div>
-                <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} connectGeneration={connectGeneration} chatBusy={chatBusy} sendMessage={sendMessage} mode={convMode as any} onPopOut={handlePopOut} onPopIn={handlePopIn} />
+                <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} connectGeneration={connectGeneration} chatBusy={chatBusy} sendMessage={sendMessage} mode={convMode as any} onPopOut={handlePopOut} onPopIn={handlePopIn} contextUsed={contextUsed} compactionThreshold={compactionThreshold} />
             </div>
             <TabBar activeTab={activeTab} onTabChange={(tab) => { if (tab === 'preview') setPreviewNotify(false); setActiveTab(tab); }} changeCount={changes.length} chatBusy={chatBusy} hideChatTab={poppedOut} previewNotify={previewNotify} />
         </div>

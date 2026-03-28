@@ -611,6 +611,10 @@ async function handleClientMessage(sessionId: string, client: ClientLike, msg: a
 
     sessionChatAbort.delete(sessionId)
     session.state.setChatBusy(false)
+    // Update context usage after chat turn
+    session.chatAgent.getContext().then((ctx: any) => {
+      if (ctx) session.state.setContext(ctx.contextUsed ?? 0, ctx.compactionThreshold ?? 0)
+    }).catch(() => {})
     broadcast(sessionId, { type: "chat.done" })
   }
 
@@ -660,6 +664,8 @@ export class SessionStateModel {
   changes: any[] = []
   previewPort: number | null = null
   chatBusy: boolean = false
+  contextUsed: number = 0
+  compactionThreshold: number = 0
 
   private _isComputing = false
   private _needsCompute = false
@@ -729,6 +735,14 @@ export class SessionStateModel {
     }
   }
 
+  setContext(used: number, threshold: number) {
+    if (this.contextUsed !== used || this.compactionThreshold !== threshold) {
+      this.contextUsed = used
+      this.compactionThreshold = threshold
+      this.notify()
+    }
+  }
+
   toJSON() {
     return {
       type: "state",
@@ -737,6 +751,8 @@ export class SessionStateModel {
       changes: this.changes,
       previewPort: this.previewPort,
       chatBusy: this.chatBusy,
+      contextUsed: this.contextUsed,
+      compactionThreshold: this.compactionThreshold,
     }
   }
 

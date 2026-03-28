@@ -5,6 +5,25 @@ import { MicIcon, KeyboardIcon, SendIcon, CloseIcon, ChatBubbleIcon, StopIcon, P
 import { getApiBase } from "../serverUrl";
 import "./ConversationOverlay.css";
 
+// ── Context Ring ──────────────────────────────────────────────────────────────
+function ContextRing({ contextUsed, compactionThreshold }: { contextUsed: number; compactionThreshold: number }) {
+    const pct = compactionThreshold > 0 ? Math.min(contextUsed / compactionThreshold, 1) : 0;
+    const pctText = Math.round(pct * 100);
+    const r = 7, stroke = 2, size = (r + stroke) * 2;
+    const circ = 2 * Math.PI * r;
+    const color = pct < 0.6 ? 'var(--color-accent)' : pct < 0.85 ? '#e0a030' : 'var(--color-danger)';
+    return (
+        <span className="ctx-ring" title={`上下文 ${pctText}%（${contextUsed.toLocaleString()} / ${compactionThreshold.toLocaleString()} tokens）`}>
+            <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
+                <circle cx={r + stroke} cy={r + stroke} r={r} fill="none" stroke="var(--color-border)" strokeWidth={stroke} />
+                <circle cx={r + stroke} cy={r + stroke} r={r} fill="none" stroke={color} strokeWidth={stroke}
+                    strokeDasharray={`${circ * pct} ${circ * (1 - pct)}`} strokeLinecap="round" />
+            </svg>
+            <span className="ctx-ring-text" style={{ color }}>{pctText}%</span>
+        </span>
+    );
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type ThinkingBlock = { kind: "thinking"; content: string; duration?: number };
@@ -152,6 +171,10 @@ interface ConversationOverlayProps {
     onPopOut?: () => void;
     /** Called when user clicks pop-in from overlay mode */
     onPopIn?: () => void;
+    /** Context window usage (tokens used) */
+    contextUsed?: number;
+    /** Context window compaction threshold (tokens) */
+    compactionThreshold?: number;
 }
 
 const STORAGE_KEY_POS = "anycode-conv-pos";
@@ -179,7 +202,7 @@ function defaultSidebarWidth() {
     return 150;
 }
 
-export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, connectGeneration, chatBusy: chatBusyProp, sendMessage, mode = "full", onPopOut, onPopIn }: ConversationOverlayProps) {
+export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, connectGeneration, chatBusy: chatBusyProp, sendMessage, mode = "full", onPopOut, onPopIn, contextUsed = 0, compactionThreshold = 0 }: ConversationOverlayProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [recording, setRecording] = useState(false);
@@ -812,6 +835,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, co
                 {isOverlay && floating && <div className="drag-grip" />}
                 <div className="conversation-header-content">
                     <ChatBubbleIcon /> 对话
+                    {isFull && <ContextRing contextUsed={contextUsed} compactionThreshold={compactionThreshold} />}
                     {isFull && onPopOut && (
                         <button className="co-float-toggle" onClick={onPopOut} title="弹出为侧边栏">
                             <PinIcon />
