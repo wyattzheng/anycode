@@ -27,13 +27,8 @@ export class NodeSearchProvider implements SearchProvider {
                 args.push(`--include=${options.include}`)
             }
 
-            // Exclude common non-source directories (consistent with ls tool IGNORE_PATTERNS)
-            for (const dir of [
-                ".git", "node_modules", "__pycache__", "dist", "build", "target",
-                "vendor", "bin", "obj", ".idea", ".vscode", ".zig-cache", "zig-out",
-                ".coverage", "coverage", "tmp", "temp", ".cache", "cache", "logs",
-                ".venv", "venv", "env",
-            ]) {
+            // Exclude VCS directories only (consistent with Claude Code behavior)
+            for (const dir of [".git", ".svn", ".hg", ".bzr"]) {
                 args.push(`--exclude-dir=${dir}`)
             }
 
