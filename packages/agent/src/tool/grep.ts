@@ -1,5 +1,4 @@
 import z from "zod"
-import { text } from "node:stream/consumers"
 import { Tool } from "./tool"
 
 import * as path from "../util/path"
