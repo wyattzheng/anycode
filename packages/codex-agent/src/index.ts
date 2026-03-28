@@ -379,25 +379,27 @@ export class CodexAgent implements IChatAgent {
           }
           break
         }
-        case "terminal_write": {
+        case "terminal_write":
+        case "terminal": {
           const terminal = this.config.terminal
           if (!terminal) { result = { output: "Terminal not available." }; break }
-          if (args.type === "create") {
-            terminal.create()
-            result = { output: "Terminal created." }
-          } else if (args.type === "destroy") {
-            terminal.destroy()
-            result = { output: "Terminal destroyed." }
-          } else {
-            if (!args.content) { result = { output: "content is required for input" }; break }
-            if (!terminal.exists()) { result = { output: 'No terminal exists. Use type "create" first.' }; break }
+          terminal.ensureRunning(args.reset)
+          if (args.content) {
             const data = (args.pressEnter ?? true) ? args.content + "\n" : args.content
             terminal.write(data)
-            result = { output: "Input sent to terminal." }
           }
+          let output = args.content ? "Input sent to terminal." : "(no input sent)"
+          const waitMs = Math.min(args.waitMs ?? 0, 5000)
+          if (waitMs > 0) {
+            await new Promise(r => setTimeout(r, waitMs))
+            const content = terminal.read(args.readLines ?? 50)
+            output = content || "(terminal buffer is empty)"
+          }
+          result = { output }
           break
         }
         case "terminal_read": {
+          // Legacy: still handle for backward compat
           const terminal = this.config.terminal
           if (!terminal) { result = { output: "Terminal not available." }; break }
           if (!terminal.exists()) { result = { output: "No terminal exists." }; break }

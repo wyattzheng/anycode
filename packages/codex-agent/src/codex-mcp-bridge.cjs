@@ -5,10 +5,9 @@
  * Spawned by the Codex CLI as a stdio MCP server.
  * Communicates with the parent AnyCode server via TCP (port from ANYCODE_MCP_PORT env).
  *
- * Exposes 4 custom tools matching the AnyCode extraTools:
+ * Exposes 3 custom tools matching the AnyCode extraTools:
  *   - set_user_watch_project
- *   - terminal_write
- *   - terminal_read
+ *   - terminal
  *   - set_preview_url
  *
  * Implements MCP protocol (JSON-RPC 2.0 over stdio) directly, no external deps.
@@ -30,26 +29,16 @@ const TOOLS = [
     },
   },
   {
-    name: "terminal_write",
-    description: "Write input to a persistent shared terminal visible to the user.\n\nUse for long-running processes (dev servers). For simple commands, prefer the built-in shell.\n\n- \"create\": Spawn a new terminal\n- \"destroy\": Kill the terminal\n- \"input\": Send text (requires content)",
+    name: "terminal",
+    description: "Send input to a persistent shared terminal visible to the user, optionally reading output.\n\nUse for long-running processes (dev servers). For simple commands, prefer the built-in shell.\n\nAuto-creates the terminal on first use. Set reset=true if the terminal is stuck.",
     inputSchema: {
       type: "object",
       properties: {
-        type: { type: "string", enum: ["input", "create", "destroy"] },
-        content: { type: "string", description: "Text to send. Required for type=input." },
+        content: { type: "string", description: "Text to send. Omit to just read output." },
         pressEnter: { type: "boolean", description: "Press Enter after input. Default: true." },
-      },
-      required: ["type"],
-    },
-  },
-  {
-    name: "terminal_read",
-    description: "Read terminal output from the bottom of the buffer.\n\nReturns the last N lines from the shared user terminal.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        length: { type: "number", description: "Lines to read from bottom." },
-        waitBefore: { type: "number", description: "Ms to wait before reading. Max 5000." },
+        reset: { type: "boolean", description: "Destroy and recreate terminal before sending. Default: false." },
+        waitMs: { type: "number", description: "Ms to wait after sending before reading output. Max 5000. If 0 or omitted, no output is read." },
+        readLines: { type: "number", description: "Lines to read from bottom after waiting. Default: 50." },
       },
     },
   },
