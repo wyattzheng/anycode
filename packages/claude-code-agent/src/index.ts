@@ -153,10 +153,15 @@ export class ClaudeCodeAgent implements IChatAgent {
             // Lightweight context proxy for Tool.execute()
             const makeCtx = () => ({
               emit: (event: string, data?: any) => self._emitEvent(event, data),
-              terminal: self.config.terminal || { create() {}, destroy() {}, exists: () => false, write() {}, read: () => "" },
-              preview: self.config.preview || { setPreviewTarget() {} },
-              fs: { stat: async (p: string) => { try { const s = (await import("fs")).statSync(p); return { isDirectory: s.isDirectory(), isFile: s.isFile() } } catch { return null } } },
+              terminal: self.config.terminal,
+              preview: self.config.preview,
               worktree: "",
+              fs: {
+                async stat(p: string) {
+                  try { const s = (await import("fs")).statSync(p); return { isDirectory: s.isDirectory(), isFile: s.isFile() } }
+                  catch { return null }
+                }
+              },
             })
 
             const sdkTools: any[] = []

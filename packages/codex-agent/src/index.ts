@@ -356,70 +356,30 @@ export class CodexAgent implements IChatAgent {
   /** Handle a tool call from the MCP bridge */
   private async _handleToolCall(id: number, toolName: string, args: any, socket: any): Promise<void> {
     try {
-      let result: any
-      switch (toolName) {
-        case "set_user_watch_project": {
-          const dir = args.directory
-          if (dir === null) {
-            this._emitEvent("directory.set", { directory: "" })
-            result = { output: "Working directory cleared." }
-          } else {
-            try {
-              const s = statSync(dir)
-              if (!s.isDirectory()) {
-                result = { output: `"${dir}" is not a directory.` }
-                break
-              }
-            } catch {
-              result = { output: `Directory "${dir}" does not exist.` }
-              break
-            }
-            this._emitEvent("directory.set", { directory: dir })
-            result = { output: `Working directory set to "${dir}".` }
-          }
-          break
-        }
-        case "terminal_write":
-        case "terminal": {
-          const terminal = this.config.terminal
-          if (!terminal) { result = { output: "Terminal not available." }; break }
-          terminal.ensureRunning(args.reset)
-          if (args.content) {
-            const data = (args.pressEnter ?? true) ? args.content + "\n" : args.content
-            terminal.write(data)
-          }
-          let output = args.content ? "Input sent to terminal." : "(no input sent)"
-          const waitMs = Math.min(args.waitMs ?? 0, 5000)
-          if (waitMs > 0) {
-            await new Promise(r => setTimeout(r, waitMs))
-            const content = terminal.read(args.readLines ?? 50)
-            output = content || "(terminal buffer is empty)"
-          }
-          result = { output }
-          break
-        }
-        case "terminal_read": {
-          // Legacy: still handle for backward compat
-          const terminal = this.config.terminal
-          if (!terminal) { result = { output: "Terminal not available." }; break }
-          if (!terminal.exists()) { result = { output: "No terminal exists." }; break }
-          const waitMs = Math.min(args.waitBefore ?? 0, 5000)
-          if (waitMs > 0) await new Promise(r => setTimeout(r, waitMs))
-          const output = terminal.read(args.length ?? 50)
-          result = { output: output || "(no output)" }
-          break
-        }
-        case "set_preview_url": {
-          const preview = this.config.preview
-          if (!preview) { result = { output: "Preview not available." }; break }
-          preview.setPreviewTarget(args.url)
-          result = { output: `Preview URL set to ${args.url}` }
-          break
-        }
-        default:
-          result = { output: `Unknown tool: ${toolName}` }
+      const tools: any[] = this.config.codeAgentOptions?.tools ?? []
+      const toolDef = tools.find((t: any) => t.id === toolName)
+
+      if (!toolDef) {
+        socket.write(JSON.stringify({ type: "tool_result", id, result: { output: `Unknown tool: ${toolName}` } }) + "\n")
+        return
       }
-      socket.write(JSON.stringify({ type: "tool_result", id, result }) + "\n")
+
+      const self = this
+      const info = await toolDef.init()
+      const ctx = {
+        emit: (event: string, data?: any) => self._emitEvent(event, data),
+        terminal: self.config.terminal,
+        preview: self.config.preview,
+        worktree: "",
+        fs: {
+          async stat(p: string) {
+            try { const s = statSync(p); return { isDirectory: s.isDirectory(), isFile: s.isFile() } }
+            catch { return null }
+          }
+        },
+      }
+      const result = await info.execute(args, ctx as any)
+      socket.write(JSON.stringify({ type: "tool_result", id, result: { output: result.output } }) + "\n")
     } catch (err: any) {
       socket.write(JSON.stringify({ type: "tool_result", id, error: err?.message ?? String(err) }) + "\n")
     }

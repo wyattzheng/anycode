@@ -974,12 +974,12 @@ class NodeTerminalProvider implements TerminalProvider {
   }
 
   write(data: string): void {
-    if (!this.proc) throw new Error("No terminal exists.")
-    this.proc.write(data)
+    this.ensureRunning()
+    this.proc!.write(data)
   }
 
   read(lineCount: number): string {
-    if (!this.proc) throw new Error("No terminal exists.")
+    if (!this.proc) return "(no terminal)"
     const allLines = this.currentLine
       ? [...this.lines, this.currentLine]
       : [...this.lines]
