@@ -13,7 +13,7 @@ Returns the last N lines from the shared user terminal. Use this after sending a
 - Use terminal_read when reading output from a persistent terminal session (e.g. a dev server for preview) started via terminal_write.
 
 ## Usage notes
-- The terminal must exist (created via terminal_write type="create") before reading.
+- If no terminal exists, this tool returns an error. Use terminal_write first to create one.
 - If output looks truncated or the command hasn't finished, just call terminal_read again — the terminal is persistent.
 - Lines are returned as plain text, one per line.
 `
@@ -38,7 +38,7 @@ export const TerminalReadTool = Tool.define("terminal_read", async () => {
       const terminal = ctx.terminal
 
       if (!terminal.exists()) {
-        throw new Error("No terminal exists. Use terminal_write with type \"create\" first.")
+        throw new Error("No terminal exists. Use terminal_write first.")
       }
 
       const MAX_WAIT = 5000

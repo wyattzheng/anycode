@@ -367,7 +367,7 @@ function deleteWindow(sessionId: string): boolean {
   }
   const tp = terminalProviders.get(sessionId)
   if (tp && tp.exists()) {
-    try { tp.destroy() } catch { /* ignore */ }
+    try { tp.teardown() } catch { /* ignore */ }
   }
   terminalProviders.delete(sessionId)
 
@@ -879,8 +879,13 @@ class NodeTerminalProvider implements TerminalProvider {
 
   exists(): boolean { return this.proc !== null }
 
-  create(): void {
-    if (this.proc) throw new Error("Terminal already exists. Destroy it first.")
+  ensureRunning(reset?: boolean): void {
+    if (this.proc && !reset) return  // already running, nothing to do
+    if (this.proc) this.teardown()   // reset: tear down first
+    this.spawn()
+  }
+
+  spawn(): void {
     const session = getSession(this.sessionId)
     const cwd = session?.directory || os.homedir()
     const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "/bin/bash")
@@ -929,8 +934,8 @@ class NodeTerminalProvider implements TerminalProvider {
     this.model.setAlive(true)
   }
 
-  destroy(): void {
-    if (!this.proc) throw new Error("No terminal exists.")
+  teardown(): void {
+    if (!this.proc) return
     console.log(`🖥  Terminal destroyed for session ${this.sessionId}`)
     this.proc.kill()
     this.proc = null

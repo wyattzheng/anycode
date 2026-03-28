@@ -33,10 +33,8 @@ export interface PreviewProvider {
 
 /** Abstraction over the shared user terminal (PTY) for agent tools */
 export interface TerminalProvider {
-  /** Create a new terminal. Throws if one already exists. */
-  create(): void
-  /** Destroy the current terminal. Throws if none exists. */
-  destroy(): void
+  /** Ensure a terminal is running. If none exists, create one. If reset=true, destroy and recreate. */
+  ensureRunning(reset?: boolean): void
   /** Write input to the terminal. Throws if no terminal exists. */
   write(data: string): void
   /** Read the last `lines` lines from the terminal buffer. Throws if no terminal exists. */
