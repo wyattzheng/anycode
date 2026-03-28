@@ -8,7 +8,7 @@
  */
 
 import type { CodeHighlighter } from "./components/CodeViewer";
-import type { FileTreeModel } from "./file-tree";
+import type { FileTreeModel, DirEntry } from "./file-tree";
 import { createContext, useContext } from "react";
 
 // ── FileReadCache ────────────────────────────────────────────────────────────
@@ -157,6 +157,7 @@ function isHighlightable(name: string): boolean {
 
 export interface BatchFileResult {
     content: string | null;
+    entries?: DirEntry[];
     diff?: { added: number[]; removed: number[] };
 }
 

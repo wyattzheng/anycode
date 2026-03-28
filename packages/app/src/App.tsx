@@ -126,29 +126,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
         };
     }, [sessionId, onWindowsChanged]);
 
-    const requestLs = useCallback(async (subPath: string): Promise<DirEntry[]> => {
-        try {
-            const res = await fetch(
-                `${getApiBase()}/api/sessions/${sessionId}/ls?path=${encodeURIComponent(subPath)}`
-            );
-            if (!res.ok) return [];
-            const data = await res.json();
-            return data.entries ?? [];
-        } catch {
-            return [];
-        }
-    }, [sessionId]);
-
-    // FileTreeModel: owns all file tree state
-    const fileTree = useMemo(() => new FileTreeModel(requestLs, sendMessage), [requestLs, sendMessage]);
-    const fileTreeRef = useRef(fileTree);
-    fileTreeRef.current = fileTree;
-
-    // ── FileReadCache + PreloadEngine ──
-    const codeHighlighter = useContext(HighlighterContext);
-    const [fileCache] = useState(() => new FileReadCache());
-
-    // Unified batch file fetch — single endpoint for all file reads
+    // Unified batch file fetch — single endpoint for all file/dir reads
     const fetchBatch = useCallback(async (paths: string[], withDiff = false): Promise<Record<string, BatchFileResult>> => {
         try {
             const res = await fetch(
@@ -162,6 +140,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                 const entry = v as any;
                 result[p] = {
                     content: entry.content ?? null,
+                    entries: entry.entries,
                     diff: entry.diff,
                 };
             }
@@ -170,6 +149,21 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
             return {};
         }
     }, [sessionId]);
+
+    // Directory listing via batch endpoint
+    const requestLs = useCallback(async (subPath: string): Promise<DirEntry[]> => {
+        const results = await fetchBatch([subPath]);
+        return results[subPath]?.entries ?? [];
+    }, [fetchBatch]);
+
+    // FileTreeModel: owns all file tree state
+    const fileTree = useMemo(() => new FileTreeModel(requestLs, sendMessage), [requestLs, sendMessage]);
+    const fileTreeRef = useRef(fileTree);
+    fileTreeRef.current = fileTree;
+
+    // ── FileReadCache + PreloadEngine ──
+    const codeHighlighter = useContext(HighlighterContext);
+    const [fileCache] = useState(() => new FileReadCache());
 
     // Cache-aware requestFile: cache → batch fallback
     const requestFile = useCallback(async (filePath: string): Promise<string | null> => {

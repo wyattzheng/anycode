@@ -1587,28 +1587,7 @@ function createMainServer(cfg: ServerConfig): http.Server {
         return
       }
 
-      // GET /api/sessions/:id/ls?path=xxx — lazy directory listing
-      if (sub === "ls") {
-        const subPath = url.searchParams.get("path") || ""
-        const dir = session.directory
-        if (!dir) {
-          res.writeHead(200, { "Content-Type": "application/json" })
-          res.end(JSON.stringify({ entries: [] }))
-          return
-        }
-        const target = path.resolve(dir, subPath)
-        if (!target.startsWith(path.resolve(dir))) {
-          res.writeHead(403, { "Content-Type": "application/json" })
-          res.end(JSON.stringify({ error: "Forbidden" }))
-          return
-        }
-        const entries = await listDir(target)
-        res.writeHead(200, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ entries }))
-        return
-      }
-
-      // POST /api/sessions/:id/files — batch read multiple files (optionally with diff)
+      // POST /api/sessions/:id/files — unified batch endpoint for files + directories
       if (sub === "files" && req.method === "POST") {
         const dir = session.directory
         if (!dir) {
@@ -1627,15 +1606,11 @@ function createMainServer(cfg: ServerConfig): http.Server {
         } catch { /* ignore */ }
 
         const resolvedDir = path.resolve(dir)
-        const results: Record<string, { content?: string; diff?: { added: number[]; removed: number[] }; error?: string }> = {}
-        const BATCH_LIMIT = 1024 * 1024 // 1 MB total
+        const results: Record<string, { content?: string; entries?: DirEntry[]; diff?: { added: number[]; removed: number[] }; error?: string }> = {}
+        const BATCH_LIMIT = 1024 * 1024 // 1 MB total for file content
         let totalRead = 0
 
         for (const filePath of paths) {
-          if (totalRead >= BATCH_LIMIT) {
-            results[filePath] = { error: "Batch limit reached" }
-            continue
-          }
           const target = path.resolve(dir, filePath)
           if (!target.startsWith(resolvedDir)) {
             results[filePath] = { error: "Forbidden" }
@@ -1643,6 +1618,19 @@ function createMainServer(cfg: ServerConfig): http.Server {
           }
           try {
             const stat = await fsPromises.stat(target)
+
+            // Directory → return listing
+            if (stat.isDirectory()) {
+              const entries = await listDir(target)
+              results[filePath] = { entries }
+              continue
+            }
+
+            // File → return content (with size checks)
+            if (totalRead >= BATCH_LIMIT) {
+              results[filePath] = { error: "Batch limit reached" }
+              continue
+            }
             if (stat.size > 512 * 1024) {
               results[filePath] = { error: "File too large" }
               continue
