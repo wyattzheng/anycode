@@ -17,7 +17,7 @@
 
 import http from "http"
 import xtermHeadless from "@xterm/headless"
-import xtermSerialize from "@xterm/addon-serialize"
+import { SerializeAddon } from "@xterm/addon-serialize"
 import https from "https"
 import { fileURLToPath } from "url"
 import path from "path"
@@ -757,7 +757,7 @@ const MAX_BUFFER_LINES = 5000
  */
 class TerminalStateModel {
   private headless: InstanceType<typeof xtermHeadless.Terminal>
-  private serializer: InstanceType<typeof xtermSerialize.SerializeAddon>
+  private serializer: InstanceType<typeof SerializeAddon>
   private alive = false
   private wsClients = new Set<WS>()
 
@@ -767,7 +767,7 @@ class TerminalStateModel {
 
   constructor() {
     this.headless = new xtermHeadless.Terminal({ cols: 80, rows: 24, scrollback: 5000 })
-    this.serializer = new xtermSerialize.SerializeAddon()
+    this.serializer = new SerializeAddon()
     this.headless.loadAddon(this.serializer)
   }
 
@@ -799,7 +799,7 @@ class TerminalStateModel {
   reset(): void {
     this.headless.dispose()
     this.headless = new xtermHeadless.Terminal({ cols: 80, rows: 24, scrollback: 5000 })
-    this.serializer = new xtermSerialize.SerializeAddon()
+    this.serializer = new SerializeAddon()
     this.headless.loadAddon(this.serializer)
   }
 
