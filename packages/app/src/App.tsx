@@ -54,7 +54,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
     const [previewPort, setPreviewPort] = useState<number | null>(null);
     const [chatBusy, setChatBusy] = useState(false);
     const chatHandlerRef = useRef<((data: any) => void) | undefined>(undefined);
-    const chatResetRef = useRef<(() => void) | undefined>(undefined);
+    const [connectGeneration, setConnectGeneration] = useState(0);
     const channelRef = useRef<Channel | null>(null);
 
     const sendMessage = useCallback((data: any) => {
@@ -74,9 +74,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
 
             ch.onopen = () => {
                 retryDelay = 1000;
-                // If we reconnected (not first connect), reset chat busy state
-                // because we may have missed chat.done during the disconnect
-                chatResetRef.current?.();
+                setConnectGeneration(g => g + 1);
                 onWindowsChanged();
             };
 
@@ -218,7 +216,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                         </div>
                     )}
                 </div>
-                <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} chatResetRef={chatResetRef} chatBusy={chatBusy} sendMessage={sendMessage} mode={convMode as any} onPopOut={handlePopOut} onPopIn={handlePopIn} />
+                <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} connectGeneration={connectGeneration} chatBusy={chatBusy} sendMessage={sendMessage} mode={convMode as any} onPopOut={handlePopOut} onPopIn={handlePopIn} />
             </div>
             <TabBar activeTab={activeTab} onTabChange={setActiveTab} changeCount={changes.length} chatBusy={chatBusy} hideChatTab={poppedOut} />
         </div>

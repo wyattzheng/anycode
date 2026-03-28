@@ -142,7 +142,8 @@ interface ConversationOverlayProps {
     sessionId: string;
     fileContext?: FileContext | null;
     chatHandlerRef?: MutableRefObject<((data: any) => void) | undefined>;
-    chatResetRef?: MutableRefObject<(() => void) | undefined>;
+    /** Incremented on every WS connect/reconnect — triggers history re-fetch */
+    connectGeneration?: number;
     chatBusy?: boolean;
     sendMessage: (data: any) => void;
     /** Display mode: full (chat tab), overlay (sidebar/floating), hidden */
@@ -178,7 +179,7 @@ function defaultSidebarWidth() {
     return 150;
 }
 
-export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, chatResetRef, chatBusy: chatBusyProp, sendMessage, mode = "full", onPopOut, onPopIn }: ConversationOverlayProps) {
+export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, connectGeneration, chatBusy: chatBusyProp, sendMessage, mode = "full", onPopOut, onPopIn }: ConversationOverlayProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [recording, setRecording] = useState(false);
@@ -347,12 +348,12 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
         } catch { /* ignore */ }
     }, [sessionId]);
 
-    // Load history when session changes
+    // Load history on session change or WS reconnect (connectGeneration changes)
     useEffect(() => {
         setMessages([]);
         setLocalBusy(false);
         fetchHistory();
-    }, [fetchHistory]);
+    }, [fetchHistory, connectGeneration]);
 
     // Smart auto-scroll: locked (follow new messages) / unlocked (user scrolled up)
     const scrollLocked = useRef(true);
@@ -553,15 +554,6 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, ch
         return () => { chatHandlerRef.current = undefined; };
     }, [handleEvent, chatHandlerRef]);
 
-    // On WebSocket reconnect: re-fetch full history so messages don't disappear
-    useEffect(() => {
-        if (!chatResetRef) return;
-        chatResetRef.current = () => {
-            setLocalBusy(false);
-            fetchHistory();
-        };
-        return () => { chatResetRef.current = undefined; };
-    }, [chatResetRef, fetchHistory]);
 
     // ── Send message ──
     const handleSend = useCallback(() => {
