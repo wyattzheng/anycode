@@ -170,12 +170,31 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
         return content;
     }, [fileCache, fetchFileFromServer]);
 
+    // Batch file fetch for preloading — sends one POST with all paths
+    const fetchBatch = useCallback(async (paths: string[]): Promise<Record<string, string | null>> => {
+        try {
+            const res = await fetch(
+                `${getApiBase()}/api/sessions/${sessionId}/files`,
+                { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths }) }
+            );
+            if (!res.ok) return {};
+            const data = await res.json();
+            const result: Record<string, string | null> = {};
+            for (const [p, v] of Object.entries(data.files ?? {})) {
+                result[p] = (v as any).content ?? null;
+            }
+            return result;
+        } catch {
+            return {};
+        }
+    }, [sessionId]);
+
     // Preload engine: preloads visible files from expanded dirs
     const preloadRef = useRef<PreloadEngine | null>(null);
     useEffect(() => {
         if (!codeHighlighter) return;
-        preloadRef.current = new PreloadEngine(fileCache, codeHighlighter, fetchFileFromServer);
-    }, [fileCache, codeHighlighter, fetchFileFromServer]);
+        preloadRef.current = new PreloadEngine(fileCache, codeHighlighter, fetchBatch);
+    }, [fileCache, codeHighlighter, fetchBatch]);
 
     // Trigger preload whenever file tree changes (expand/collapse/top-level update)
     useEffect(() => {

@@ -1522,9 +1522,9 @@ function createMainServer(cfg: ServerConfig): http.Server {
       return
     }
 
-    // GET /api/sessions/:id
+    // GET|POST /api/sessions/:id/...
     const sessionMatch = req.url?.match(/^\/api\/sessions\/([^/?]+)(?:\/([a-z]+))?/)
-    if (req.method === "GET" && sessionMatch) {
+    if ((req.method === "GET" || req.method === "POST") && sessionMatch) {
       const session = getSession(sessionMatch[1])
       if (!session) {
         res.writeHead(404, { "Content-Type": "application/json" })
@@ -1569,8 +1569,8 @@ function createMainServer(cfg: ServerConfig): http.Server {
         return
       }
 
-      // GET /api/sessions/:id/file?path=xxx — read file content
-      if (sub === "file") {
+      // GET /api/sessions/:id/file?path=xxx — read single file content
+      if (sub === "file" && req.method === "GET") {
         const filePath = url.searchParams.get("path") || ""
         const dir = session.directory
         if (!dir) {
@@ -1585,6 +1585,12 @@ function createMainServer(cfg: ServerConfig): http.Server {
           return
         }
         try {
+          const stat = await fsPromises.stat(target)
+          if (stat.size > 512 * 1024) {
+            res.writeHead(200, { "Content-Type": "application/json" })
+            res.end(JSON.stringify({ content: null, error: "File too large" }))
+            return
+          }
           const content = await fsPromises.readFile(target, "utf-8")
           res.writeHead(200, { "Content-Type": "application/json" })
           res.end(JSON.stringify({ content }))
@@ -1592,6 +1598,46 @@ function createMainServer(cfg: ServerConfig): http.Server {
           res.writeHead(200, { "Content-Type": "application/json" })
           res.end(JSON.stringify({ content: null, error: "读取失败" }))
         }
+        return
+      }
+
+      // POST /api/sessions/:id/files — batch read multiple files
+      if (sub === "files" && req.method === "POST") {
+        const dir = session.directory
+        if (!dir) {
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ files: {} }))
+          return
+        }
+        const chunks: Buffer[] = []
+        for await (const chunk of req) chunks.push(chunk as Buffer)
+        let paths: string[] = []
+        try { paths = JSON.parse(Buffer.concat(chunks).toString()).paths ?? [] } catch { /* ignore */ }
+
+        const resolvedDir = path.resolve(dir)
+        const results: Record<string, { content: string } | { error: string }> = {}
+
+        await Promise.all(paths.map(async (filePath: string) => {
+          const target = path.resolve(dir, filePath)
+          if (!target.startsWith(resolvedDir)) {
+            results[filePath] = { error: "Forbidden" }
+            return
+          }
+          try {
+            const stat = await fsPromises.stat(target)
+            if (stat.size > 512 * 1024) {
+              results[filePath] = { error: "File too large" }
+              return
+            }
+            const content = await fsPromises.readFile(target, "utf-8")
+            results[filePath] = { content }
+          } catch {
+            results[filePath] = { error: "读取失败" }
+          }
+        }))
+
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ files: results }))
         return
       }
 

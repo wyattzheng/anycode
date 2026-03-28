@@ -146,71 +146,67 @@ function isHighlightable(name: string): boolean {
 export class PreloadEngine {
     private _cache: FileReadCache;
     private _highlighter: CodeHighlighter;
-    private _requestFile: (path: string) => Promise<string | null>;
-    private _pending = new Set<string>();
-    private _queue: string[] = [];
-    private _processing = false;
+    private _fetchBatch: (paths: string[]) => Promise<Record<string, string | null>>;
+    private _preloading = false;
 
     constructor(
         cache: FileReadCache,
         highlighter: CodeHighlighter,
-        requestFile: (path: string) => Promise<string | null>,
+        fetchBatch: (paths: string[]) => Promise<Record<string, string | null>>,
     ) {
         this._cache = cache;
         this._highlighter = highlighter;
-        this._requestFile = requestFile;
+        this._fetchBatch = fetchBatch;
     }
 
     /**
      * Scan expanded directories in the file tree and preload all visible files.
-     * Skips files already cached or in-flight.
+     * Uses a single batch request for all uncached files.
      */
-    preloadFromTree(model: FileTreeModel): void {
+    async preloadFromTree(model: FileTreeModel): Promise<void> {
+        if (this._preloading) return;
+
         const files = collectVisibleFiles(model);
-        const newFiles = files.filter(
-            f => !this._cache.hasHighlight(f) && !this._pending.has(f)
+        const uncached = files.filter(
+            f => !this._cache.hasContent(f)
         );
-        if (newFiles.length === 0) return;
-        this._queue.push(...newFiles);
-        this._processQueue();
-    }
-
-    /** Process queue one file at a time to avoid overwhelming network/CPU */
-    private async _processQueue(): Promise<void> {
-        if (this._processing) return;
-        this._processing = true;
-
-        while (this._queue.length > 0) {
-            if (this._cache.totalBytes >= MAX_BYTES) {
-                this._queue.length = 0;
-                break;
-            }
-
-            const filePath = this._queue.shift()!;
-            if (this._cache.hasHighlight(filePath) || this._pending.has(filePath)) continue;
-
-            this._pending.add(filePath);
-            try {
-                // Fetch content (may already be cached)
-                let content = this._cache.getContent(filePath);
-                if (content == null) {
-                    content = await this._requestFile(filePath);
-                    if (content != null) this._cache.setContent(filePath, content);
-                }
-                // Highlight (yield to main thread first)
-                if (content != null && this._highlighter.ready) {
-                    await new Promise(r => setTimeout(r, 0));
-                    const html = this._highlighter.highlight(content, filePath);
-                    this._cache.setHighlight(filePath, html);
-                }
-            } catch {
-                // Silently skip failed files
-            } finally {
-                this._pending.delete(filePath);
-            }
+        if (uncached.length === 0) {
+            // Content is cached — just highlight any that lack it
+            this._highlightUncached(files);
+            return;
         }
 
-        this._processing = false;
+        this._preloading = true;
+        try {
+            // Batch fetch all uncached files in one request
+            const results = await this._fetchBatch(uncached);
+            for (const [filePath, content] of Object.entries(results)) {
+                if (content != null && this._cache.totalBytes < MAX_BYTES) {
+                    this._cache.setContent(filePath, content);
+                }
+            }
+            // Highlight all files that have content but no highlight
+            await this._highlightUncached(files);
+        } catch {
+            // Silently skip errors
+        } finally {
+            this._preloading = false;
+        }
+    }
+
+    /** Highlight cached files that don't have highlight HTML yet */
+    private async _highlightUncached(files: string[]): Promise<void> {
+        if (!this._highlighter.ready) return;
+        for (const filePath of files) {
+            if (this._cache.totalBytes >= MAX_BYTES) break;
+            if (this._cache.hasHighlight(filePath)) continue;
+            const content = this._cache.getContent(filePath);
+            if (content == null) continue;
+            // Yield to main thread before CPU-heavy highlight
+            await new Promise(r => setTimeout(r, 0));
+            const html = this._highlighter.highlight(content, filePath);
+            this._cache.setHighlight(filePath, html);
+        }
     }
 }
 
