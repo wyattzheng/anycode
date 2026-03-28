@@ -690,6 +690,7 @@ class DirectoryWatchManager {
   private rootDir: string
   private cfg: ServerConfig
   private batchTimer: ReturnType<typeof setTimeout> | undefined
+  private gitTimer: ReturnType<typeof setTimeout> | undefined
   private pendingDirs = new Set<string>()
 
   constructor(cfg: ServerConfig, sessionId: string, rootDir: string) {
@@ -719,13 +720,12 @@ class DirectoryWatchManager {
       usePolling: true,
       interval: 3000,
     })
-    let gitTimer: ReturnType<typeof setTimeout> | undefined
     gitWatcher.on("all", () => {
       // Debounce and call scheduleStatePush directly (not _flush,
       // since _flush early-returns when pendingDirs is empty)
-      if (gitTimer) return
-      gitTimer = setTimeout(() => {
-        gitTimer = undefined
+      if (this.gitTimer) return
+      this.gitTimer = setTimeout(() => {
+        this.gitTimer = undefined
         scheduleStatePush(this.cfg, this.sessionId, 0)
       }, 500)
     })
