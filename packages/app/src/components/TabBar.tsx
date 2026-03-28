@@ -9,9 +9,10 @@ interface TabBarProps {
     changeCount?: number;
     chatBusy?: boolean;
     hideChatTab?: boolean;
+    previewNotify?: boolean;
 }
 
-export function TabBar({ activeTab, onTabChange, changeCount, chatBusy, hideChatTab }: TabBarProps) {
+export function TabBar({ activeTab, onTabChange, changeCount, chatBusy, hideChatTab, previewNotify }: TabBarProps) {
     const dragging = useRef(false);
     const lastTab = useRef<string | null>(null);
 
@@ -127,7 +128,10 @@ export function TabBar({ activeTab, onTabChange, changeCount, chatBusy, hideChat
                 data-tab="preview"
                 onClick={() => onTabChange("preview")}
             >
-                <span className="tab-icon"><MonitorIcon /></span>
+                <span className="tab-icon">
+                    <MonitorIcon />
+                    {previewNotify && <span className="tab-notify-dot" />}
+                </span>
                 <span className="tab-label">预览</span>
             </button>
         </nav>

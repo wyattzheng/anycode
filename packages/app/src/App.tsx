@@ -52,6 +52,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
     const [changes, setChanges] = useState<GitChange[]>([]);
     const [fileContext, setFileContext] = useState<FileContext | null>(null);
     const [previewPort, setPreviewPort] = useState<number | null>(null);
+    const [previewNotify, setPreviewNotify] = useState(false);
     const [chatBusy, setChatBusy] = useState(false);
     const chatHandlerRef = useRef<((data: any) => void) | undefined>(undefined);
     const [connectGeneration, setConnectGeneration] = useState(0);
@@ -83,7 +84,10 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                     if (data.directory) setDirectory(data.directory);
                     setTopLevel(data.topLevel || []);
                     setChanges(data.changes || []);
-                    if (data.previewPort !== undefined) setPreviewPort(data.previewPort);
+                    if (data.previewPort !== undefined) {
+                        setPreviewPort(data.previewPort);
+                        if (data.previewPort != null) setPreviewNotify(true);
+                    }
                     if (data.chatBusy !== undefined) setChatBusy(data.chatBusy);
                 } else if (data.type === "windows.updated") {
                     onWindowsChanged();
@@ -218,7 +222,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                 </div>
                 <ConversationOverlay sessionId={sessionId} fileContext={fileContext} chatHandlerRef={chatHandlerRef} connectGeneration={connectGeneration} chatBusy={chatBusy} sendMessage={sendMessage} mode={convMode as any} onPopOut={handlePopOut} onPopIn={handlePopIn} />
             </div>
-            <TabBar activeTab={activeTab} onTabChange={setActiveTab} changeCount={changes.length} chatBusy={chatBusy} hideChatTab={poppedOut} />
+            <TabBar activeTab={activeTab} onTabChange={(tab) => { if (tab === 'preview') setPreviewNotify(false); setActiveTab(tab); }} changeCount={changes.length} chatBusy={chatBusy} hideChatTab={poppedOut} previewNotify={previewNotify} />
         </div>
     );
 }
