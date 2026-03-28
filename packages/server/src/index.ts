@@ -842,9 +842,6 @@ class TerminalStateModel {
         } else if (msg.type === "terminal.resize") {
           this.resize(msg.cols, msg.rows)
           this.onResize?.(msg.cols, msg.rows)
-          // Resend snapshot after reflow at new dimensions
-          const snap = this.serializer.serialize()
-          if (snap) ws.send(JSON.stringify({ type: "terminal.sync", data: snap }))
         }
       } catch { /* ignore */ }
     })
