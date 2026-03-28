@@ -138,7 +138,7 @@ export function ChangesView({ changes, requestFile, requestDiff, onFileContext }
                                 onClick={() => handleFileClick(change.file)}
                             >
                                 <FileIcon filename={change.file.split('/').pop() || change.file} />
-                                <span className="change-path">{change.file}</span>
+                                <span className="change-path">{change.file.split('/').pop() || change.file}</span>
                                 <span className="change-badge">{statusLabel(change.status)}</span>
                             </div>
                         ))
