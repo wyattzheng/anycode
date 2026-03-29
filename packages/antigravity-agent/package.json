@@ -1,0 +1,7 @@
+{
+  "name": "@any-code/antigravity-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Antigravity language server agent — reverse-engineered RPC client"
+}
