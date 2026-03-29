@@ -292,6 +292,7 @@ export class AntigravityAgent implements IChatAgent {
         requestedModel: {
           model: "MODEL_PLACEHOLDER_M26",
         },
+        browserEnabled: false,
         ephemeralMessagesConfig: { enabled: true },
         knowledgeConfig: { enabled: true },
       }
