@@ -325,17 +325,27 @@ export class AntigravityAgent implements IChatAgent {
       // Notify server to persist the cascadeId
       this._emitEvent("cascade.created", { cascadeId: this._cascadeId })
 
-      // Build cascade config with optional custom tools
+      // Build cascade config matching official client format
       const plannerConfig: any = {
-        planModel: 1026,  // MODEL_PLACEHOLDER_M26 = Claude Opus 4.6 (Thinking)
-        maxOutputTokens: 8192,
-        cascadeCanAutoRunCommands: true,
+        conversational: {
+          plannerMode: "CONVERSATIONAL_PLANNER_MODE_DEFAULT",
+          agenticMode: true,
+        },
         toolConfig: {
           runCommand: {
-            enableModelAutoRun: true,
-            allowAutoRunCommands: true,
+            autoCommandConfig: {
+              autoExecutionPolicy: "CASCADE_COMMANDS_AUTO_EXECUTION_EAGER",
+            },
+          },
+          notifyUser: {
+            artifactReviewMode: "ARTIFACT_REVIEW_MODE_TURBO",
           },
         },
+        requestedModel: {
+          model: "MODEL_PLACEHOLDER_M26",
+        },
+        ephemeralMessagesConfig: { enabled: true },
+        knowledgeConfig: { enabled: true },
       }
 
       // Inject custom tools as MCP servers
@@ -362,7 +372,11 @@ export class AntigravityAgent implements IChatAgent {
         sendRes = await this._rpc("SendUserCascadeMessage", {
           cascadeId,
           items: [{ text: input }],
-          cascadeConfig: { plannerConfig },
+          cascadeConfig: {
+            plannerConfig,
+            conversationHistoryConfig: { enabled: true },
+          },
+          clientType: "CHAT_CLIENT_REQUEST_STREAM_CLIENT_TYPE_IDE",
         })
         console.log(`[Cascade] chat() → SendUserCascadeMessage response: ${JSON.stringify(sendRes).slice(0, 300)}`)
       } catch (err: any) {
