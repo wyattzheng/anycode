@@ -234,7 +234,7 @@ export class AntigravityAgent implements IChatAgent {
 
       // Build cascade config with optional custom tools
       const plannerConfig: any = {
-        planModel: 1026,
+        planModel: 291,  // MODEL_CLAUDE_4_OPUS_THINKING
         maxOutputTokens: 8192,
         cascadeCanAutoRunCommands: true,
         toolConfig: {
@@ -282,6 +282,8 @@ export class AntigravityAgent implements IChatAgent {
       let lastYieldedText = ""
       let lastYieldedThinking = ""
       let resolvedTrajectoryId: string | null = null
+      let hasEmittedThinkingStart = false
+      let hasEmittedThinkingEnd = false
 
       for (let i = 0; i < 400; i++) {
         await new Promise((r) => setTimeout(r, 300))
@@ -298,17 +300,26 @@ export class AntigravityAgent implements IChatAgent {
             // Thinking content
             const thinking = step.plannerResponse?.thinking
             if (thinking && thinking !== lastYieldedThinking) {
+              if (!hasEmittedThinkingStart) {
+                hasEmittedThinkingStart = true
+                yield { type: "thinking.start" as const }
+              }
               const delta = thinking.startsWith(lastYieldedThinking)
                 ? thinking.slice(lastYieldedThinking.length)
                 : thinking
               if (delta) {
-                yield { type: "thinking.delta" as const, content: delta }
+                yield { type: "thinking.delta" as const, thinkingContent: delta }
               }
               lastYieldedThinking = thinking
             }
-            // Main response text
+            // Main response text — when response appears, thinking phase is over
             const text = step.plannerResponse?.response
             if (text && text !== lastYieldedText) {
+              if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
+                hasEmittedThinkingEnd = true
+                const duration = step.plannerResponse?.thinkingDuration?.seconds || 0
+                yield { type: "thinking.end" as const, thinkingDuration: Number(duration) }
+              }
               const delta = text.startsWith(lastYieldedText)
                 ? text.slice(lastYieldedText.length)
                 : text
