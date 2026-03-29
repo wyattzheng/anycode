@@ -12,6 +12,7 @@ WORKDIR /app
 # copy manifests first for layer caching
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/agent/package.json packages/agent/
+COPY packages/antigravity-agent/package.json packages/antigravity-agent/
 COPY packages/app/package.json packages/app/
 COPY packages/cli/package.json packages/cli/
 COPY packages/codex-agent/package.json packages/codex-agent/
