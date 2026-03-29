@@ -226,34 +226,66 @@ export class AntigravityAgent implements IChatAgent {
           lastStepCount = currentStepCount
 
           for (const step of stepsRes.steps || []) {
-            // AI text response
-            if (step.plannerResponse?.response) {
-              const text = step.plannerResponse.response
-              if (text !== lastYieldedText) {
-                yield { type: "text.delta" as const, content: text }
-                lastYieldedText = text
-              }
-            }
-
-            // Tool execution
-            if (step.toolExecution) {
-              const te = step.toolExecution
-              yield {
-                type: "tool.start" as const,
-                toolCallId: te.id || "",
-                toolName: te.toolName || te.tool || "unknown",
-                toolArgs: te.toolParameters ?? {},
-              }
-              if (te.toolResult) {
-                yield {
-                  type: "tool.done" as const,
-                  toolCallId: te.id || "",
-                  toolName: te.toolName || te.tool || "unknown",
-                  toolOutput: te.toolResult,
-                  toolTitle: te.toolName || "",
-                  toolMetadata: {},
+            switch (step.type) {
+              // AI text response
+              case "CORTEX_STEP_TYPE_PLANNER_RESPONSE": {
+                const text = step.plannerResponse?.response
+                if (text && text !== lastYieldedText) {
+                  yield { type: "text.delta" as const, content: text }
+                  lastYieldedText = text
                 }
+                break
               }
+
+              // MCP tool call
+              case "CORTEX_STEP_TYPE_MCP_TOOL": {
+                const mcp = step.mcpTool
+                if (mcp?.toolCall) {
+                  let parsedArgs = {}
+                  try {
+                    parsedArgs = JSON.parse(mcp.toolCall.argumentsJson || "{}")
+                  } catch { /* ignore */ }
+
+                  yield {
+                    type: "tool.start" as const,
+                    toolCallId: mcp.toolCall.id || "",
+                    toolName: mcp.toolCall.name || "unknown",
+                    toolArgs: parsedArgs,
+                  }
+
+                  if (step.status === "CORTEX_STEP_STATUS_DONE") {
+                    yield {
+                      type: "tool.done" as const,
+                      toolCallId: mcp.toolCall.id || "",
+                      toolName: mcp.toolCall.name || "unknown",
+                      toolOutput: mcp.resultString || "",
+                      toolTitle: `${mcp.serverName || "mcp"}:${mcp.toolCall.name || ""}`,
+                      toolMetadata: {
+                        serverName: mcp.serverName,
+                        serverVersion: mcp.serverInfo?.version,
+                      },
+                    }
+                  }
+                }
+                break
+              }
+
+              // Error message (e.g. rate limit, model error)
+              case "CORTEX_STEP_TYPE_ERROR_MESSAGE": {
+                const errMsg = step.errorMessage?.error?.userErrorMessage
+                  || step.errorMessage?.error?.shortError
+                  || "Unknown error"
+                yield { type: "error" as const, error: errMsg }
+                break
+              }
+
+              // Checkpoint / Ephemeral — internal, skip
+              case "CORTEX_STEP_TYPE_CHECKPOINT":
+              case "CORTEX_STEP_TYPE_EPHEMERAL_MESSAGE":
+                break
+
+              default:
+                break
             }
           }
         }
