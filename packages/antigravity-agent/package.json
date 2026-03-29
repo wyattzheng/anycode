@@ -1,7 +1,24 @@
 {
   "name": "@any-code/antigravity-agent",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
-  "description": "Antigravity language server agent — reverse-engineered RPC client"
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "scripts"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "get-token": "node scripts/get-token.mjs"
+  },
+  "dependencies": {
+    "@any-code/utils": "workspace:*",
+    "@bufbuild/protobuf": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.0"
+  }
 }

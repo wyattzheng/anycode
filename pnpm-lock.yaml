@@ -74,7 +74,24 @@ importers:
         specifier: 5.8.2
         version: 5.8.2
 
-  packages/antigravity-agent: {}
+  packages/antigravity-agent:
+    dependencies:
+      '@any-code/utils':
+        specifier: workspace:*
+        version: link:../utils
+      '@bufbuild/protobuf':
+        specifier: ^2.0.0
+        version: 2.11.0
+    devDependencies:
+      '@types/node':
+        specifier: ^25.5.0
+        version: 25.5.0
+      tsup:
+        specifier: ^8.4.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.8.2)(yaml@2.8.2)
+      typescript:
+        specifier: ^5.7.0
+        version: 5.8.2
 
   packages/app:
     dependencies:
