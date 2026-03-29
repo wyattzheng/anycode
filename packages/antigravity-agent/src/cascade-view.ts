@@ -164,8 +164,6 @@ export class CascadeView extends EventEmitter {
     // Auto-approve WAITING steps
     if (step.status === "CORTEX_STEP_STATUS_WAITING") {
       this.autoApprove(step, stepIndex)
-      // Reset to allow re-processing when DONE arrives
-      this.steps.delete(stepIndex)
       return
     }
 
