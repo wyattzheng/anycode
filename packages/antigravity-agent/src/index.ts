@@ -451,8 +451,10 @@ export class AntigravityAgent implements IChatAgent {
           if (text && text !== lastYieldedText) {
             if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
               hasEmittedThinkingEnd = true
-              const duration = pr.thinkingDuration?.seconds || 0
-              pushEvent({ type: "thinking.end", thinkingDuration: Number(duration) })
+              // thinkingDuration is protobuf Duration string like "0.732477s"
+              const durationStr = typeof pr.thinkingDuration === "string" ? pr.thinkingDuration : pr.thinkingDuration?.seconds || "0"
+              const durationSec = parseFloat(String(durationStr).replace("s", "")) || 0
+              pushEvent({ type: "thinking.end", thinkingDuration: Math.round(durationSec * 1000) })
             }
             const delta = text.startsWith(lastYieldedText)
               ? text.slice(lastYieldedText.length) : text
