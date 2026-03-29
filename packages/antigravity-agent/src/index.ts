@@ -862,6 +862,10 @@ export class AntigravityAgent implements IChatAgent {
 
         child.stderr.on("data", (d: Buffer) => {
           const text = d.toString()
+          // Log all binary stderr for debugging
+          for (const line of text.split("\n")) {
+            if (line.trim()) console.log(`[Binary] ${line}`)
+          }
           const m = text.match(
             /listening on random port at (\d+) for HTTPS/,
           )
