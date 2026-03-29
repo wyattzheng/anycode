@@ -21,7 +21,6 @@ export class CascadeView extends EventEmitter {
   // ─── State ───
   private steps = new Map<number, any>()             // stepIndex → latest step data
   private toolCallArgsCache = new Map<string, any>() // toolCallId → parsed args
-  private processedIndices = new Set<number>()
   private lastText = ""
   private lastThinking = ""
   private hasEmittedThinkingStart = false
@@ -47,7 +46,6 @@ export class CascadeView extends EventEmitter {
     this.lastThinking = ""
     this.hasEmittedThinkingStart = false
     this.hasEmittedThinkingEnd = false
-    this.processedIndices.clear()
     this.toolCallArgsCache.clear()
     this.steps.clear()
     this.trajectoryId = null
@@ -60,7 +58,6 @@ export class CascadeView extends EventEmitter {
     this.lastThinking = ""
     this.hasEmittedThinkingStart = false
     this.hasEmittedThinkingEnd = false
-    // Keep processedIndices so replayed old steps don't re-emit events
     // Keep steps and toolCallArgsCache for history
     this.trajectoryId = null
   }
@@ -79,6 +76,9 @@ export class CascadeView extends EventEmitter {
       const steps: any[] = stepsUpdate.steps || []
       for (let i = 0; i < steps.length; i++) {
         const stepIndex = indices[i] ?? i
+        const existing = this.steps.get(stepIndex)
+        // Skip if already processed as DONE (replay protection)
+        if (existing?.status === "CORTEX_STEP_STATUS_DONE") continue
         this.steps.set(stepIndex, steps[i])
         this.processStep(steps[i], stepIndex)
       }
@@ -108,8 +108,6 @@ export class CascadeView extends EventEmitter {
   // ─── Step processing (emits events) ───
 
   private processStep(step: any, stepIndex: number): void {
-    // Skip already-completed steps (replay protection)
-    if (this.processedIndices.has(stepIndex)) return
 
     // PLANNER_RESPONSE: thinking + text streaming
     if (step.type === "CORTEX_STEP_TYPE_PLANNER_RESPONSE") {
@@ -119,7 +117,6 @@ export class CascadeView extends EventEmitter {
       console.log(`[Stream] PLANNER step#${stepIndex} status=${step.status} thinking=${thinking?.length || 0} response=${text?.length || 0} keys=${Object.keys(pr).join(",")}`)
 
       if (step.status === "CORTEX_STEP_STATUS_DONE") {
-        this.processedIndices.add(stepIndex)
         const { thinking: _t, modifiedResponse: _r, response: _r2, ...rest } = pr
         console.log(`[Stream] PLANNER DONE metadata: ${JSON.stringify(rest).slice(0, 1000)}`)
         // Cache tool call args for subsequent steps
@@ -161,14 +158,14 @@ export class CascadeView extends EventEmitter {
     // Non-PLANNER steps: only process terminal states
     if (step.status !== "CORTEX_STEP_STATUS_DONE" && step.status !== "CORTEX_STEP_STATUS_ERROR"
       && step.status !== "CORTEX_STEP_STATUS_WAITING") return
-    this.processedIndices.add(stepIndex)
 
     console.log(`[Cascade] step#${stepIndex}: type=${step.type} status=${step.status}`)
 
     // Auto-approve WAITING steps
     if (step.status === "CORTEX_STEP_STATUS_WAITING") {
       this.autoApprove(step, stepIndex)
-      this.processedIndices.delete(stepIndex)
+      // Reset to allow re-processing when DONE arrives
+      this.steps.delete(stepIndex)
       return
     }
 
