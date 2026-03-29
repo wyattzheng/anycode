@@ -39,23 +39,33 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 /** Resolve binary path — bundled in package bin/ directory */
 function resolveBinaryPath(): string {
   const os = platform()
-  if (os !== "darwin") {
-    throw new Error(`Unsupported platform: ${os}. Only macOS (darwin) is supported.`)
+  const binaryMap: Record<string, string> = {
+    "darwin": "language_server_macos_arm",
+    "linux": "language_server_linux_x64",
+  }
+
+  const binaryName = binaryMap[os]
+  if (!binaryName) {
+    throw new Error(`Unsupported platform: ${os}. Supported: macOS (darwin), Linux.`)
   }
 
   // Check bundled binary first
-  const bundled = join(__dirname, "..", "bin", "language_server_macos_arm")
+  const bundled = join(__dirname, "..", "bin", binaryName)
   if (existsSync(bundled)) return bundled
 
-  // Fallback to Antigravity.app installation
-  const appBin =
-    "/Applications/Antigravity.app/Contents/Resources/app/extensions/antigravity/bin/language_server_macos_arm"
-  if (existsSync(appBin)) return appBin
+  // Fallback to system installations
+  if (os === "darwin") {
+    const appBin = `/Applications/Antigravity.app/Contents/Resources/app/extensions/antigravity/bin/${binaryName}`
+    if (existsSync(appBin)) return appBin
+  } else if (os === "linux") {
+    const sysPath = `/usr/share/antigravity/resources/app/extensions/antigravity/bin/${binaryName}`
+    if (existsSync(sysPath)) return sysPath
+  }
 
   throw new Error(
-    "Go binary not found. Either:\n" +
-    "  1. Place it in packages/antigravity-agent/bin/language_server_macos_arm\n" +
-    "  2. Install Antigravity.app"
+    `Go binary (${binaryName}) not found. Either:\n` +
+    `  1. Place it in packages/antigravity-agent/bin/${binaryName}\n` +
+    `  2. Install Antigravity on your system`
   )
 }
 
@@ -257,8 +267,8 @@ export class AntigravityAgent implements IChatAgent {
       let lastStepCount = 0
       let lastYieldedText = ""
 
-      for (let i = 0; i < 120; i++) {
-        await new Promise((r) => setTimeout(r, 1000))
+      for (let i = 0; i < 400; i++) {
+        await new Promise((r) => setTimeout(r, 300))
 
         const traj = await this._rpc("GetAllCascadeTrajectories")
         const info = traj.trajectorySummaries?.[cascadeId]
@@ -275,11 +285,18 @@ export class AntigravityAgent implements IChatAgent {
 
           for (const step of stepsRes.steps || []) {
             switch (step.type) {
-              // AI text response
+              // AI text response — emit only the incremental delta
               case "CORTEX_STEP_TYPE_PLANNER_RESPONSE": {
                 const text = step.plannerResponse?.response
                 if (text && text !== lastYieldedText) {
-                  yield { type: "text.delta" as const, content: text }
+                  // The API returns the full accumulated text each time;
+                  // extract only the new portion for streaming.
+                  const delta = text.startsWith(lastYieldedText)
+                    ? text.slice(lastYieldedText.length)
+                    : text
+                  if (delta) {
+                    yield { type: "text.delta" as const, content: delta }
+                  }
                   lastYieldedText = text
                 }
                 break

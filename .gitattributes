@@ -1,1 +1,2 @@
 packages/antigravity-agent/bin/language_server_macos_arm filter=lfs diff=lfs merge=lfs -text
+packages/antigravity-agent/bin/language_server_linux_x64 filter=lfs diff=lfs merge=lfs -text
