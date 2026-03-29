@@ -421,7 +421,10 @@ export class AntigravityAgent implements IChatAgent {
       const processStep = async (step: any, stepIndex: number) => {
         // PLANNER_RESPONSE: thinking + text streaming
         if (step.type === "CORTEX_STEP_TYPE_PLANNER_RESPONSE") {
-          const thinking = step.plannerResponse?.thinking
+          const pr = step.plannerResponse || {}
+          const thinking = pr.thinking
+          const text = pr.modifiedResponse || pr.response
+          console.log(`[Stream] PLANNER step#${stepIndex} status=${step.status} thinking=${thinking?.length || 0} response=${text?.length || 0} keys=${Object.keys(pr).join(",")}`)
           if (thinking && thinking !== lastYieldedThinking) {
             if (!hasEmittedThinkingStart) {
               hasEmittedThinkingStart = true
@@ -432,11 +435,10 @@ export class AntigravityAgent implements IChatAgent {
             if (delta) pushEvent({ type: "thinking.delta", thinkingContent: delta })
             lastYieldedThinking = thinking
           }
-          const text = step.plannerResponse?.response
           if (text && text !== lastYieldedText) {
             if (hasEmittedThinkingStart && !hasEmittedThinkingEnd) {
               hasEmittedThinkingEnd = true
-              const duration = step.plannerResponse?.thinkingDuration?.seconds || 0
+              const duration = pr.thinkingDuration?.seconds || 0
               pushEvent({ type: "thinking.end", thinkingDuration: Number(duration) })
             }
             const delta = text.startsWith(lastYieldedText)
