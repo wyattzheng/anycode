@@ -416,6 +416,7 @@ export class AntigravityAgent implements IChatAgent {
       let hasEmittedThinkingStart = false
       let hasEmittedThinkingEnd = false
       let processedStepIndices = new Set<number>()
+      const toolCallArgsCache = new Map<string, any>()  // toolCallId → parsed args from PLANNER toolCalls
 
       // Process a single step from stream frame
       const processStep = async (step: any, stepIndex: number) => {
@@ -426,9 +427,16 @@ export class AntigravityAgent implements IChatAgent {
           const text = pr.modifiedResponse || pr.response
           console.log(`[Stream] PLANNER step#${stepIndex} status=${step.status} thinking=${thinking?.length || 0} response=${text?.length || 0} keys=${Object.keys(pr).join(",")}`)
           if (step.status === "CORTEX_STEP_STATUS_DONE") {
-            // Log full step for discovery (exclude large text fields)
             const { thinking: _t, modifiedResponse: _r, response: _r2, ...rest } = pr
             console.log(`[Stream] PLANNER DONE metadata: ${JSON.stringify(rest).slice(0, 1000)}`)
+            // Cache tool call args for subsequent tool steps
+            if (pr.toolCalls) {
+              for (const tc of pr.toolCalls) {
+                if (tc.id && tc.argumentsJson) {
+                  try { toolCallArgsCache.set(tc.id, JSON.parse(tc.argumentsJson)) } catch { }
+                }
+              }
+            }
           }
           if (thinking && thinking !== lastYieldedThinking) {
             if (!hasEmittedThinkingStart) {
@@ -456,8 +464,8 @@ export class AntigravityAgent implements IChatAgent {
 
         // Skip already-processed non-streaming steps (tool/error etc. don't update in-place)
         if (processedStepIndices.has(stepIndex)) return
-        if (step.status !== "CORTEX_STEP_STATUS_DONE" && step.status !== "CORTEX_STEP_STATUS_ERROR" 
-            && step.status !== "CORTEX_STEP_STATUS_WAITING") return
+        if (step.status !== "CORTEX_STEP_STATUS_DONE" && step.status !== "CORTEX_STEP_STATUS_ERROR"
+          && step.status !== "CORTEX_STEP_STATUS_WAITING") return
         processedStepIndices.add(stepIndex)
 
         console.log(`[Cascade] step#${stepIndex}: type=${step.type} status=${step.status}`)
@@ -484,12 +492,25 @@ export class AntigravityAgent implements IChatAgent {
             } catch { }
             interactionBase.filePermission = { allow: true, scope: 2, absolutePathUri: absPath ? `file://${absPath}` : "" }
           } else if (step.type === "CORTEX_STEP_TYPE_RUN_COMMAND") {
-            interactionBase.runCommand = {}
+            // Extract command line from cached PLANNER toolCalls
+            const toolCallId = step.metadata?.toolCall?.id || ""
+            const cachedArgs = toolCallArgsCache.get(toolCallId) || {}
+            const cmdLine = cachedArgs.CommandLine || cachedArgs.commandLine || cachedArgs.command || ""
+            interactionBase.runCommand = {
+              confirm: true,
+              proposedCommandLine: cmdLine,
+              submittedCommandLine: cmdLine,
+            }
           } else {
             interactionBase.codeAction = {}
           }
-          try { await this._rpc("HandleCascadeUserInteraction", { cascadeId, interaction: interactionBase }) } catch { }
-          processedStepIndices.delete(stepIndex)  // allow re-processing after approval
+          console.log(`[Cascade] Auto-approve payload: ${JSON.stringify({ cascadeId, interaction: interactionBase })}`)
+          try {
+            const res = await this._rpc("HandleCascadeUserInteraction", { cascadeId, interaction: interactionBase })
+            console.log(`[Cascade] Auto-approve response: ${JSON.stringify(res).slice(0, 300)}`)
+          } catch (e: any) {
+            console.log(`[Cascade] Auto-approve ERROR: ${e.message}`)
+          }
           return
         }
 
@@ -519,8 +540,9 @@ export class AntigravityAgent implements IChatAgent {
           case "CORTEX_STEP_TYPE_GREP":
           case "CORTEX_STEP_TYPE_FIND": {
             const toolName = step.type.replace("CORTEX_STEP_TYPE_", "").toLowerCase()
-            console.log(`[Stream] TOOL ${toolName} step keys: ${JSON.stringify(Object.keys(step)).slice(0, 300)}`)
-            console.log(`[Stream] TOOL ${toolName} step data: ${JSON.stringify(step).slice(0, 500)}`)
+            console.log(`[Stream] TOOL ${toolName} step keys: ${JSON.stringify(Object.keys(step))}`)
+            console.log(`[Stream] TOOL ${toolName} metadata.toolCall: ${JSON.stringify(step.metadata?.toolCall).slice(0, 500)}`)
+            console.log(`[Stream] TOOL ${toolName} specific field: ${JSON.stringify(step.runCommand || step.listDirectory || step.viewFile || step.writeFile || step.codeAction || null).slice(0, 500)}`)
             // Try multiple locations for tool arguments
             let toolArgs: any = {}
             if (step.metadata?.toolCall?.argumentsJson) {
@@ -746,7 +768,7 @@ export class AntigravityAgent implements IChatAgent {
   abort(): void {
     if (this._cascadeId && this.lsPort) {
       console.log(`[Cascade] abort() → CancelCascadeInvocation cascadeId=${this._cascadeId}`)
-      this._rpc("CancelCascadeInvocation", { cascadeId: this._cascadeId }).catch(() => {})
+      this._rpc("CancelCascadeInvocation", { cascadeId: this._cascadeId }).catch(() => { })
     }
   }
 
