@@ -299,6 +299,7 @@ async function resumeSession(cfg: ServerConfig, row: Record<string, unknown>): P
 
   const dir = (row.directory as string) || ""
   const cascadeId = (row.cascade_id as string) || undefined
+  console.log(`♻️  Resuming session ${sessionId}, cascade_id=${cascadeId || '(none)'}, dir=${dir || '(none)'}`) 
   const tp = getOrCreateTerminalProvider(sessionId)
   const pp = getOrCreatePreviewProvider(cfg, sessionId)
 
@@ -326,7 +327,11 @@ async function createNewWindow(cfg: ServerConfig, isDefault = false): Promise<Se
   await chatAgent.init()
 
   // Generate window ID server-side (agent's sessionId may be empty before first chat)
-  const sessionId = chatAgent.sessionId || crypto.randomUUID()
+  const agentSessionId = chatAgent.sessionId
+  const sessionId = agentSessionId || crypto.randomUUID()
+  if (!agentSessionId) {
+    console.log(`⚠️  Agent sessionId is empty, using server-generated ID: ${sessionId}`)
+  }
   const now = Date.now()
   terminalProviders.delete(tempId)
   terminalProviders.set(sessionId, tp)
