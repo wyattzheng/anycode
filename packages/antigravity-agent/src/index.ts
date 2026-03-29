@@ -362,12 +362,21 @@ export class AntigravityAgent implements IChatAgent {
 
       const cascadeId = this._cascadeId
       // Send message
-      console.log(`[Cascade] chat() → SendUserCascadeMessage...`)
-      const sendRes = await this._rpc("SendUserCascadeMessage", {
-        cascadeId,
-        items: [{ text: input }],
-        cascadeConfig: { plannerConfig },
-      })
+      console.log(`[Cascade] chat() → SendUserCascadeMessage to port ${this.lsPort}...`)
+      let sendRes: any
+      try {
+        sendRes = await this._rpc("SendUserCascadeMessage", {
+          cascadeId,
+          items: [{ text: input }],
+          cascadeConfig: { plannerConfig },
+        })
+        console.log(`[Cascade] chat() → SendUserCascadeMessage response: ${JSON.stringify(sendRes).slice(0, 300)}`)
+      } catch (err: any) {
+        console.log(`[Cascade] chat() → SendUserCascadeMessage ERROR: ${err?.message}`)
+        yield { type: "error", error: `SendUserCascadeMessage failed: ${err?.message}` }
+        yield { type: "done" }
+        return
+      }
 
       if (sendRes.code) {
         console.log(`[Cascade] chat() → Send failed: ${sendRes.message}`)
@@ -892,6 +901,10 @@ export class AntigravityAgent implements IChatAgent {
   private _rpc(method: string, body: any = {}): Promise<any> {
     return new Promise((resolve, reject) => {
       const data = JSON.stringify(body)
+      const timeout = setTimeout(() => {
+        req.destroy()
+        reject(new Error(`RPC ${method} timed out after 30s`))
+      }, 30000)
       const req = httpsRequest(
         {
           hostname: "127.0.0.1",
@@ -910,6 +923,7 @@ export class AntigravityAgent implements IChatAgent {
           let d = ""
           res.on("data", (c: Buffer) => (d += c))
           res.on("end", () => {
+            clearTimeout(timeout)
             try {
               resolve(JSON.parse(d))
             } catch {
@@ -918,7 +932,10 @@ export class AntigravityAgent implements IChatAgent {
           })
         },
       )
-      req.on("error", reject)
+      req.on("error", (err) => {
+        clearTimeout(timeout)
+        reject(err)
+      })
       req.write(data)
       req.end()
     })
