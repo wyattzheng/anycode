@@ -108,6 +108,9 @@ export class CascadeView extends EventEmitter {
   // ─── Step processing (emits events) ───
 
   private processStep(step: any, stepIndex: number): void {
+    // Skip already-completed steps (replay protection)
+    if (this.processedIndices.has(stepIndex)) return
+
     // PLANNER_RESPONSE: thinking + text streaming
     if (step.type === "CORTEX_STEP_TYPE_PLANNER_RESPONSE") {
       const pr = step.plannerResponse || {}
@@ -116,6 +119,7 @@ export class CascadeView extends EventEmitter {
       console.log(`[Stream] PLANNER step#${stepIndex} status=${step.status} thinking=${thinking?.length || 0} response=${text?.length || 0} keys=${Object.keys(pr).join(",")}`)
 
       if (step.status === "CORTEX_STEP_STATUS_DONE") {
+        this.processedIndices.add(stepIndex)
         const { thinking: _t, modifiedResponse: _r, response: _r2, ...rest } = pr
         console.log(`[Stream] PLANNER DONE metadata: ${JSON.stringify(rest).slice(0, 1000)}`)
         // Cache tool call args for subsequent steps
@@ -142,7 +146,6 @@ export class CascadeView extends EventEmitter {
       if (text && text !== this.lastText) {
         if (this.hasEmittedThinkingStart && !this.hasEmittedThinkingEnd) {
           this.hasEmittedThinkingEnd = true
-          // thinkingDuration is protobuf Duration string like "0.732477s"
           const durationStr = typeof pr.thinkingDuration === "string" ? pr.thinkingDuration : pr.thinkingDuration?.seconds || "0"
           const durationSec = parseFloat(String(durationStr).replace("s", "")) || 0
           this.emit("event", { type: "thinking.end", thinkingDuration: Math.round(durationSec * 1000) })
@@ -155,8 +158,7 @@ export class CascadeView extends EventEmitter {
       return
     }
 
-    // Skip already-processed non-streaming steps
-    if (this.processedIndices.has(stepIndex)) return
+    // Non-PLANNER steps: only process terminal states
     if (step.status !== "CORTEX_STEP_STATUS_DONE" && step.status !== "CORTEX_STEP_STATUS_ERROR"
       && step.status !== "CORTEX_STEP_STATUS_WAITING") return
     this.processedIndices.add(stepIndex)
