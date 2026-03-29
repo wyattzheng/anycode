@@ -284,7 +284,7 @@ export class CascadeView extends EventEmitter {
     const interaction: any = { trajectoryId: tid, stepIndex: stepIdx }
 
     const isFileTool = ["CORTEX_STEP_TYPE_LIST_DIRECTORY", "CORTEX_STEP_TYPE_VIEW_FILE",
-      "CORTEX_STEP_TYPE_CODE_ACTION", "CORTEX_STEP_TYPE_CREATE_FILE"].includes(step.type)
+      "CORTEX_STEP_TYPE_CREATE_FILE"].includes(step.type)
 
     if (isFileTool) {
       let absPath = ""
@@ -303,6 +303,7 @@ export class CascadeView extends EventEmitter {
         submittedCommandLine: cmdLine,
       }
     } else {
+      // CODE_ACTION and other write operations
       interaction.codeAction = {}
     }
 
