@@ -326,12 +326,8 @@ async function createNewWindow(cfg: ServerConfig, isDefault = false): Promise<Se
   const chatAgent = await createChatAgent(cfg.agent, createChatAgentConfig(cfg, "", undefined, tp, pp))
   await chatAgent.init()
 
-  // Generate window ID server-side (agent's sessionId may be empty before first chat)
-  const agentSessionId = chatAgent.sessionId
-  const sessionId = agentSessionId || crypto.randomUUID()
-  if (!agentSessionId) {
-    console.log(`⚠️  Agent sessionId is empty, using server-generated ID: ${sessionId}`)
-  }
+  // Window ID is always server-generated (separate from agent's cascade sessionId)
+  const sessionId = crypto.randomUUID()
   const now = Date.now()
   terminalProviders.delete(tempId)
   terminalProviders.set(sessionId, tp)
