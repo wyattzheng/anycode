@@ -292,7 +292,6 @@ export class AntigravityAgent implements IChatAgent {
         requestedModel: {
           model: "MODEL_PLACEHOLDER_M26",
         },
-        browserEnabled: false,
         ephemeralMessagesConfig: { enabled: true },
         knowledgeConfig: { enabled: true },
       }
@@ -327,7 +326,6 @@ export class AntigravityAgent implements IChatAgent {
           cascadeConfig: {
             plannerConfig,
             conversationHistoryConfig: { enabled: true },
-            browserSetting: { browserEnabled: false },
           },
           clientType: "CHAT_CLIENT_REQUEST_STREAM_CLIENT_TYPE_IDE",
         })
