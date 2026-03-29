@@ -210,91 +210,99 @@ export class AntigravityAgent implements IChatAgent {
   }
 
   async getSessionMessages(opts: { limit: number }): Promise<any> {
-    if (!this.initialized || !this.lsPort || !this._cascadeId) return []
+    if (!this.initialized || !this.lsPort) return []
     const limit = opts?.limit ?? 50
 
-    // Collect messages from this session's cascade trajectory
+    // Get all cascade trajectories from the binary
+    const trajRes = await this._rpc("GetAllCascadeTrajectories", {})
+    const trajectories = trajRes.trajectories || []
+
     const messages: Array<{
       id: string; role: string; createdAt: number
       text?: string
       parts?: Array<{ type: string; tool?: string; content?: string }>
     }> = []
 
-    const cascadeId = this._cascadeId
-    const stepsRes = await this._rpc("GetCascadeTrajectorySteps", { cascadeId })
-    const steps = stepsRes.steps || []
+    // Process most recent cascades first
+    for (let ti = trajectories.length - 1; ti >= 0 && messages.length < limit; ti--) {
+      const traj = trajectories[ti]
+      const cascadeId = traj.cascadeId
+      if (!cascadeId) continue
 
-    let currentAssistantParts: Array<{ type: string; tool?: string; content?: string }> = []
-    let currentAssistantText = ""
-    let currentThinking = ""
-    let hasAssistantContent = false
+      const stepsRes = await this._rpc("GetCascadeTrajectorySteps", { cascadeId })
+      const steps = stepsRes.steps || []
 
-    for (const step of steps) {
-      if (step.type === "CORTEX_STEP_TYPE_USER_INPUT") {
-        // Flush any pending assistant message before new user input
-        if (hasAssistantContent) {
-          messages.push({
-            id: `assistant-${cascadeId}-${step.stepNumber || 0}`,
-            role: "assistant",
-            createdAt: new Date(step.metadata?.createdAt || 0).getTime() - 1,
-            parts: [
-              ...(currentThinking ? [{ type: "thinking", content: currentThinking }] : []),
-              ...(currentAssistantText ? [{ type: "text", content: currentAssistantText }] : []),
-              ...currentAssistantParts,
-            ],
-          })
-          currentAssistantParts = []
-          currentAssistantText = ""
-          currentThinking = ""
-          hasAssistantContent = false
+      let currentAssistantParts: Array<{ type: string; tool?: string; content?: string }> = []
+      let currentAssistantText = ""
+      let currentThinking = ""
+      let hasAssistantContent = false
+
+      for (const step of steps) {
+        if (step.type === "CORTEX_STEP_TYPE_USER_INPUT") {
+          if (hasAssistantContent) {
+            messages.push({
+              id: `assistant-${cascadeId}-${step.stepNumber || 0}`,
+              role: "assistant",
+              createdAt: new Date(step.metadata?.createdAt || 0).getTime() - 1,
+              parts: [
+                ...(currentThinking ? [{ type: "thinking", content: currentThinking }] : []),
+                ...(currentAssistantText ? [{ type: "text", content: currentAssistantText }] : []),
+                ...currentAssistantParts,
+              ],
+            })
+            currentAssistantParts = []
+            currentAssistantText = ""
+            currentThinking = ""
+            hasAssistantContent = false
+          }
+
+          const userText = step.userInput?.userResponse
+            || step.userInput?.items?.map((it: any) => it.text).join("\n")
+            || ""
+          if (userText) {
+            messages.push({
+              id: `user-${cascadeId}-${step.stepNumber || 0}`,
+              role: "user",
+              createdAt: new Date(step.metadata?.createdAt || 0).getTime(),
+              text: userText,
+            })
+          }
+        } else if (step.type === "CORTEX_STEP_TYPE_PLANNER_RESPONSE") {
+          hasAssistantContent = true
+          if (step.plannerResponse?.thinking) currentThinking = step.plannerResponse.thinking
+          if (step.plannerResponse?.response) currentAssistantText = step.plannerResponse.response
+        } else if (step.type === "CORTEX_STEP_TYPE_MCP_TOOL") {
+          hasAssistantContent = true
+          const toolName = step.mcpTool?.toolCall?.name || "unknown"
+          currentAssistantParts.push({ type: "tool", tool: toolName, content: "completed" })
+        } else if ([
+          "CORTEX_STEP_TYPE_LIST_DIRECTORY", "CORTEX_STEP_TYPE_VIEW_FILE",
+          "CORTEX_STEP_TYPE_RUN_COMMAND", "CORTEX_STEP_TYPE_WRITE_FILE",
+          "CORTEX_STEP_TYPE_GREP", "CORTEX_STEP_TYPE_FIND",
+          "CORTEX_STEP_TYPE_CODE_ACTION", "CORTEX_STEP_TYPE_CREATE_FILE",
+        ].includes(step.type)) {
+          hasAssistantContent = true
+          const toolName = step.type.replace("CORTEX_STEP_TYPE_", "").toLowerCase()
+          currentAssistantParts.push({ type: "tool", tool: toolName, content: "completed" })
         }
+      }
 
-        // User message
-        const userText = step.userInput?.userResponse
-          || step.userInput?.items?.map((it: any) => it.text).join("\n")
-          || ""
-        if (userText) {
-          messages.push({
-            id: `user-${cascadeId}-${step.stepNumber || 0}`,
-            role: "user",
-            createdAt: new Date(step.metadata?.createdAt || 0).getTime(),
-            text: userText,
-          })
-        }
-      } else if (step.type === "CORTEX_STEP_TYPE_PLANNER_RESPONSE") {
-        hasAssistantContent = true
-        if (step.plannerResponse?.thinking) currentThinking = step.plannerResponse.thinking
-        if (step.plannerResponse?.response) currentAssistantText = step.plannerResponse.response
-      } else if (step.type === "CORTEX_STEP_TYPE_MCP_TOOL") {
-        hasAssistantContent = true
-        const toolName = step.mcpTool?.toolCall?.name || "unknown"
-        currentAssistantParts.push({ type: "tool", tool: toolName, content: "completed" })
-      } else if ([
-        "CORTEX_STEP_TYPE_LIST_DIRECTORY", "CORTEX_STEP_TYPE_VIEW_FILE",
-        "CORTEX_STEP_TYPE_RUN_COMMAND", "CORTEX_STEP_TYPE_WRITE_FILE",
-        "CORTEX_STEP_TYPE_GREP", "CORTEX_STEP_TYPE_FIND",
-        "CORTEX_STEP_TYPE_CODE_ACTION", "CORTEX_STEP_TYPE_CREATE_FILE",
-      ].includes(step.type)) {
-        hasAssistantContent = true
-        const toolName = step.type.replace("CORTEX_STEP_TYPE_", "").toLowerCase()
-        currentAssistantParts.push({ type: "tool", tool: toolName, content: "completed" })
+      // Flush final assistant message for this cascade
+      if (hasAssistantContent) {
+        messages.push({
+          id: `assistant-${cascadeId}-final`,
+          role: "assistant",
+          createdAt: Date.now(),
+          parts: [
+            ...(currentThinking ? [{ type: "thinking", content: currentThinking }] : []),
+            ...(currentAssistantText ? [{ type: "text", content: currentAssistantText }] : []),
+            ...currentAssistantParts,
+          ],
+        })
       }
     }
 
-    // Flush final assistant message
-    if (hasAssistantContent) {
-      messages.push({
-        id: `assistant-${cascadeId}-final`,
-        role: "assistant",
-        createdAt: Date.now(),
-        parts: [
-          ...(currentThinking ? [{ type: "thinking", content: currentThinking }] : []),
-          ...(currentAssistantText ? [{ type: "text", content: currentAssistantText }] : []),
-          ...currentAssistantParts,
-        ],
-      })
-    }
-
+    messages.sort((a, b) => a.createdAt - b.createdAt)
     return messages.slice(-limit)
   }
 
@@ -312,17 +320,15 @@ export class AntigravityAgent implements IChatAgent {
 
 
     try {
-      // Start cascade on first chat(), reuse on subsequent calls
+      // Always start a new cascade per chat() call (cascades close on completion)
+      console.log(`[Cascade] chat() → StartCascade...`)
+      const startRes = await this._rpc("StartCascade")
+      this._cascadeId = startRes.cascadeId
+      console.log(`[Cascade] chat() → cascadeId=${this._cascadeId}`)
       if (!this._cascadeId) {
-        console.log(`[Cascade] chat() → StartCascade...`)
-        const startRes = await this._rpc("StartCascade")
-        this._cascadeId = startRes.cascadeId
-        console.log(`[Cascade] chat() → cascadeId=${this._cascadeId}`)
-        if (!this._cascadeId) {
-          yield { type: "error", error: "Failed to start cascade" }
-          yield { type: "done" }
-          return
-        }
+        yield { type: "error", error: "Failed to start cascade" }
+        yield { type: "done" }
+        return
       }
 
       // Build cascade config with optional custom tools
