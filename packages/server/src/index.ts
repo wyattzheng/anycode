@@ -234,6 +234,7 @@ function createChatAgentConfig(cfg: ServerConfig, directory: string, sessionId?:
     baseUrl: cfg.baseUrl,
     terminal,
     preview,
+    sessionId,
     codeAgentOptions: createAgentConfig(cfg, directory, sessionId, terminal, preview),
   }
 }

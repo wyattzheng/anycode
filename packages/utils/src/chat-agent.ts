@@ -36,6 +36,8 @@ export interface ChatAgentConfig {
   terminal?: any
   /** Preview provider for the session (used by ClaudeCodeAgent MCP tools) */
   preview?: any
+  /** Session ID for resuming a session */
+  sessionId?: string
 }
 
 /**
