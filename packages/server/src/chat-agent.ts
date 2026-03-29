@@ -82,20 +82,17 @@ export class AnyCodeAgent implements IChatAgent {
 // ── Factory ──────────────────────────────────────────────────────────────
 
 /** Create the appropriate IChatAgent based on agent type string */
-export function createChatAgent(agentType: string, config: ChatAgentConfig): IChatAgent {
+export async function createChatAgent(agentType: string, config: ChatAgentConfig): Promise<IChatAgent> {
   if (agentType === "claudecode") {
-    // Dynamic require — @any-code/claude-code-agent is bundled by tsup
-    const { ClaudeCodeAgent } = require("@any-code/claude-code-agent")
+    const { ClaudeCodeAgent } = await import("@any-code/claude-code-agent")
     return new ClaudeCodeAgent(config)
   }
   if (agentType === "codex") {
-    // Dynamic require — @any-code/codex-agent is bundled by tsup
-    const { CodexAgent } = require("@any-code/codex-agent")
+    const { CodexAgent } = await import("@any-code/codex-agent")
     return new CodexAgent(config)
   }
   if (agentType === "antigravity") {
-    // Dynamic require — @any-code/antigravity-agent is bundled by tsup
-    const { AntigravityAgent } = require("@any-code/antigravity-agent")
+    const { AntigravityAgent } = await import("@any-code/antigravity-agent")
     return new AntigravityAgent(config)
   }
   return new AnyCodeAgent(config)

@@ -291,7 +291,7 @@ async function resumeSession(cfg: ServerConfig, row: Record<string, unknown>): P
   const tp = getOrCreateTerminalProvider(sessionId)
   const pp = getOrCreatePreviewProvider(cfg, sessionId)
 
-  const chatAgent = createChatAgent(cfg.agent, createChatAgentConfig(cfg, dir, sessionId, tp, pp))
+  const chatAgent = await createChatAgent(cfg.agent, createChatAgentConfig(cfg, dir, sessionId, tp, pp))
   await chatAgent.init()
 
   const entry = registerSession(cfg, sessionId, chatAgent, dir, row.time_created as number)
@@ -311,7 +311,7 @@ async function createNewWindow(cfg: ServerConfig, isDefault = false): Promise<Se
   const tp = getOrCreateTerminalProvider(tempId)
   const pp = getOrCreatePreviewProvider(cfg, tempId)
 
-  const chatAgent = createChatAgent(cfg.agent, createChatAgentConfig(cfg, "", undefined, tp, pp))
+  const chatAgent = await createChatAgent(cfg.agent, createChatAgentConfig(cfg, "", undefined, tp, pp))
   await chatAgent.init()
 
   const sessionId = chatAgent.sessionId

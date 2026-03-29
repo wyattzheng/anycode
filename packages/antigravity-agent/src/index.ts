@@ -16,9 +16,9 @@ import { createServer as createHttpServer, type Server as HttpServer } from "htt
 import { request as httpsRequest } from "https"
 import { createServer as createNetServer, type Server as NetServer } from "net"
 import { spawn, type ChildProcess } from "child_process"
-import { tmpdir, platform } from "os"
+import { tmpdir, platform, homedir } from "os"
 import { join, dirname } from "path"
-import { existsSync, statSync } from "fs"
+import { existsSync, statSync, readFileSync, writeFileSync, mkdirSync } from "fs"
 import { fileURLToPath } from "url"
 import { randomBytes, randomUUID } from "crypto"
 import type { IChatAgent, ChatAgentEvent, ChatAgentConfig } from "@any-code/utils"
@@ -72,6 +72,9 @@ function resolveBinaryPath(): string {
 const CLIENT_ID =
   "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
 const CLIENT_SECRET = "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"
+
+const ANYCODE_DIR = join(homedir(), ".anycode")
+const TOKEN_CACHE_PATH = join(ANYCODE_DIR, "oauth_token.json")
 
 export class AntigravityAgent implements IChatAgent {
   readonly name: string
@@ -219,8 +222,10 @@ export class AntigravityAgent implements IChatAgent {
 
     try {
       // Start cascade
+      console.log(`[Cascade] chat() → StartCascade...`)
       const startRes = await this._rpc("StartCascade")
       const cascadeId = startRes.cascadeId
+      console.log(`[Cascade] chat() → cascadeId=${cascadeId}`)
       if (!cascadeId) {
         yield { type: "error", error: "Failed to start cascade" }
         yield { type: "done" }
@@ -232,6 +237,12 @@ export class AntigravityAgent implements IChatAgent {
         planModel: 1026,
         maxOutputTokens: 8192,
         cascadeCanAutoRunCommands: true,
+        toolConfig: {
+          runCommand: {
+            enableModelAutoRun: true,
+            allowAutoRunCommands: true,
+          },
+        },
       }
 
       // Inject custom tools as MCP servers
@@ -251,6 +262,7 @@ export class AntigravityAgent implements IChatAgent {
       }
 
       // Send message
+      console.log(`[Cascade] chat() → SendUserCascadeMessage...`)
       const sendRes = await this._rpc("SendUserCascadeMessage", {
         cascadeId,
         items: [{ text: input }],
@@ -258,51 +270,134 @@ export class AntigravityAgent implements IChatAgent {
       })
 
       if (sendRes.code) {
+        console.log(`[Cascade] chat() → Send failed: ${sendRes.message}`)
         yield { type: "error", error: sendRes.message || "Send failed" }
         yield { type: "done" }
         return
       }
 
-      // Poll for response
+      console.log(`[Cascade] chat() → Polling started`)
+      // Poll for response using cascadeId directly
       let lastStepCount = 0
       let lastYieldedText = ""
+      let lastYieldedThinking = ""
+      let resolvedTrajectoryId: string | null = null
 
       for (let i = 0; i < 400; i++) {
         await new Promise((r) => setTimeout(r, 300))
 
-        const traj = await this._rpc("GetAllCascadeTrajectories")
-        const info = traj.trajectorySummaries?.[cascadeId]
-        if (!info) continue
+        // Get steps directly using cascadeId
+        const stepsRes = await this._rpc("GetCascadeTrajectorySteps", { cascadeId })
+        const allSteps = stepsRes.steps || []
+        const currentStepCount = allSteps.length
 
-        const currentStepCount = info.stepCount || 0
+        // Always check all PLANNER_RESPONSE steps for streaming text + thinking updates
+        // (content updates in-place while status is GENERATING, step count doesn't change)
+        for (const step of allSteps) {
+          if (step.type === "CORTEX_STEP_TYPE_PLANNER_RESPONSE") {
+            // Thinking content
+            const thinking = step.plannerResponse?.thinking
+            if (thinking && thinking !== lastYieldedThinking) {
+              const delta = thinking.startsWith(lastYieldedThinking)
+                ? thinking.slice(lastYieldedThinking.length)
+                : thinking
+              if (delta) {
+                yield { type: "thinking.delta" as const, content: delta }
+              }
+              lastYieldedThinking = thinking
+            }
+            // Main response text
+            const text = step.plannerResponse?.response
+            if (text && text !== lastYieldedText) {
+              const delta = text.startsWith(lastYieldedText)
+                ? text.slice(lastYieldedText.length)
+                : text
+              if (delta) {
+                yield { type: "text.delta" as const, content: delta }
+              }
+              lastYieldedText = text
+            }
+          }
+        }
+
         if (currentStepCount > lastStepCount) {
-          const stepsRes = await this._rpc("GetCascadeTrajectorySteps", {
-            cascadeId,
-            startIndex: lastStepCount,
-            endIndex: currentStepCount,
-          })
+          // Process only NEW steps (skip PLANNER_RESPONSE since handled above)
+          const newSteps = allSteps.slice(lastStepCount)
           lastStepCount = currentStepCount
 
-          for (const step of stepsRes.steps || []) {
-            switch (step.type) {
-              // AI text response — emit only the incremental delta
-              case "CORTEX_STEP_TYPE_PLANNER_RESPONSE": {
-                const text = step.plannerResponse?.response
-                if (text && text !== lastYieldedText) {
-                  // The API returns the full accumulated text each time;
-                  // extract only the new portion for streaming.
-                  const delta = text.startsWith(lastYieldedText)
-                    ? text.slice(lastYieldedText.length)
-                    : text
-                  if (delta) {
-                    yield { type: "text.delta" as const, content: delta }
-                  }
-                  lastYieldedText = text
+          for (let si = 0; si < newSteps.length; si++) {
+            const step = newSteps[si]
+            const stepArrayIdx = lastStepCount - newSteps.length + si  // position in allSteps
+            console.log(`[Cascade] step#${stepArrayIdx}: type=${step.type} status=${step.status}`)
+
+            // Auto-approve WAITING steps using the correct protocol
+            if (step.status === "CORTEX_STEP_STATUS_WAITING") {
+              const stepIdx = step.stepNumber ?? step.stepIndex ?? stepArrayIdx
+              console.log(`[Cascade] ⚡ Auto-approving WAITING step#${stepIdx} (${step.type})`)
+
+              // Resolve trajectoryId via GetCascadeTrajectory (cascadeId → trajectoryId)
+              if (!resolvedTrajectoryId) {
+                try {
+                  const trajRes = await this._rpc("GetCascadeTrajectory", { cascadeId })
+                  resolvedTrajectoryId = trajRes.trajectory?.trajectoryId || null
+                  console.log(`[Cascade]   resolved trajectoryId=${resolvedTrajectoryId}`)
+                } catch (err: any) {
+                  console.log(`[Cascade]   ⚠ Failed to resolve trajectoryId: ${err?.message}`)
                 }
-                break
               }
 
-              // MCP tool call
+              const tid = resolvedTrajectoryId || cascadeId
+
+              // Build interaction payload based on step type
+              // Proto: HandleCascadeUserInteractionRequest { cascadeId, interaction: CascadeUserInteraction }
+              // CascadeUserInteraction { trajectoryId, stepIndex, oneof: filePermission | runCommand | codeAction | ... }
+              const interactionBase: any = {
+                trajectoryId: tid,
+                stepIndex: stepIdx,
+              }
+
+              const isFileTool = [
+                "CORTEX_STEP_TYPE_LIST_DIRECTORY",
+                "CORTEX_STEP_TYPE_VIEW_FILE",
+                "CORTEX_STEP_TYPE_CODE_ACTION",
+                "CORTEX_STEP_TYPE_CREATE_FILE",
+              ].includes(step.type)
+
+              if (isFileTool) {
+                // Extract path from toolCall arguments
+                let absPath = ""
+                try {
+                  const args = JSON.parse(step.metadata?.toolCall?.argumentsJson || step.toolCall?.argumentsJson || "{}")
+                  absPath = args.DirectoryPath || args.AbsolutePath || args.TargetFile || args.path || ""
+                } catch {}
+                interactionBase.filePermission = {
+                  allow: true,
+                  scope: 2,  // CONVERSATION = 2
+                  absolutePathUri: absPath ? `file://${absPath}` : "",
+                }
+              } else if (step.type === "CORTEX_STEP_TYPE_RUN_COMMAND") {
+                interactionBase.runCommand = {}
+              } else {
+                interactionBase.codeAction = {}
+              }
+
+              console.log(`[Cascade]   approve: cascadeId=${cascadeId}, interaction=${JSON.stringify(interactionBase).slice(0, 300)}`)
+              try {
+                const approveRes = await this._rpc("HandleCascadeUserInteraction", {
+                  cascadeId,
+                  interaction: interactionBase,
+                })
+                console.log(`[Cascade]   approve response: ${JSON.stringify(approveRes).slice(0, 200)}`)
+              } catch (err: any) {
+                console.log(`[Cascade] ⚠ Approve failed: ${err?.message}`)
+              }
+            }
+
+            switch (step.type) {
+              case "CORTEX_STEP_TYPE_PLANNER_RESPONSE":
+                // Handled above in the all-steps text scan
+                break;
+
               case "CORTEX_STEP_TYPE_MCP_TOOL": {
                 const mcp = step.mcpTool
                 if (mcp?.toolCall) {
@@ -335,7 +430,40 @@ export class AntigravityAgent implements IChatAgent {
                 break
               }
 
-              // Error message (e.g. rate limit, model error)
+              case "CORTEX_STEP_TYPE_LIST_DIRECTORY":
+              case "CORTEX_STEP_TYPE_VIEW_FILE":
+              case "CORTEX_STEP_TYPE_RUN_COMMAND":
+              case "CORTEX_STEP_TYPE_WRITE_FILE":
+              case "CORTEX_STEP_TYPE_GREP":
+              case "CORTEX_STEP_TYPE_FIND": {
+                const toolName = step.type.replace("CORTEX_STEP_TYPE_", "").toLowerCase()
+                const toolArgs = step.metadata?.toolCall?.argumentsJson
+                  ? JSON.parse(step.metadata.toolCall.argumentsJson)
+                  : {}
+                yield {
+                  type: "tool.start" as const,
+                  toolCallId: step.stepId || String(step.stepNumber || ""),
+                  toolName,
+                  toolArgs,
+                }
+                if (step.status === "CORTEX_STEP_STATUS_DONE") {
+                  const output = step.metadata?.toolCall?.result
+                    || step.listDirectory?.result
+                    || step.viewFile?.result
+                    || step.runCommand?.result
+                    || ""
+                  yield {
+                    type: "tool.done" as const,
+                    toolCallId: step.stepId || String(step.stepNumber || ""),
+                    toolName,
+                    toolOutput: typeof output === "string" ? output : JSON.stringify(output),
+                    toolTitle: toolName,
+                    toolMetadata: {},
+                  }
+                }
+                break
+              }
+
               case "CORTEX_STEP_TYPE_ERROR_MESSAGE": {
                 const errMsg = step.errorMessage?.error?.userErrorMessage
                   || step.errorMessage?.error?.shortError
@@ -344,20 +472,25 @@ export class AntigravityAgent implements IChatAgent {
                 break
               }
 
-              // Checkpoint / Ephemeral — internal, skip
               case "CORTEX_STEP_TYPE_CHECKPOINT":
               case "CORTEX_STEP_TYPE_EPHEMERAL_MESSAGE":
+              case "CORTEX_STEP_TYPE_USER_INPUT":
+              case "CORTEX_STEP_TYPE_CONVERSATION_HISTORY":
                 break
 
               default:
+                console.log(`[Cascade] unhandled step type: ${step.type}`, JSON.stringify(step).slice(0, 200))
                 break
             }
           }
         }
 
-        // Check if cascade is done
-        if (info.status?.includes("IDLE") && currentStepCount > 0) {
-          break
+        // Detect completion: last step is CHECKPOINT with DONE
+        if (currentStepCount > 0) {
+          const lastStep = allSteps[allSteps.length - 1]
+          if (lastStep?.type === "CORTEX_STEP_TYPE_CHECKPOINT" && lastStep?.status === "CORTEX_STEP_STATUS_DONE") {
+            break
+          }
         }
       }
     } catch (err: any) {
@@ -455,6 +588,17 @@ export class AntigravityAgent implements IChatAgent {
   }
 
   private async _refreshAccessToken(): Promise<void> {
+    // Try reading cached token first
+    try {
+      const cached = JSON.parse(readFileSync(TOKEN_CACHE_PATH, "utf-8"))
+      if (cached.access_token && cached.expires_at && Date.now() < cached.expires_at - 60_000) {
+        this.accessToken = cached.access_token
+        console.log("[AntigravityAgent] ✅ Using cached access token")
+        return
+      }
+    } catch { /* cache miss or parse error — refresh from network */ }
+
+    // Network refresh
     return new Promise((resolve, reject) => {
       const params = new URLSearchParams({
         client_id: CLIENT_ID,
@@ -479,6 +623,14 @@ export class AntigravityAgent implements IChatAgent {
                 return
               }
               this.accessToken = json.access_token
+              // Cache token with expiry
+              try {
+                mkdirSync(ANYCODE_DIR, { recursive: true })
+                writeFileSync(TOKEN_CACHE_PATH, JSON.stringify({
+                  access_token: json.access_token,
+                  expires_at: Date.now() + (json.expires_in || 3600) * 1000,
+                }), "utf-8")
+              } catch { /* ignore cache write errors */ }
               resolve()
             } catch {
               reject(new Error(`Failed to parse token response: ${d}`))
