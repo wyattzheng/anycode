@@ -108,7 +108,7 @@ export class AntigravityAgent implements IChatAgent {
   constructor(config: ChatAgentConfig) {
     this.config = config
     this.name = config.name || "Antigravity Agent"
-    this._cascadeId = config.sessionId || randomUUID()  // Reuse sessionId on resume
+    this._cascadeId = config.sessionId || ""  // Empty until first chat() creates a cascade
     this.refreshToken = config.apiKey || ""
   }
 
