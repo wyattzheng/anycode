@@ -100,6 +100,13 @@ export class AntigravityAgent implements IChatAgent {
   private _toolDefinitions: Array<{ name: string; description: string; inputSchema: any }> = []
   private _toolInfos = new Map<string, any>()
 
+  // Message history for getSessionMessages
+  private _messageHistory: Array<{
+    id: string; role: string; createdAt: number
+    text?: string
+    parts?: Array<{ type: string; tool?: string; content?: string }>
+  }> = []
+
   /** Resolves when USS uss-oauth subscription is received and token injected */
   private _oauthInjected: Promise<void> | null = null
   private _oauthInjectedResolve: (() => void) | null = null
@@ -205,8 +212,9 @@ export class AntigravityAgent implements IChatAgent {
     return null
   }
 
-  async getSessionMessages(_opts: { limit: number }): Promise<any> {
-    return []
+  async getSessionMessages(opts: { limit: number }): Promise<any> {
+    const limit = opts?.limit ?? 50
+    return this._messageHistory.slice(-limit)
   }
 
   async *chat(input: string): AsyncGenerator<ChatAgentEvent, void, unknown> {
@@ -219,6 +227,11 @@ export class AntigravityAgent implements IChatAgent {
         return
       }
     }
+
+    // Track parts for assistant message history (declared outside try for recording in finally)
+    const assistantParts: Array<{ type: string; tool?: string; content?: string }> = []
+    let assistantText = ""
+    let assistantThinking = ""
 
     try {
       // Start cascade
@@ -260,6 +273,15 @@ export class AntigravityAgent implements IChatAgent {
           }],
         }
       }
+
+      // Record user message in history
+      const userMsgId = `user-${Date.now()}`
+      this._messageHistory.push({
+        id: userMsgId,
+        role: "user",
+        createdAt: Date.now(),
+        text: input,
+      })
 
       // Send message
       console.log(`[Cascade] chat() → SendUserCascadeMessage...`)
@@ -312,6 +334,7 @@ export class AntigravityAgent implements IChatAgent {
                 yield { type: "thinking.delta" as const, thinkingContent: delta }
               }
               lastYieldedThinking = thinking
+              assistantThinking = thinking
             }
             // Main response text — when response appears, thinking phase is over
             const text = step.plannerResponse?.response
@@ -328,6 +351,7 @@ export class AntigravityAgent implements IChatAgent {
                 yield { type: "text.delta" as const, content: delta }
               }
               lastYieldedText = text
+              assistantText = text
             }
           }
         }
@@ -413,6 +437,7 @@ export class AntigravityAgent implements IChatAgent {
               case "CORTEX_STEP_TYPE_MCP_TOOL": {
                 const mcp = step.mcpTool
                 if (mcp?.toolCall) {
+                  const mcpToolName = mcp.toolCall.name || "unknown"
                   let parsedArgs = {}
                   try {
                     parsedArgs = JSON.parse(mcp.toolCall.argumentsJson || "{}")
@@ -421,17 +446,18 @@ export class AntigravityAgent implements IChatAgent {
                   yield {
                     type: "tool.start" as const,
                     toolCallId: mcp.toolCall.id || "",
-                    toolName: mcp.toolCall.name || "unknown",
+                    toolName: mcpToolName,
                     toolArgs: parsedArgs,
                   }
 
                   if (step.status === "CORTEX_STEP_STATUS_DONE") {
+                    assistantParts.push({ type: "tool", tool: mcpToolName, content: "completed" })
                     yield {
                       type: "tool.done" as const,
                       toolCallId: mcp.toolCall.id || "",
-                      toolName: mcp.toolCall.name || "unknown",
+                      toolName: mcpToolName,
                       toolOutput: mcp.resultString || "",
-                      toolTitle: `${mcp.serverName || "mcp"}:${mcp.toolCall.name || ""}`,
+                      toolTitle: `${mcp.serverName || "mcp"}:${mcpToolName}`,
                       toolMetadata: {
                         serverName: mcp.serverName,
                         serverVersion: mcp.serverInfo?.version,
@@ -449,6 +475,7 @@ export class AntigravityAgent implements IChatAgent {
               case "CORTEX_STEP_TYPE_GREP":
               case "CORTEX_STEP_TYPE_FIND": {
                 const toolName = step.type.replace("CORTEX_STEP_TYPE_", "").toLowerCase()
+                assistantParts.push({ type: "tool", tool: toolName, content: step.status === "CORTEX_STEP_STATUS_DONE" ? "completed" : "running" })
                 const toolArgs = step.metadata?.toolCall?.argumentsJson
                   ? JSON.parse(step.metadata.toolCall.argumentsJson)
                   : {}
@@ -510,6 +537,21 @@ export class AntigravityAgent implements IChatAgent {
       }
     } catch (err: any) {
       yield { type: "error" as const, error: err?.message ?? String(err) }
+    }
+
+    // Record assistant message in history
+    if (assistantText || assistantThinking || assistantParts.length > 0) {
+      const allParts = [
+        ...(assistantThinking ? [{ type: "thinking", content: assistantThinking }] : []),
+        ...(assistantText ? [{ type: "text", content: assistantText }] : []),
+        ...assistantParts,
+      ]
+      this._messageHistory.push({
+        id: `assistant-${Date.now()}`,
+        role: "assistant",
+        createdAt: Date.now(),
+        parts: allParts,
+      })
     }
 
     yield { type: "done" as const }
