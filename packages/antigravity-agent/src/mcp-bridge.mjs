@@ -6,14 +6,8 @@
  * It reads tool definitions from ANYCODE_TOOLS_JSON env var and handles
  * tools/list + tools/call by forwarding to the parent process via TCP.
  *
- * Protocol: JSON-RPC 2.0 over stdio with Content-Length framing (MCP standard)
- *
- * Flow:
- *   1. Go binary spawns this script
- *   2. Binary sends initialize/tools/list/tools/call via stdin
- *   3. tools/list returns tool definitions from ANYCODE_TOOLS_JSON
- *   4. tools/call forwards to parent TCP server for execution
- *   5. Parent executes Tool.Info.execute() and returns result
+ * Protocol: JSON-RPC 2.0 over stdio (MCP standard)
+ * Supports BOTH Content-Length framing AND bare JSON lines.
  */
 import { createConnection } from "node:net"
 
@@ -32,57 +26,59 @@ function log(...args) {
 
 log(`Started. ${tools.length} tools, TCP port ${TCP_PORT}`)
 
-// --- Content-Length message framing ---
+// --- Stdin reading: handle both Content-Length framing and bare JSON lines ---
 
-let buf = Buffer.alloc(0)
-let expectedLength = -1
+let buf = ""
+let contentLength = -1
 
+process.stdin.setEncoding("utf8")
 process.stdin.on("data", (chunk) => {
-  buf = Buffer.concat([buf, typeof chunk === "string" ? Buffer.from(chunk) : chunk])
+  buf += chunk
   processBuffer()
 })
 
 function processBuffer() {
-  while (true) {
-    if (expectedLength === -1) {
-      // Look for Content-Length header
+  while (buf.length > 0) {
+    // Try Content-Length framing first
+    if (contentLength === -1) {
       const headerEnd = buf.indexOf("\r\n\r\n")
-      if (headerEnd === -1) return // Incomplete header
-
-      const header = buf.slice(0, headerEnd).toString("utf8")
-      const match = header.match(/Content-Length:\s*(\d+)/i)
-      if (!match) {
-        // No Content-Length — try parsing as bare JSON line (fallback)
-        const nlIdx = buf.indexOf("\n")
-        if (nlIdx === -1) return
-        const line = buf.slice(0, nlIdx).toString("utf8").trim()
-        buf = buf.slice(nlIdx + 1)
-        if (line) {
-          try {
-            handleMessage(JSON.parse(line))
-          } catch {}
+      if (headerEnd !== -1) {
+        const header = buf.slice(0, headerEnd)
+        const clMatch = header.match(/Content-Length:\s*(\d+)/i)
+        if (clMatch) {
+          contentLength = parseInt(clMatch[1])
+          buf = buf.slice(headerEnd + 4)
+          continue
         }
-        continue
       }
-
-      expectedLength = parseInt(match[1])
-      buf = buf.slice(headerEnd + 4) // Skip past \r\n\r\n
     }
 
-    // Wait for enough data
-    if (buf.length < expectedLength) return
-
-    const body = buf.slice(0, expectedLength).toString("utf8")
-    buf = buf.slice(expectedLength)
-    expectedLength = -1
-
-    try {
-      const msg = JSON.parse(body)
-      log(`← ${msg.method || "response"} id=${msg.id}`)
-      handleMessage(msg)
-    } catch (e) {
-      log(`Parse error: ${e.message}, body: ${body.slice(0, 200)}`)
+    // If we have a pending Content-Length, wait for full body
+    if (contentLength >= 0) {
+      if (buf.length < contentLength) return // need more data
+      const body = buf.slice(0, contentLength)
+      buf = buf.slice(contentLength)
+      contentLength = -1
+      tryHandleJson(body)
+      continue
     }
+
+    // Fallback: try bare JSON line delimited by \n
+    const nlIdx = buf.indexOf("\n")
+    if (nlIdx === -1) return // need more data
+    const line = buf.slice(0, nlIdx).trim()
+    buf = buf.slice(nlIdx + 1)
+    if (line) tryHandleJson(line)
+  }
+}
+
+function tryHandleJson(str) {
+  try {
+    const msg = JSON.parse(str)
+    log(`← ${msg.method || "response"} id=${msg.id}`)
+    handleMessage(msg)
+  } catch (e) {
+    log(`Parse error: ${e.message}, input: ${str.slice(0, 200)}`)
   }
 }
 
@@ -128,11 +124,9 @@ function handleMessage(msg) {
     log(`tools/call → ${toolName}(${JSON.stringify(args).slice(0, 200)})`)
 
     if (TCP_PORT > 0) {
-      // Forward to parent TCP server for execution
       const conn = createConnection(TCP_PORT, "127.0.0.1", () => {
         conn.write(
-          JSON.stringify({ type: "tool_call", id: msg.id, toolName, args }) +
-            "\n",
+          JSON.stringify({ type: "tool_call", id: msg.id, toolName, args }) + "\n",
         )
       })
       let respBuf = ""
