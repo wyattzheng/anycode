@@ -253,19 +253,23 @@ export class AntigravityAgent implements IChatAgent {
 
 
     try {
-      // Always start a new cascade per chat() call (cascades close on completion)
-      console.log(`[Cascade] chat() → StartCascade...`)
-      const startRes = await this._rpc("StartCascade")
-      this._cascadeId = startRes.cascadeId
-      console.log(`[Cascade] chat() → cascadeId=${this._cascadeId}`)
+      // Only start a new cascade if we don't have one yet
       if (!this._cascadeId) {
-        yield { type: "error", error: "Failed to start cascade" }
-        yield { type: "done" }
-        return
-      }
+        console.log(`[Cascade] chat() → StartCascade...`)
+        const startRes = await this._rpc("StartCascade")
+        this._cascadeId = startRes.cascadeId
+        console.log(`[Cascade] chat() → cascadeId=${this._cascadeId}`)
+        if (!this._cascadeId) {
+          yield { type: "error", error: "Failed to start cascade" }
+          yield { type: "done" }
+          return
+        }
 
-      // Notify server to persist the cascadeId
-      this._emitEvent("cascade.created", { cascadeId: this._cascadeId })
+        // Notify server to persist the cascadeId
+        this._emitEvent("cascade.created", { cascadeId: this._cascadeId })
+      } else {
+        console.log(`[Cascade] chat() → reusing cascadeId=${this._cascadeId}`)
+      }
 
       // Build cascade config matching official client format
       const plannerConfig: any = {
@@ -340,11 +344,11 @@ export class AntigravityAgent implements IChatAgent {
 
       console.log(`[Cascade] chat() → Streaming via StreamAgentStateUpdates`)
 
-      // Create or reset CascadeView
+      // Prepare CascadeView for new turn (keeps history steps, resets streaming state)
       if (!this._cascadeView) {
         this._cascadeView = new CascadeView({ rpc: this._rpc.bind(this), cascadeId })
       } else {
-        this._cascadeView.reset(cascadeId)
+        this._cascadeView.prepareForNewTurn(cascadeId)
       }
       const view = this._cascadeView
 

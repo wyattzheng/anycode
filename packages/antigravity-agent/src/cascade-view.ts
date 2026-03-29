@@ -40,7 +40,7 @@ export class CascadeView extends EventEmitter {
   get cascadeId(): string { return this._cascadeId }
   get hasSteps(): boolean { return this.steps.size > 0 }
 
-  /** Reset incremental state for a new chat turn (keeps history steps) */
+  /** Reset ALL state for a completely new cascade */
   reset(cascadeId: string): void {
     this._cascadeId = cascadeId
     this.lastText = ""
@@ -49,6 +49,19 @@ export class CascadeView extends EventEmitter {
     this.hasEmittedThinkingEnd = false
     this.processedIndices.clear()
     this.toolCallArgsCache.clear()
+    this.steps.clear()
+    this.trajectoryId = null
+  }
+
+  /** Prepare for a new message in the SAME cascade — keeps steps history */
+  prepareForNewTurn(cascadeId: string): void {
+    this._cascadeId = cascadeId
+    this.lastText = ""
+    this.lastThinking = ""
+    this.hasEmittedThinkingStart = false
+    this.hasEmittedThinkingEnd = false
+    // Keep processedIndices so replayed old steps don't re-emit events
+    // Keep steps and toolCallArgsCache for history
     this.trajectoryId = null
   }
 
