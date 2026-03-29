@@ -9,5 +9,5 @@ export default defineConfig({
     dts: true,
     clean: true,
     skipNodeModulesBundle: true,
-    onSuccess: "cp src/schemas.json dist/schemas.json",
+    onSuccess: "cp src/schemas.json src/mcp-bridge.mjs dist/",
 });

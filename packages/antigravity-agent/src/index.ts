@@ -14,11 +14,11 @@
 
 import { createServer as createHttpServer, type Server as HttpServer } from "http"
 import { request as httpsRequest } from "https"
-import { createServer as createNetServer } from "net"
+import { createServer as createNetServer, type Server as NetServer } from "net"
 import { spawn, type ChildProcess } from "child_process"
 import { tmpdir, platform } from "os"
 import { join, dirname } from "path"
-import { existsSync } from "fs"
+import { existsSync, statSync } from "fs"
 import { fileURLToPath } from "url"
 import { randomBytes, randomUUID } from "crypto"
 import type { IChatAgent, ChatAgentEvent, ChatAgentConfig } from "@any-code/utils"
@@ -81,6 +81,12 @@ export class AntigravityAgent implements IChatAgent {
   private initialized = false
   private initPromise: Promise<void> | null = null
 
+  // MCP tool bridge
+  private _mcpBridgeServer: NetServer | null = null
+  private _mcpBridgePort = 0
+  private _toolDefinitions: Array<{ name: string; description: string; inputSchema: any }> = []
+  private _toolInfos = new Map<string, any>()
+
   /** Resolves when USS uss-oauth subscription is received and token injected */
   private _oauthInjected: Promise<void> | null = null
   private _oauthInjectedResolve: (() => void) | null = null
@@ -115,6 +121,31 @@ export class AntigravityAgent implements IChatAgent {
 
     // Load proto schemas (validates schemas.json exists)
     getSchemas()
+
+    // Initialize custom tools from codeAgentOptions (same pattern as claude-code-agent)
+    const tools: any[] = this.config.codeAgentOptions?.tools ?? []
+    if (tools.length > 0) {
+      console.log(`[AntigravityAgent] Initializing ${tools.length} custom tools...`)
+      for (const toolDef of tools) {
+        const info = await toolDef.init()
+        this._toolInfos.set(toolDef.id, info)
+        // Convert Zod schema to JSON Schema for MCP
+        const zodShape = (info.parameters as any)?.shape ?? {}
+        const properties: Record<string, any> = {}
+        for (const [key, val] of Object.entries(zodShape)) {
+          const desc = (val as any)?._def?.description || ""
+          properties[key] = { type: "string", description: desc }
+        }
+        this._toolDefinitions.push({
+          name: toolDef.id,
+          description: info.description,
+          inputSchema: { type: "object", properties },
+        })
+      }
+      // Start TCP bridge for tool execution forwarding
+      await this._startMcpBridge()
+      console.log(`[AntigravityAgent] ✅ ${tools.length} tools registered on TCP port ${this._mcpBridgePort}`)
+    }
 
     // 1. Exchange refresh_token for access_token
     console.log("[AntigravityAgent] Refreshing access token...")
@@ -186,17 +217,34 @@ export class AntigravityAgent implements IChatAgent {
         return
       }
 
+      // Build cascade config with optional custom tools
+      const plannerConfig: any = {
+        planModel: 1026,
+        maxOutputTokens: 8192,
+        cascadeCanAutoRunCommands: true,
+      }
+
+      // Inject custom tools as MCP servers
+      if (this._toolDefinitions.length > 0) {
+        const bridgePath = join(__dirname, "mcp-bridge.mjs")
+        plannerConfig.customizationConfig = {
+          mcpServers: [{
+            serverName: "anycode-tools",
+            command: "node",
+            args: [bridgePath],
+            env: {
+              ANYCODE_TOOLS_JSON: JSON.stringify(this._toolDefinitions),
+              ANYCODE_MCP_PORT: String(this._mcpBridgePort),
+            },
+          }],
+        }
+      }
+
       // Send message
       const sendRes = await this._rpc("SendUserCascadeMessage", {
         cascadeId,
         items: [{ text: input }],
-        cascadeConfig: {
-          plannerConfig: {
-            planModel: 1026,
-            maxOutputTokens: 8192,
-            cascadeCanAutoRunCommands: true,
-          },
-        },
+        cascadeConfig: { plannerConfig },
       })
 
       if (sendRes.code) {
@@ -314,13 +362,80 @@ export class AntigravityAgent implements IChatAgent {
     this.abort()
     this.extServer?.close()
     this.pipeServer?.close()
+    this._mcpBridgeServer?.close()
     this.extServer = null
     this.pipeServer = null
+    this._mcpBridgeServer = null
     this.initialized = false
     this.initPromise = null
   }
 
   // ─── Private Methods ───────────────────────────────────────
+
+  /** Start TCP server for MCP bridge tool call forwarding */
+  private _startMcpBridge(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const server = createNetServer((socket) => {
+        let buffer = ""
+        socket.on("data", (chunk: Buffer) => {
+          buffer += chunk.toString()
+          let newlineIdx
+          while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, newlineIdx)
+            buffer = buffer.slice(newlineIdx + 1)
+            try {
+              const msg = JSON.parse(line)
+              if (msg.type === "tool_call") {
+                this._handleToolCall(msg.id, msg.toolName, msg.args, socket)
+              }
+            } catch {}
+          }
+        })
+      })
+      server.listen(0, "127.0.0.1", () => {
+        const addr = server.address() as any
+        this._mcpBridgePort = addr.port
+        this._mcpBridgeServer = server
+        resolve()
+      })
+      server.on("error", reject)
+    })
+  }
+
+  /** Handle a tool call from the MCP bridge */
+  private async _handleToolCall(id: any, toolName: string, args: any, socket: any): Promise<void> {
+    try {
+      const info = this._toolInfos.get(toolName)
+      if (!info) {
+        socket.write(JSON.stringify({ type: "tool_result", id, result: { output: `Unknown tool: ${toolName}` } }) + "\n")
+        return
+      }
+
+      const self = this
+      const ctx = {
+        emit: (event: string, data?: any) => self._emitEvent(event, data),
+        terminal: self.config.terminal,
+        preview: self.config.preview,
+        worktree: "",
+        fs: {
+          async stat(p: string) {
+            try { const s = statSync(p); return { isDirectory: s.isDirectory(), isFile: s.isFile() } }
+            catch { return null }
+          }
+        },
+      }
+      const result = await info.execute(args, ctx as any)
+      socket.write(JSON.stringify({ type: "tool_result", id, result: { output: result.output } }) + "\n")
+    } catch (err: any) {
+      socket.write(JSON.stringify({ type: "tool_result", id, error: err?.message ?? String(err) }) + "\n")
+    }
+  }
+
+  /** Emit an event to all registered handlers (used by MCP tools) */
+  private _emitEvent(event: string, data: any): void {
+    const handlers = this.eventHandlers.get(event) ?? []
+    for (const handler of handlers) handler(data)
+  }
 
   private async _refreshAccessToken(): Promise<void> {
     return new Promise((resolve, reject) => {
