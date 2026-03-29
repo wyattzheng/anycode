@@ -234,7 +234,8 @@ export class AntigravityAgent implements IChatAgent {
 
       // Build cascade config with optional custom tools
       const plannerConfig: any = {
-        planModel: 1026,  // MODEL_ANTIGRAVITY (Claude models require ChatClientServer proxy)
+        planModel: 1026,
+        requestedModel: { model: 291 },  // MODEL_CLAUDE_4_OPUS_THINKING
         maxOutputTokens: 8192,
         cascadeCanAutoRunCommands: true,
         toolConfig: {
@@ -277,6 +278,7 @@ export class AntigravityAgent implements IChatAgent {
       }
 
       console.log(`[Cascade] chat() → Polling started`)
+
       // Poll for response using cascadeId directly
       let lastStepCount = 0
       let lastYieldedText = ""
