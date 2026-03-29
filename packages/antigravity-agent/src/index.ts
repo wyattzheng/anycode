@@ -381,7 +381,7 @@ export class AntigravityAgent implements IChatAgent {
                 try {
                   const args = JSON.parse(step.metadata?.toolCall?.argumentsJson || step.toolCall?.argumentsJson || "{}")
                   absPath = args.DirectoryPath || args.AbsolutePath || args.TargetFile || args.path || ""
-                } catch {}
+                } catch { }
                 interactionBase.filePermission = {
                   allow: true,
                   scope: 2,  // CONVERSATION = 2
@@ -497,14 +497,15 @@ export class AntigravityAgent implements IChatAgent {
           }
         }
 
-        // Detect completion: no active steps remaining
+        // Detect completion: last step is terminal
         if (currentStepCount > 0) {
-          const hasActiveStep = allSteps.some((s: any) =>
-            s.status === "CORTEX_STEP_STATUS_GENERATING" ||
-            s.status === "CORTEX_STEP_STATUS_WAITING" ||
-            s.status === "CORTEX_STEP_STATUS_RUNNING"
-          )
-          if (!hasActiveStep) break
+          const lastStep = allSteps[allSteps.length - 1]
+          if (lastStep?.status === "CORTEX_STEP_STATUS_DONE" && (
+            lastStep?.type === "CORTEX_STEP_TYPE_CHECKPOINT" ||
+            lastStep?.type === "CORTEX_STEP_TYPE_ERROR_MESSAGE"
+          )) {
+            break
+          }
         }
       }
     } catch (err: any) {
@@ -552,7 +553,7 @@ export class AntigravityAgent implements IChatAgent {
               if (msg.type === "tool_call") {
                 this._handleToolCall(msg.id, msg.toolName, msg.args, socket)
               }
-            } catch {}
+            } catch { }
           }
         })
       })
@@ -676,7 +677,7 @@ export class AntigravityAgent implements IChatAgent {
               if (frames.length > 0) {
                 topic = protoDecodeFields(frames[0].body).field1 || ""
               }
-            } catch {}
+            } catch { }
 
             res.writeHead(200, {
               "Content-Type": "application/connect+proto",
@@ -720,7 +721,7 @@ export class AntigravityAgent implements IChatAgent {
         tmpdir(),
         `ag_agent_${randomBytes(4).toString("hex")}`,
       )
-      const pipeServer = createNetServer(() => {})
+      const pipeServer = createNetServer(() => { })
 
       pipeServer.listen(pipePath, () => {
         this.pipeServer = pipeServer
