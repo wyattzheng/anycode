@@ -1,5 +1,5 @@
 #!/usr/bin/env node
 
-import { startServer } from "../src/index"
+import { AnyCodeServer } from "../src/index"
 
-startServer()
+new AnyCodeServer().start()

@@ -39,10 +39,8 @@ import { createChatAgent, type IChatAgent } from "./chat-agent"
 
 // ── Paths ──────────────────────────────────────────────────────────────────
 
-const ANYCODE_DIR = path.join(os.homedir(), ".anycode")
-const DB_PATH = path.join(ANYCODE_DIR, "data.db")
+const DEFAULT_ANYCODE_DIR = path.join(os.homedir(), ".anycode")
 const NO_AGENT_TYPE = "noagent"
-const settingsStore = new SettingsStore({ anycodeDir: ANYCODE_DIR })
 const API_ERROR_CODES = {
   SETTINGS_ACCOUNT_INCOMPLETE: "SETTINGS_ACCOUNT_INCOMPLETE",
 } as const
@@ -61,52 +59,15 @@ interface ServerConfig {
   agent: string
 }
 
-function readUserSettingsFile(): UserSettingsFile {
-  return settingsStore.read().toJSON()
+export interface AnyCodeServerOptions {
+  config?: ServerConfig
+  anycodeDir?: string
+  dbPath?: string
+  settingsStore?: SettingsStore
 }
 
-function writeUserSettingsFile(settings: UserSettingsFile) {
-  return settingsStore.write(settings).toJSON()
-}
-
-function applySettingsToConfig(cfg: ServerConfig, settings: UserSettingsFile) {
-  const runtime = new SettingsModel(settings).resolveRuntime()
-  cfg.userSettings = runtime.userSettings
-  cfg.agent = runtime.agent
-  cfg.provider = runtime.provider
-  cfg.apiKey = runtime.apiKey
-  cfg.baseUrl = runtime.baseUrl
-  cfg.model = runtime.model
-}
-
-function loadConfig(): ServerConfig {
-  const runtime = settingsStore.read().resolveRuntime()
-  const userSettings = runtime.userSettings
-  const agent = runtime.agent
-  const provider = runtime.provider
-  const model = runtime.model
-  const apiKey = runtime.apiKey
-  const baseUrl = runtime.baseUrl
-  const port = parseInt(process.env.PORT ?? "3210", 10)
-  const previewPort = parseInt(process.env.PREVIEW_PORT ?? String(port + 1), 10)
-  if (!provider) {
-    console.error("❌  Missing PROVIDER")
-    process.exit(1)
-  }
-  const appDist = resolveAppDist()
-  const tlsCert = process.env.TLS_CERT ?? userSettings.TLS_CERT ?? undefined
-  const tlsKey = process.env.TLS_KEY ?? userSettings.TLS_KEY ?? undefined
-  if ((tlsCert && !tlsKey) || (!tlsCert && tlsKey)) {
-    console.error("❌  Both TLS_CERT and TLS_KEY must be set together")
-    process.exit(1)
-  }
-  return { provider, model, apiKey, baseUrl, port, previewPort, appDist, userSettings, tlsCert, tlsKey, agent }
-}
-
-// ── Global error handlers — registered inside startServer() ──
-
-function makePaths() {
-  const dataPath = path.join(ANYCODE_DIR, "data")
+function makePaths(anycodeDir: string) {
+  const dataPath = path.join(anycodeDir, "data")
   fs.mkdirSync(dataPath, { recursive: true })
   return dataPath
 }
@@ -206,24 +167,15 @@ interface SessionAgentBinding {
   runtimeAgentType: string
 }
 
-// In-memory agent cache, keyed by session ID
-const sessions = new Map<string, SessionEntry>()
-
-// PROVIDER_ID removed — use cfg.provider
-
-// Shared storage & DB — initialised lazily inside startServer()
-let sharedStorage: SqlJsStorage
-let db: NoSqlDb
-
-function createAgentConfig(cfg: ServerConfig, directory: string, resumeToken?: string, terminal?: TerminalProvider, preview?: PreviewProvider) {
+function createAgentConfig(server: AnyCodeServer, cfg: ServerConfig, directory: string, resumeToken?: string, terminal?: TerminalProvider, preview?: PreviewProvider) {
   return {
     directory: directory,
     fs: new NodeFS(),
     search: new NodeSearchProvider(),
-    storage: sharedStorage,
+    storage: server.sharedStorage,
     shell: new NodeShellProvider(),
-    git: new NodeGitProvider(),
-    dataPath: makePaths(),
+    git: server.gitProvider,
+    dataPath: makePaths(server.anycodeDir),
     ...(resumeToken ? { sessionId: resumeToken } : {}),
     ...(terminal ? { terminal } : {}),
     ...(preview ? { preview } : {}),
@@ -258,7 +210,7 @@ When a user starts a new conversation without an active project, your first prio
 }
 
 /** Create a ChatAgentConfig for the given session context. */
-function createChatAgentConfig(cfg: ServerConfig, directory: string, terminal?: TerminalProvider, preview?: PreviewProvider, resumeToken?: string) {
+function createChatAgentConfig(server: AnyCodeServer, cfg: ServerConfig, directory: string, terminal?: TerminalProvider, preview?: PreviewProvider, resumeToken?: string) {
   return {
     apiKey: cfg.apiKey,
     model: cfg.model,
@@ -266,7 +218,7 @@ function createChatAgentConfig(cfg: ServerConfig, directory: string, terminal?: 
     terminal,
     preview,
     sessionId: resumeToken,
-    codeAgentOptions: createAgentConfig(cfg, directory, resumeToken, terminal, preview),
+    codeAgentOptions: createAgentConfig(server, cfg, directory, resumeToken, terminal, preview),
   }
 }
 
@@ -274,13 +226,13 @@ function getPreferredAgentType(agentType: string | undefined) {
   return normalizeString(agentType) ?? "anycode"
 }
 
-function createNoAgentStore(sessionId: string) {
+function createNoAgentStore(server: AnyCodeServer, sessionId: string) {
   return {
     async load(limit: number): Promise<NoAgentMessageRecord[]> {
-      return getPersistedNoAgentMessages(sessionId, limit)
+      return getPersistedNoAgentMessages(server, sessionId, limit)
     },
     async append(message: NoAgentMessageRecord) {
-      db.insert("user_session_message", {
+      server.db.insert("user_session_message", {
         session_id: sessionId,
         role: message.role,
         text: message.text,
@@ -290,8 +242,8 @@ function createNoAgentStore(sessionId: string) {
   }
 }
 
-function getPersistedNoAgentMessages(sessionId: string, limit: number): NoAgentMessageRecord[] {
-  const rows = db.findMany("user_session_message", {
+function getPersistedNoAgentMessages(server: AnyCodeServer, sessionId: string, limit: number): NoAgentMessageRecord[] {
+  const rows = server.db.findMany("user_session_message", {
     filter: { op: "eq", field: "session_id", value: sessionId },
     orderBy: [{ field: "id", direction: "desc" }],
     limit,
@@ -334,6 +286,7 @@ function mergeSessionHistoryMessages(noAgentMessages: NoAgentMessageRecord[], ru
 }
 
 async function createSessionAgentBinding(
+  server: AnyCodeServer,
   cfg: ServerConfig,
   sessionId: string,
   directory: string,
@@ -344,10 +297,10 @@ async function createSessionAgentBinding(
 ): Promise<SessionAgentBinding> {
   if (!cfg.apiKey) {
     const chatAgent = await createChatAgent(NO_AGENT_TYPE, {
-      ...createChatAgentConfig(cfg, directory, terminal, preview),
+      ...createChatAgentConfig(server, cfg, directory, terminal, preview),
       name: "No Agent",
       noAgentSessionId: sessionId,
-      noAgentStore: createNoAgentStore(sessionId),
+      noAgentStore: createNoAgentStore(server, sessionId),
     } as any)
     await chatAgent.init()
     return {
@@ -357,7 +310,7 @@ async function createSessionAgentBinding(
     }
   }
 
-  const chatAgent = await createChatAgent(cfg.agent, createChatAgentConfig(cfg, directory, terminal, preview, resumeToken))
+  const chatAgent = await createChatAgent(cfg.agent, createChatAgentConfig(server, cfg, directory, terminal, preview, resumeToken))
   await chatAgent.init()
   return {
     chatAgent,
@@ -366,7 +319,7 @@ async function createSessionAgentBinding(
   }
 }
 
-function bindSessionAgentEvents(cfg: ServerConfig, entry: SessionEntry, chatAgent: IChatAgent) {
+function bindSessionAgentEvents(server: AnyCodeServer, cfg: ServerConfig, entry: SessionEntry, chatAgent: IChatAgent) {
   const id = entry.id
   // Listen for directory.set events from the agent
   chatAgent.on("directory.set", (data: any) => {
@@ -374,12 +327,12 @@ function bindSessionAgentEvents(cfg: ServerConfig, entry: SessionEntry, chatAgen
     entry.directory = dir
     try { chatAgent.setWorkingDirectory(dir) } catch { /* already set */ }
     // Persist directory back to user_session mapping
-    db.update("user_session", { op: "eq", field: "session_id", value: id }, { directory: dir })
+    server.db.update("user_session", { op: "eq", field: "session_id", value: id }, { directory: dir })
     console.log(`📂  Session ${id} directory set to: ${dir}`)
     entry.state.updateFileSystem(dir)
-    watchDirectory(cfg, id, dir)
+    watchDirectory(server, id, dir)
     // Notify all clients that window list changed (directory updated)
-    broadcastAll({ type: "windows.updated" })
+    broadcastAll(server, { type: "windows.updated" })
   })
 
   // Listen for session title changes to push window list updates
@@ -387,18 +340,19 @@ function bindSessionAgentEvents(cfg: ServerConfig, entry: SessionEntry, chatAgen
     const title = data?.info?.title
     if (title && title !== entry.title) {
       entry.title = title
-      broadcastAll({ type: "windows.updated" })
+      broadcastAll(server, { type: "windows.updated" })
     }
   })
 
   // Listen for cascade creation to persist cascadeId for session history restoration
   chatAgent.on("cascade.created", (data: any) => {
-    persistResumeTokenForWindow(id, entry.runtimeAgentType, data?.cascadeId)
+    persistResumeTokenForWindow(server, id, entry.runtimeAgentType, data?.cascadeId)
   })
 }
 
 /** Wire up agent events and register in sessions map. */
 function registerSession(
+  server: AnyCodeServer,
   cfg: ServerConfig,
   id: string,
   chatAgent: IChatAgent,
@@ -415,13 +369,13 @@ function registerSession(
     directory,
     createdAt,
     title: "",
-    state: new SessionStateModel(id, cfg)
+    state: new SessionStateModel(server, id, cfg)
   }
-  sessions.set(id, entry)
+  server.sessions.set(id, entry)
 
   // Kick off initial state compute
   entry.state.updateFileSystem(directory)
-  bindSessionAgentEvents(cfg, entry, chatAgent)
+  bindSessionAgentEvents(server, cfg, entry, chatAgent)
 
   return entry
 }
@@ -449,15 +403,15 @@ function tryGetAgentSessionId(chatAgent: IChatAgent) {
   }
 }
 
-function persistResumeTokenForWindow(windowId: string, agentType: string, token: string | undefined) {
+function persistResumeTokenForWindow(server: AnyCodeServer, windowId: string, agentType: string, token: string | undefined) {
   const resumeToken = getUsableResumeToken(agentType, token)
   if (!resumeToken) return
-  db.update("user_session", { op: "eq", field: "session_id", value: windowId }, { cascade_id: resumeToken })
+  server.db.update("user_session", { op: "eq", field: "session_id", value: windowId }, { cascade_id: resumeToken })
   console.log(`🔗  Window ${windowId} resume token saved: ${resumeToken}`)
 }
 
-function persistAgentTypeForWindow(windowId: string, agentType: string) {
-  db.update("user_session", { op: "eq", field: "session_id", value: windowId }, { agent_type: agentType })
+function persistAgentTypeForWindow(server: AnyCodeServer, windowId: string, agentType: string) {
+  server.db.update("user_session", { op: "eq", field: "session_id", value: windowId }, { agent_type: agentType })
 }
 
 function getErrorCode(error: unknown) {
@@ -466,9 +420,9 @@ function getErrorCode(error: unknown) {
     : undefined
 }
 
-async function replaceSessionAgent(cfg: ServerConfig, entry: SessionEntry, keepResumeToken: boolean) {
+async function replaceSessionAgent(server: AnyCodeServer, cfg: ServerConfig, entry: SessionEntry, keepResumeToken: boolean) {
   const previousAgent = entry.chatAgent
-  const row = db.findOne("user_session", { op: "eq", field: "session_id", value: entry.id }) as any
+  const row = server.db.findOne("user_session", { op: "eq", field: "session_id", value: entry.id }) as any
   const preferredAgentType = getPreferredAgentType(typeof row?.agent_type === "string" ? row.agent_type : entry.agentType)
   const storedResumeToken = getUsableResumeToken(preferredAgentType, typeof row?.cascade_id === "string" ? row.cascade_id : undefined)
   const liveResumeToken = getUsableResumeToken(entry.runtimeAgentType, tryGetAgentSessionId(previousAgent))
@@ -478,62 +432,62 @@ async function replaceSessionAgent(cfg: ServerConfig, entry: SessionEntry, keepR
     : undefined
 
   if (!shouldKeepResumeToken) {
-    db.update("user_session", { op: "eq", field: "session_id", value: entry.id }, { cascade_id: "" })
+    server.db.update("user_session", { op: "eq", field: "session_id", value: entry.id }, { cascade_id: "" })
   }
 
-  const tp = getOrCreateTerminalProvider(entry.id)
-  const pp = getOrCreatePreviewProvider(cfg, entry.id)
-  const next = await createSessionAgentBinding(cfg, entry.id, entry.directory, tp, pp, preferredAgentType, resumeToken)
+  const tp = getOrCreateTerminalProvider(server, entry.id)
+  const pp = getOrCreatePreviewProvider(server, cfg, entry.id)
+  const next = await createSessionAgentBinding(server, cfg, entry.id, entry.directory, tp, pp, preferredAgentType, resumeToken)
 
   entry.chatAgent = next.chatAgent
   entry.agentType = next.agentType
   entry.runtimeAgentType = next.runtimeAgentType
-  persistAgentTypeForWindow(entry.id, entry.agentType)
-  bindSessionAgentEvents(cfg, entry, next.chatAgent)
+  persistAgentTypeForWindow(server, entry.id, entry.agentType)
+  bindSessionAgentEvents(server, cfg, entry, next.chatAgent)
 
   if (entry.directory) {
     try { next.chatAgent.setWorkingDirectory(entry.directory) } catch { /* ignore */ }
-    watchDirectory(cfg, entry.id, entry.directory)
+    watchDirectory(server, entry.id, entry.directory)
   }
 
-  persistResumeTokenForWindow(entry.id, entry.runtimeAgentType, tryGetAgentSessionId(next.chatAgent))
+  persistResumeTokenForWindow(server, entry.id, entry.runtimeAgentType, tryGetAgentSessionId(next.chatAgent))
   await destroyChatAgent(previousAgent)
 }
 
-async function applyAgentSwitchToSessions(cfg: ServerConfig) {
-  const entries = Array.from(sessions.values())
+async function applyAgentSwitchToSessions(server: AnyCodeServer, cfg: ServerConfig) {
+  const entries = Array.from(server.sessions.values())
   for (const entry of entries) {
-    sessionChatAbort.get(entry.id)?.()
-    sessionChatAbort.delete(entry.id)
+    server.sessionChatAbort.get(entry.id)?.()
+    server.sessionChatAbort.delete(entry.id)
     entry.state.setChatBusy(false)
-    await replaceSessionAgent(cfg, entry, !cfg.apiKey || entry.agentType === cfg.agent)
+    await replaceSessionAgent(server, cfg, entry, !cfg.apiKey || entry.agentType === cfg.agent)
   }
 }
 
 /**
  * Resume a persisted session row into memory.
  */
-async function resumeSession(cfg: ServerConfig, row: Record<string, unknown>): Promise<SessionEntry> {
+async function resumeSession(server: AnyCodeServer, cfg: ServerConfig, row: Record<string, unknown>): Promise<SessionEntry> {
   const sessionId = row.session_id as string
-  const cached = sessions.get(sessionId)
+  const cached = server.sessions.get(sessionId)
   if (cached) return cached
 
   const dir = (row.directory as string) || ""
   const preferredAgentType = getPreferredAgentType(typeof row.agent_type === "string" ? row.agent_type : cfg.agent)
   const resumeToken = getUsableResumeToken(preferredAgentType, (row.cascade_id as string) || undefined)
   console.log(`♻️  Resuming session ${sessionId}, resume_token=${resumeToken || '(none)'}, dir=${dir || '(none)'}`)
-  const tp = getOrCreateTerminalProvider(sessionId)
-  const pp = getOrCreatePreviewProvider(cfg, sessionId)
+  const tp = getOrCreateTerminalProvider(server, sessionId)
+  const pp = getOrCreatePreviewProvider(server, cfg, sessionId)
 
-  const next = await createSessionAgentBinding(cfg, sessionId, dir, tp, pp, preferredAgentType, resumeToken)
+  const next = await createSessionAgentBinding(server, cfg, sessionId, dir, tp, pp, preferredAgentType, resumeToken)
 
-  const entry = registerSession(cfg, sessionId, next.chatAgent, dir, row.time_created as number, next.agentType, next.runtimeAgentType)
-  persistAgentTypeForWindow(sessionId, entry.agentType)
+  const entry = registerSession(server, cfg, sessionId, next.chatAgent, dir, row.time_created as number, next.agentType, next.runtimeAgentType)
+  persistAgentTypeForWindow(server, sessionId, entry.agentType)
   if (dir) {
     try { next.chatAgent.setWorkingDirectory(dir) } catch { /* already set */ }
-    watchDirectory(cfg, sessionId, dir)
+    watchDirectory(server, sessionId, dir)
   }
-  persistResumeTokenForWindow(sessionId, entry.runtimeAgentType, tryGetAgentSessionId(next.chatAgent))
+  persistResumeTokenForWindow(server, sessionId, entry.runtimeAgentType, tryGetAgentSessionId(next.chatAgent))
   console.log(`♻️  Session ${sessionId} resumed`)
   return entry
 }
@@ -541,18 +495,18 @@ async function resumeSession(cfg: ServerConfig, row: Record<string, unknown>): P
 /**
  * Create a brand new session/window.
  */
-async function createNewWindow(cfg: ServerConfig, isDefault = false): Promise<SessionEntry> {
+async function createNewWindow(server: AnyCodeServer, cfg: ServerConfig, isDefault = false): Promise<SessionEntry> {
   // Window ID is always server-generated (separate from the agent resume token)
   const sessionId = crypto.randomUUID()
-  const tp = getOrCreateTerminalProvider(sessionId)
-  const pp = getOrCreatePreviewProvider(cfg, sessionId)
-  const next = await createSessionAgentBinding(cfg, sessionId, "", tp, pp, getPreferredAgentType(cfg.agent))
+  const tp = getOrCreateTerminalProvider(server, sessionId)
+  const pp = getOrCreatePreviewProvider(server, cfg, sessionId)
+  const next = await createSessionAgentBinding(server, cfg, sessionId, "", tp, pp, getPreferredAgentType(cfg.agent))
   const now = Date.now()
   ; (tp as any).sessionId = sessionId
   ; (pp as any).sessionId = sessionId
-  const entry = registerSession(cfg, sessionId, next.chatAgent, "", now, next.agentType, next.runtimeAgentType)
+  const entry = registerSession(server, cfg, sessionId, next.chatAgent, "", now, next.agentType, next.runtimeAgentType)
 
-  db.insert("user_session", {
+  server.db.insert("user_session", {
     session_id: sessionId,
     directory: "",
     time_created: now,
@@ -561,7 +515,7 @@ async function createNewWindow(cfg: ServerConfig, isDefault = false): Promise<Se
     agent_type: entry.agentType,
   })
 
-  persistResumeTokenForWindow(sessionId, entry.runtimeAgentType, tryGetAgentSessionId(next.chatAgent))
+  persistResumeTokenForWindow(server, sessionId, entry.runtimeAgentType, tryGetAgentSessionId(next.chatAgent))
   console.log(`✅  Window ${sessionId} created${isDefault ? " (default)" : ""}`)
   return entry
 }
@@ -570,31 +524,31 @@ async function createNewWindow(cfg: ServerConfig, isDefault = false): Promise<Se
  * Get or create the default window.
  * Returns the default session; creates one if none exists.
  */
-async function getOrCreateSession(cfg: ServerConfig): Promise<SessionEntry> {
-  const rows = db.findMany("user_session", {})
+async function getOrCreateSession(server: AnyCodeServer, cfg: ServerConfig): Promise<SessionEntry> {
+  const rows = server.db.findMany("user_session", {})
   const defaultRow = rows.find((r: any) => r.is_default === 1) || rows[0]
 
   if (defaultRow) {
     if (defaultRow.is_default !== 1) {
-      db.update("user_session", { op: "eq", field: "session_id", value: defaultRow.session_id }, { is_default: 1 })
+      server.db.update("user_session", { op: "eq", field: "session_id", value: defaultRow.session_id }, { is_default: 1 })
     }
-    return resumeSession(cfg, defaultRow)
+    return resumeSession(server, cfg, defaultRow)
   }
 
-  return createNewWindow(cfg, true)
+  return createNewWindow(server, cfg, true)
 }
 
 /**
  * Get all windows. Resumes any that aren't in memory.
  */
-async function getAllWindows(cfg: ServerConfig): Promise<SessionEntry[]> {
-  const rows = db.findMany("user_session", {})
+async function getAllWindows(server: AnyCodeServer, cfg: ServerConfig): Promise<SessionEntry[]> {
+  const rows = server.db.findMany("user_session", {})
   if (rows.length === 0) {
-    return [await createNewWindow(cfg, true)]
+    return [await createNewWindow(server, cfg, true)]
   }
   const entries: SessionEntry[] = []
   for (const row of rows) {
-    entries.push(await resumeSession(cfg, row))
+    entries.push(await resumeSession(server, cfg, row))
   }
   return entries
 }
@@ -602,32 +556,33 @@ async function getAllWindows(cfg: ServerConfig): Promise<SessionEntry[]> {
 /**
  * Delete a non-default window.
  */
-function deleteWindow(sessionId: string): boolean {
-  const row = db.findOne("user_session", { op: "eq", field: "session_id", value: sessionId })
+function deleteWindow(server: AnyCodeServer, sessionId: string): boolean {
+  const row = server.db.findOne("user_session", { op: "eq", field: "session_id", value: sessionId })
   if (!row) return false
   if ((row as any).is_default === 1) return false // cannot delete default
 
   // Clean up in-memory state
-  const session = sessions.get(sessionId)
+  const session = server.sessions.get(sessionId)
   if (session) {
-    sessions.delete(sessionId)
+    server.sessions.delete(sessionId)
     destroyChatAgent(session.chatAgent).catch(() => { /* ignore */ })
   }
-  const tp = terminalProviders.get(sessionId)
+  const tp = server.terminalProviders.get(sessionId)
   if (tp && tp.exists()) {
     try { tp.teardown() } catch { /* ignore */ }
   }
-  terminalProviders.delete(sessionId)
+  server.terminalProviders.delete(sessionId)
+  server.previewProviders.delete(sessionId)
 
   // Remove from DB
-  db.remove("user_session", { op: "eq", field: "session_id", value: sessionId })
-  db.remove("user_session_message", { op: "eq", field: "session_id", value: sessionId })
+  server.db.remove("user_session", { op: "eq", field: "session_id", value: sessionId })
+  server.db.remove("user_session_message", { op: "eq", field: "session_id", value: sessionId })
   console.log(`🗑  Window ${sessionId} deleted`)
   return true
 }
 
-function getSession(id: string): SessionEntry | undefined {
-  return sessions.get(id)
+function getSession(server: AnyCodeServer, id: string): SessionEntry | undefined {
+  return server.sessions.get(id)
 }
 
 // ── File System & Git helpers ──────────────────────────────────────────────
@@ -748,44 +703,35 @@ interface ClientLike {
   send(data: string): void
 }
 
-// Track WebSocket clients per session
-const sessionClients = new Map<string, Set<ClientLike>>()
-
-// Track active chat abort functions per session
-const sessionChatAbort = new Map<string, () => void>()
-
-// Cached last-pushed state JSON per session — used for diffing + replay to new clients
-const statePushTimers = new Map<string, ReturnType<typeof setTimeout>>()
-
-function scheduleStatePush(cfg: ServerConfig, sessionId: string, delayMs = 300) {
-  const existing = statePushTimers.get(sessionId)
+function scheduleStatePush(server: AnyCodeServer, sessionId: string, delayMs = 300) {
+  const existing = server.statePushTimers.get(sessionId)
   if (existing) clearTimeout(existing)
   const timer = setTimeout(() => {
-    statePushTimers.delete(sessionId)
-    getSession(sessionId)?.state.updateFileSystem()
+    server.statePushTimers.delete(sessionId)
+    getSession(server, sessionId)?.state.updateFileSystem()
   }, delayMs)
-  statePushTimers.set(sessionId, timer)
+  server.statePushTimers.set(sessionId, timer)
 }
 
-function getSessionClients(sessionId: string): Set<ClientLike> {
-  let set = sessionClients.get(sessionId)
+function getSessionClients(server: AnyCodeServer, sessionId: string): Set<ClientLike> {
+  let set = server.sessionClients.get(sessionId)
   if (!set) {
     set = new Set()
-    sessionClients.set(sessionId, set)
+    server.sessionClients.set(sessionId, set)
   }
   return set
 }
 
-function removeClient(sessionId: string, client: ClientLike) {
-  const clients = sessionClients.get(sessionId)
+function removeClient(server: AnyCodeServer, sessionId: string, client: ClientLike) {
+  const clients = server.sessionClients.get(sessionId)
   if (clients) {
     clients.delete(client)
-    if (clients.size === 0) sessionClients.delete(sessionId)
+    if (clients.size === 0) server.sessionClients.delete(sessionId)
   }
 }
 
-function broadcast(sessionId: string, data: Record<string, unknown>) {
-  const clients = sessionClients.get(sessionId)
+function broadcast(server: AnyCodeServer, sessionId: string, data: Record<string, unknown>) {
+  const clients = server.sessionClients.get(sessionId)
   if (!clients || clients.size === 0) {
     if ((data as any).type?.startsWith("chat.")) {
       console.warn(`⚠  broadcast(${sessionId}): 0 clients, dropping ${(data as any).type}`)
@@ -803,9 +749,9 @@ function broadcast(sessionId: string, data: Record<string, unknown>) {
 }
 
 /** Broadcast to ALL connected WebSocket clients across all sessions */
-function broadcastAll(data: Record<string, unknown>) {
+function broadcastAll(server: AnyCodeServer, data: Record<string, unknown>) {
   const json = JSON.stringify(data)
-  for (const clients of sessionClients.values()) {
+  for (const clients of server.sessionClients.values()) {
     for (const c of clients) {
       if (c.readyState === WS.OPEN) c.send(json)
     }
@@ -815,7 +761,7 @@ function broadcastAll(data: Record<string, unknown>) {
 
 
 /** Handle incoming client message from WebSocket */
-async function handleClientMessage(sessionId: string, client: ClientLike, msg: any) {
+async function handleClientMessage(server: AnyCodeServer, sessionId: string, client: ClientLike, msg: any) {
   // Application-level heartbeat: reply with pong immediately
   if (msg.type === "ping") {
     client.send(JSON.stringify({ type: "pong" }))
@@ -824,14 +770,14 @@ async function handleClientMessage(sessionId: string, client: ClientLike, msg: a
 
   // Per-directory file watching: subscribe/unsubscribe
   if (msg.type === "watch.dir") {
-    const manager = dirWatchManagers.get(sessionId)
+    const manager = server.dirWatchManagers.get(sessionId)
     if (manager && typeof msg.path === "string") {
       manager.watchDir(msg.path)
     }
     return
   }
   if (msg.type === "unwatch.dir") {
-    const manager = dirWatchManagers.get(sessionId)
+    const manager = server.dirWatchManagers.get(sessionId)
     if (manager && typeof msg.path === "string") {
       manager.unwatchDir(msg.path)
     }
@@ -839,7 +785,7 @@ async function handleClientMessage(sessionId: string, client: ClientLike, msg: a
   }
 
   if (msg.type === "ls") {
-    const session = getSession(sessionId)!
+    const session = getSession(server, sessionId)!
     const dir = session.directory
     if (!dir) return
     const target = path.resolve(dir, msg.path || "")
@@ -849,7 +795,7 @@ async function handleClientMessage(sessionId: string, client: ClientLike, msg: a
   }
 
   if (msg.type === "readFile") {
-    const session = getSession(sessionId)!
+    const session = getSession(server, sessionId)!
     const dir = session.directory
     if (!dir) return
     const target = path.resolve(dir, msg.path || "")
@@ -863,7 +809,7 @@ async function handleClientMessage(sessionId: string, client: ClientLike, msg: a
   }
 
   if (msg.type === "chat.send") {
-    const session = getSession(sessionId)
+    const session = getSession(server, sessionId)
     if (!session) return
     const { message, fileContext } = msg
 
@@ -880,12 +826,12 @@ async function handleClientMessage(sessionId: string, client: ClientLike, msg: a
       ? `[${fileContext.file} L${fileContext.lines[0]}–${fileContext.lines[fileContext.lines.length - 1]}]\n${message}`
       : message
 
-    const wsClients = sessionClients.get(sessionId)
+    const wsClients = server.sessionClients.get(sessionId)
     console.log(`💬  chat.send(${sessionId}): "${message.slice(0, 40)}${message.length > 40 ? "..." : ""}" → ${wsClients?.size ?? 0} clients`)
-    broadcast(sessionId, { type: "chat.userMessage", text: contextLabel })
+    broadcast(server, sessionId, { type: "chat.userMessage", text: contextLabel })
 
     let aborted = false
-    sessionChatAbort.set(sessionId, () => {
+    server.sessionChatAbort.set(sessionId, () => {
       aborted = true
       session.chatAgent.abort?.()
     })
@@ -895,23 +841,23 @@ async function handleClientMessage(sessionId: string, client: ClientLike, msg: a
     try {
       for await (const event of session.chatAgent.chat(effectiveMessage)) {
         if (aborted) break
-        broadcast(sessionId, { type: "chat.event", event })
+        broadcast(server, sessionId, { type: "chat.event", event })
       }
     } catch (err: any) {
-      broadcast(sessionId, { type: "chat.event", event: { type: "error", error: err.message } })
+      broadcast(server, sessionId, { type: "chat.event", event: { type: "error", error: err.message } })
     }
 
-    sessionChatAbort.delete(sessionId)
+    server.sessionChatAbort.delete(sessionId)
     session.state.setChatBusy(false)
     // Update context usage after chat turn
     session.chatAgent.getContext().then((ctx: any) => {
       if (ctx) session.state.setContext(ctx.contextUsed ?? 0, ctx.compactionThreshold ?? 0)
     }).catch(() => {})
-    broadcast(sessionId, { type: "chat.done" })
+    broadcast(server, sessionId, { type: "chat.done" })
   }
 
   if (msg.type === "chat.stop") {
-    sessionChatAbort.get(sessionId)?.()
+    server.sessionChatAbort.get(sessionId)?.()
   }
 }
 
@@ -921,6 +867,7 @@ async function handleClientMessage(sessionId: string, client: ClientLike, msg: a
  * Each directory gets a non-recursive chokidar watcher with polling.
  */
 class DirectoryWatchManager {
+  private server: AnyCodeServer
   private watchers = new Map<string, ChokidarWatcher>()
   private sessionId: string
   private rootDir: string
@@ -929,7 +876,8 @@ class DirectoryWatchManager {
   private gitTimer: ReturnType<typeof setTimeout> | undefined
   private pendingDirs = new Set<string>()
 
-  constructor(cfg: ServerConfig, sessionId: string, rootDir: string) {
+  constructor(server: AnyCodeServer, cfg: ServerConfig, sessionId: string, rootDir: string) {
+    this.server = server
     this.cfg = cfg
     this.sessionId = sessionId
     this.rootDir = rootDir
@@ -962,7 +910,7 @@ class DirectoryWatchManager {
       if (this.gitTimer) return
       this.gitTimer = setTimeout(() => {
         this.gitTimer = undefined
-        scheduleStatePush(this.cfg, this.sessionId, 0)
+        this.server.scheduleStatePush(this.sessionId, 0)
       }, 500)
     })
     gitWatcher.on("error", () => {}) // silently ignore
@@ -1011,14 +959,14 @@ class DirectoryWatchManager {
     const dirs = [...this.pendingDirs]
     this.pendingDirs = new Set()
 
-    const clients = getSessionClients(this.sessionId)
+    const clients = this.server.getSessionClients(this.sessionId)
     const msg = JSON.stringify({ type: "fs.changed", dirs })
     for (const c of clients) {
       if (c.readyState === WS.OPEN) c.send(msg)
     }
 
     // Also refresh top-level + git status
-    scheduleStatePush(this.cfg, this.sessionId, 0)
+    this.server.scheduleStatePush(this.sessionId, 0)
   }
 
   /** Close all watchers */
@@ -1029,24 +977,23 @@ class DirectoryWatchManager {
   }
 }
 
-const dirWatchManagers = new Map<string, DirectoryWatchManager>()
-
-function watchDirectory(cfg: ServerConfig, sessionId: string, dir: string) {
+function watchDirectory(server: AnyCodeServer, sessionId: string, dir: string) {
   // Clean up existing
-  const existing = dirWatchManagers.get(sessionId)
+  const existing = server.dirWatchManagers.get(sessionId)
   if (existing) {
     existing.destroy()
-    dirWatchManagers.delete(sessionId)
+    server.dirWatchManagers.delete(sessionId)
   }
 
   if (!dir) return
 
-  const manager = new DirectoryWatchManager(cfg, sessionId, dir)
-  dirWatchManagers.set(sessionId, manager)
+  const manager = new DirectoryWatchManager(server, server.cfg, sessionId, dir)
+  server.dirWatchManagers.set(sessionId, manager)
   console.log(`👁  Watching directory: ${dir}`)
 }
 
 export class SessionStateModel {
+  server: AnyCodeServer
   sessionId: string
   cfg: ServerConfig
   directory: string = ""
@@ -1060,7 +1007,8 @@ export class SessionStateModel {
   private _isComputing = false
   private _needsCompute = false
 
-  constructor(sessionId: string, cfg: ServerConfig) {
+  constructor(server: AnyCodeServer, sessionId: string, cfg: ServerConfig) {
+    this.server = server
     this.sessionId = sessionId
     this.cfg = cfg
   }
@@ -1073,7 +1021,7 @@ export class SessionStateModel {
     }
 
     // Calculate expected port here during file system polls as well
-    const expectedPort = (previewSessionId === this.sessionId && previewTarget) ? this.cfg.previewPort : null
+    const expectedPort = this.server.getPreviewPortForSession(this.sessionId)
     if (this.previewPort !== expectedPort) {
       this.previewPort = expectedPort
     }
@@ -1148,7 +1096,7 @@ export class SessionStateModel {
 
   notify() {
     const json = JSON.stringify(this.toJSON())
-    const clients = getSessionClients(this.sessionId)
+    const clients = this.server.getSessionClients(this.sessionId)
     console.log(`📤  SessionStateModel(${this.sessionId}): dir="${this.directory}", topLevel=${this.topLevel.length} entries, changes=${this.changes.length}, previewPort=${this.previewPort}, clients=${clients.size}`)
     for (const c of clients) {
       if (c.readyState === WS.OPEN) c.send(json)
@@ -1282,13 +1230,15 @@ class TerminalStateModel {
  * Feeds output to TerminalStateModel for client sync.
  */
 class NodeTerminalProvider implements TerminalProvider {
+  private server: AnyCodeServer
   private proc: pty.IPty | null = null
   private lines: string[] = []
   private currentLine = ""
   private sessionId: string
   readonly model: TerminalStateModel
 
-  constructor(sessionId: string) {
+  constructor(server: AnyCodeServer, sessionId: string) {
+    this.server = server
     this.sessionId = sessionId
     this.model = new TerminalStateModel()
     this.model.onInput = (data) => this.proc?.write(data)
@@ -1304,7 +1254,7 @@ class NodeTerminalProvider implements TerminalProvider {
   }
 
   spawn(): void {
-    const session = getSession(this.sessionId)
+    const session = this.server.getSession(this.sessionId)
     const cwd = session?.directory || os.homedir()
     const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "/bin/bash")
 
@@ -1418,82 +1368,67 @@ class NodeTerminalProvider implements TerminalProvider {
   }
 }
 
-// Per-session terminal providers
-const terminalProviders = new Map<string, NodeTerminalProvider>()
-
-function getOrCreateTerminalProvider(sessionId: string): NodeTerminalProvider {
-  let tp = terminalProviders.get(sessionId)
+function getOrCreateTerminalProvider(server: AnyCodeServer, sessionId: string): NodeTerminalProvider {
+  let tp = server.terminalProviders.get(sessionId)
   if (!tp) {
-    tp = new NodeTerminalProvider(sessionId)
-    terminalProviders.set(sessionId, tp)
+    tp = new NodeTerminalProvider(server, sessionId)
+    server.terminalProviders.set(sessionId, tp)
   }
   return tp
 }
 
-function handleTerminalWs(ws: WS, sessionId: string) {
-  getOrCreateTerminalProvider(sessionId).model.handleClient(ws)
+function handleTerminalWs(server: AnyCodeServer, ws: WS, sessionId: string) {
+  getOrCreateTerminalProvider(server, sessionId).model.handleClient(ws)
 }
 
 
 
 
-/** Stores the current preview target URL. Only one active target at a time. */
-let previewTarget: string | null = null
-let previewSessionId: string | null = null
-
 class NodePreviewProvider implements PreviewProvider {
   sessionId: string
 
+  private server: AnyCodeServer
   private cfg: ServerConfig
-  constructor(cfg: ServerConfig, sessionId: string) {
+  constructor(server: AnyCodeServer, cfg: ServerConfig, sessionId: string) {
+    this.server = server
     this.cfg = cfg
     this.sessionId = sessionId
   }
 
   setPreviewTarget(forwardedLocalUrl: string): void {
-    // Normalize localhost → 127.0.0.1 to avoid IPv4/IPv6 mismatch (Vite 5+ may bind IPv6)
-    try {
-      const u = new URL(forwardedLocalUrl)
-      if (u.hostname === "localhost") u.hostname = "127.0.0.1"
-      previewTarget = u.origin
-    } catch {
-      previewTarget = forwardedLocalUrl.replace(/\/+$/, "")
-    }
-    previewSessionId = this.sessionId
+    const previewTarget = this.server.setPreviewTarget(this.sessionId, forwardedLocalUrl)
     console.log(`🔗  Preview proxy: :${this.cfg.previewPort} → ${previewTarget} (session ${this.sessionId})`)
 
     // Let the reactive state model handle the broadcast natively
-    getSession(this.sessionId)?.state.setPreviewPort(this.cfg.previewPort)
+    this.server.getSession(this.sessionId)?.state.setPreviewPort(this.cfg.previewPort)
   }
 }
 
-const previewProviders = new Map<string, NodePreviewProvider>()
-
-function getOrCreatePreviewProvider(cfg: ServerConfig, sessionId: string): NodePreviewProvider {
-  let pp = previewProviders.get(sessionId)
+function getOrCreatePreviewProvider(server: AnyCodeServer, cfg: ServerConfig, sessionId: string): NodePreviewProvider {
+  let pp = server.previewProviders.get(sessionId)
   if (!pp) {
-    pp = new NodePreviewProvider(cfg, sessionId)
-    previewProviders.set(sessionId, pp)
+    pp = new NodePreviewProvider(server, cfg, sessionId)
+    server.previewProviders.set(sessionId, pp)
   }
   return pp
 }
 
 /** Dedicated preview HTTP server — proxies all requests to the current target */
-function createPreviewServer(cfg: ServerConfig): http.Server {
+function createPreviewServer(server: AnyCodeServer, cfg: ServerConfig): http.Server {
   const previewServer = createServer(cfg, (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*")
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
     res.setHeader("Access-Control-Allow-Headers", "*")
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return }
 
-    if (!previewTarget) {
+    if (!server.previewTarget) {
       res.writeHead(502, { "Content-Type": "text/plain" })
       res.end("No preview target configured")
       return
     }
 
     try {
-      const targetUrl = previewTarget + (req.url || "/")
+      const targetUrl = server.previewTarget + (req.url || "/")
       const parsed = new URL(targetUrl)
       const options: http.RequestOptions = {
         hostname: parsed.hostname,
@@ -1537,13 +1472,13 @@ function createPreviewServer(cfg: ServerConfig): http.Server {
 
   // WebSocket upgrade proxy — needed for HMR (Vite, webpack, etc.)
   previewServer.on("upgrade", (req, socket, head) => {
-    if (!previewTarget) {
+    if (!server.previewTarget) {
       socket.destroy()
       return
     }
 
     try {
-      const parsed = new URL(previewTarget)
+      const parsed = new URL(server.previewTarget)
       const targetWs = `ws://${parsed.hostname}:${parsed.port}${req.url || "/"}`
       const wsTarget = new URL(targetWs)
 
@@ -1582,6 +1517,274 @@ function createPreviewServer(cfg: ServerConfig): http.Server {
     }
   })
   return previewServer
+}
+
+export class AnyCodeServer {
+  readonly anycodeDir: string
+  readonly dbPath: string
+  readonly settingsStore: SettingsStore
+  readonly gitProvider = new NodeGitProvider()
+
+  cfg: ServerConfig
+  sharedStorage!: SqlJsStorage
+  db!: NoSqlDb
+
+  readonly sessions = new Map<string, SessionEntry>()
+  readonly sessionClients = new Map<string, Set<ClientLike>>()
+  readonly sessionChatAbort = new Map<string, () => void>()
+  readonly statePushTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  readonly dirWatchManagers = new Map<string, DirectoryWatchManager>()
+  readonly terminalProviders = new Map<string, NodeTerminalProvider>()
+  readonly previewProviders = new Map<string, NodePreviewProvider>()
+
+  previewTarget: string | null = null
+  previewSessionId: string | null = null
+  previewServer: http.Server | null = null
+  mainServer: http.Server | null = null
+  wss: WebSocketServer | null = null
+  pingTimer: ReturnType<typeof setInterval> | null = null
+  appDistExists = false
+
+  constructor(options: AnyCodeServerOptions = {}) {
+    this.anycodeDir = options.anycodeDir ?? DEFAULT_ANYCODE_DIR
+    this.dbPath = options.dbPath ?? path.join(this.anycodeDir, "data.db")
+    this.settingsStore = options.settingsStore ?? new SettingsStore({ anycodeDir: this.anycodeDir })
+    this.cfg = options.config ?? this.loadConfig()
+  }
+
+  getSession(id: string) {
+    return getSession(this, id)
+  }
+
+  getSessionClients(sessionId: string) {
+    return getSessionClients(this, sessionId)
+  }
+
+  scheduleStatePush(sessionId: string, delayMs = 300) {
+    scheduleStatePush(this, sessionId, delayMs)
+  }
+
+  getPreviewPortForSession(sessionId: string) {
+    return this.previewSessionId === sessionId && this.previewTarget ? this.cfg.previewPort : null
+  }
+
+  setPreviewTarget(sessionId: string, forwardedLocalUrl: string) {
+    try {
+      const u = new URL(forwardedLocalUrl)
+      if (u.hostname === "localhost") u.hostname = "127.0.0.1"
+      this.previewTarget = u.origin
+    } catch {
+      this.previewTarget = forwardedLocalUrl.replace(/\/+$/, "")
+    }
+    this.previewSessionId = sessionId
+    return this.previewTarget
+  }
+
+  readUserSettingsFile(): UserSettingsFile {
+    return this.settingsStore.read().toJSON()
+  }
+
+  writeUserSettingsFile(settings: UserSettingsFile) {
+    return this.settingsStore.write(settings).toJSON()
+  }
+
+  applySettingsToConfig(settings: UserSettingsFile) {
+    const runtime = new SettingsModel(settings).resolveRuntime()
+    this.cfg.userSettings = runtime.userSettings
+    this.cfg.agent = runtime.agent
+    this.cfg.provider = runtime.provider
+    this.cfg.apiKey = runtime.apiKey
+    this.cfg.baseUrl = runtime.baseUrl
+    this.cfg.model = runtime.model
+  }
+
+  private loadConfig(): ServerConfig {
+    const runtime = this.settingsStore.read().resolveRuntime()
+    const userSettings = runtime.userSettings
+    const agent = runtime.agent
+    const provider = runtime.provider
+    const model = runtime.model
+    const apiKey = runtime.apiKey
+    const baseUrl = runtime.baseUrl
+    const port = parseInt(process.env.PORT ?? "3210", 10)
+    const previewPort = parseInt(process.env.PREVIEW_PORT ?? String(port + 1), 10)
+    if (!provider) {
+      console.error("❌  Missing PROVIDER")
+      process.exit(1)
+    }
+    const appDist = resolveAppDist()
+    const tlsCert = process.env.TLS_CERT ?? userSettings.TLS_CERT ?? undefined
+    const tlsKey = process.env.TLS_KEY ?? userSettings.TLS_KEY ?? undefined
+    if ((tlsCert && !tlsKey) || (!tlsCert && tlsKey)) {
+      console.error("❌  Both TLS_CERT and TLS_KEY must be set together")
+      process.exit(1)
+    }
+    return { provider, model, apiKey, baseUrl, port, previewPort, appDist, userSettings, tlsCert, tlsKey, agent }
+  }
+
+  private registerProcessErrorHandlers() {
+    process.on("uncaughtException", (err) => {
+      console.error("⚠  Uncaught exception:", err.message)
+    })
+    process.on("unhandledRejection", (reason) => {
+      console.error("⚠  Unhandled rejection:", reason instanceof Error ? reason.message : reason)
+    })
+  }
+
+  private async initializeStorage() {
+    this.sharedStorage = new SqlJsStorage(this.dbPath)
+    this.db = await this.sharedStorage.connect()
+
+    const cols = this.sharedStorage.query(`PRAGMA table_info("user_session")`)
+    if (cols.length > 0) {
+      const hasIsDefault = cols.some((c: any) => c.name === "is_default")
+      const hasUserId = cols.some((c: any) => c.name === "user_id")
+      const pkCol = cols.find((c: any) => c.pk === 1)
+      const needsPkMigration = pkCol && pkCol.name === "user_id"
+      const needsMigration = !hasIsDefault || needsPkMigration || hasUserId
+
+      if (needsMigration) {
+        console.log("🔄  Migrating user_session table…")
+        if (!hasIsDefault) {
+          this.sharedStorage.exec(`ALTER TABLE "user_session" ADD COLUMN "is_default" INTEGER NOT NULL DEFAULT 0`)
+          this.sharedStorage.exec(`UPDATE "user_session" SET "is_default" = 1`)
+        }
+        if (needsPkMigration || hasUserId) {
+          this.sharedStorage.exec(`CREATE TABLE "user_session_new" (
+            "session_id"   TEXT PRIMARY KEY,
+            "directory"    TEXT NOT NULL DEFAULT '',
+            "time_created" INTEGER NOT NULL,
+            "is_default"   INTEGER NOT NULL DEFAULT 0
+          )`)
+          this.sharedStorage.exec(`INSERT INTO "user_session_new" SELECT "session_id","directory","time_created","is_default" FROM "user_session"`)
+          this.sharedStorage.exec(`DROP TABLE "user_session"`)
+          this.sharedStorage.exec(`ALTER TABLE "user_session_new" RENAME TO "user_session"`)
+        }
+        console.log("✅  user_session migration complete")
+      }
+      if (!cols.some((c: any) => c.name === "cascade_id")) {
+        this.sharedStorage.exec(`ALTER TABLE "user_session" ADD COLUMN "cascade_id" TEXT NOT NULL DEFAULT ''`)
+        console.log("✅  Added cascade_id column to user_session")
+      }
+      if (!cols.some((c: any) => c.name === "agent_type")) {
+        this.sharedStorage.exec(`ALTER TABLE "user_session" ADD COLUMN "agent_type" TEXT NOT NULL DEFAULT 'anycode'`)
+        console.log("✅  Added agent_type column to user_session")
+      }
+    } else {
+      this.sharedStorage.exec(`
+        CREATE TABLE IF NOT EXISTS "user_session" (
+          "session_id"   TEXT PRIMARY KEY,
+          "directory"    TEXT NOT NULL DEFAULT '',
+          "time_created" INTEGER NOT NULL,
+          "is_default"   INTEGER NOT NULL DEFAULT 0,
+          "cascade_id"   TEXT NOT NULL DEFAULT '',
+          "agent_type"   TEXT NOT NULL DEFAULT 'anycode'
+        )
+      `)
+    }
+
+    this.sharedStorage.exec(`
+      CREATE TABLE IF NOT EXISTS "user_session_message" (
+        "id"           INTEGER PRIMARY KEY AUTOINCREMENT,
+        "session_id"   TEXT NOT NULL,
+        "role"         TEXT NOT NULL,
+        "text"         TEXT NOT NULL DEFAULT '',
+        "time_created" INTEGER NOT NULL
+      )
+    `)
+    this.sharedStorage.exec(`CREATE INDEX IF NOT EXISTS "idx_user_session_message_session_time" ON "user_session_message" ("session_id", "id")`)
+  }
+
+  async start() {
+    this.registerProcessErrorHandlers()
+    console.log("🚀  Starting @any-code/server…")
+
+    await this.initializeStorage()
+    this.previewServer = createPreviewServer(this, this.cfg)
+    this.mainServer = createMainServer(this, this.cfg)
+    this.appDistExists = fs.existsSync(this.cfg.appDist)
+
+    const wss = new WebSocketServer({ server: this.mainServer })
+    this.wss = wss
+
+    const WS_PING_INTERVAL = 30_000
+    const aliveSet = new WeakSet<WS>()
+    this.pingTimer = setInterval(() => {
+      for (const ws of wss.clients) {
+        if (!aliveSet.has(ws)) {
+          ws.terminate()
+          continue
+        }
+        aliveSet.delete(ws)
+        ws.ping()
+      }
+    }, WS_PING_INTERVAL)
+    wss.on("close", () => {
+      if (this.pingTimer) clearInterval(this.pingTimer)
+      this.pingTimer = null
+    })
+
+    wss.on("connection", (ws, req) => {
+      const url = new URL(req.url || "/", `http://localhost:${this.cfg.port}`)
+      const sessionId = url.searchParams.get("sessionId")
+      if (!sessionId || !this.getSession(sessionId)) {
+        ws.close(4001, "Invalid session")
+        return
+      }
+
+      aliveSet.add(ws)
+      ws.on("pong", () => aliveSet.add(ws))
+
+      if (url.pathname === "/terminal") {
+        handleTerminalWs(this, ws, sessionId)
+        return
+      }
+
+      const clients = this.getSessionClients(sessionId)
+      clients.add(ws as ClientLike)
+      console.log(`🔌  WS client connected to session ${sessionId} (${clients.size} total)`)
+
+      const sessionModel = this.getSession(sessionId)?.state
+      if (sessionModel) {
+        ws.send(JSON.stringify(sessionModel.toJSON()))
+      }
+
+      ws.on("message", async (raw) => {
+        try {
+          const msg = JSON.parse(raw.toString())
+          handleClientMessage(this, sessionId, ws as ClientLike, msg).catch(() => { })
+        } catch { /* ignore malformed */ }
+      })
+
+      ws.on("close", () => {
+        removeClient(this, sessionId, ws as ClientLike)
+      })
+    })
+
+    const HOST = process.env.HOST ?? "0.0.0.0"
+    const proto = this.cfg.tlsCert ? "https" : "http"
+    const wsProto = this.cfg.tlsCert ? "wss" : "ws"
+
+    this.previewServer.listen(this.cfg.previewPort, HOST, () => {
+      console.log(`👁  Preview proxy: ${proto}://${HOST}:${this.cfg.previewPort}`)
+    })
+
+    this.mainServer.listen(this.cfg.port, HOST, () => {
+      console.log(`🌐  ${proto}://${HOST}:${this.cfg.port}`)
+      console.log(`🤖  Provider: ${this.cfg.provider} / ${this.cfg.model}`)
+      console.log(`🖥  Admin: ${proto}://${HOST}:${this.cfg.port}/admin`)
+      if (this.appDistExists) {
+        console.log(`📱  App: ${proto}://${HOST}:${this.cfg.port}`)
+      } else {
+        console.log(`⚠  App dist not found at ${this.cfg.appDist} — run 'pnpm --filter @any-code/app build' first`)
+      }
+      console.log(`📋  Sessions: POST /api/sessions to create`)
+      console.log(`🔌  WebSocket: ${wsProto}://${HOST}:${this.cfg.port}?sessionId=xxx`)
+      if (this.cfg.tlsCert) console.log(`🔒  TLS enabled`)
+    })
+
+    return this
+  }
 }
 
 // ── HTTP Server ────────────────────────────────────────────────────────────
@@ -1771,8 +1974,8 @@ function sendErrorJson(res: http.ServerResponse, status: number, error: unknown,
 
 // ── HTTP Server ────────────────────────────────────────────────────────────
 
-function createMainServer(cfg: ServerConfig): http.Server {
-  const server = createServer(cfg, async (req, res) => {
+function createMainServer(server: AnyCodeServer, cfg: ServerConfig): http.Server {
+  const httpServer = createServer(cfg, async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*")
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
     res.setHeader("Access-Control-Allow-Headers", "Content-Type")
@@ -1785,7 +1988,7 @@ function createMainServer(cfg: ServerConfig): http.Server {
     }
 
     if (req.method === "GET" && req.url === "/api/settings") {
-      const settings = readUserSettingsFile()
+      const settings = server.readUserSettingsFile()
       res.writeHead(200, { "Content-Type": "application/json" })
       res.end(JSON.stringify({
         accounts: settings.accounts ?? [],
@@ -1795,7 +1998,7 @@ function createMainServer(cfg: ServerConfig): http.Server {
     }
 
     if (req.method === "POST" && req.url === "/api/settings") {
-      const previous = readUserSettingsFile()
+      const previous = server.readUserSettingsFile()
       const body = await readJsonBody(req)
       const rawAccounts = Array.isArray(body.accounts) ? body.accounts : []
       const applyCurrentAccount = body.applyCurrentAccount === true
@@ -1826,7 +2029,7 @@ function createMainServer(cfg: ServerConfig): http.Server {
       }).toJSON()
 
       if (!applyCurrentAccount) {
-        const saved = writeUserSettingsFile(next)
+        const saved = server.writeUserSettingsFile(next)
         sendJson(res, 200, {
           ok: true,
           accounts: saved.accounts ?? [],
@@ -1836,13 +2039,13 @@ function createMainServer(cfg: ServerConfig): http.Server {
       }
 
       try {
-        applySettingsToConfig(cfg, next)
-        await applyAgentSwitchToSessions(cfg)
-        writeUserSettingsFile(next)
+        server.applySettingsToConfig(next)
+        await applyAgentSwitchToSessions(server, cfg)
+        server.writeUserSettingsFile(next)
       } catch (err: any) {
-        applySettingsToConfig(cfg, previous)
+        server.applySettingsToConfig(previous)
         try {
-          await applyAgentSwitchToSessions(cfg)
+          await applyAgentSwitchToSessions(server, cfg)
         } catch (rollbackErr) {
           console.error("⚠  Failed to roll back account switch:", rollbackErr)
         }
@@ -1860,7 +2063,7 @@ function createMainServer(cfg: ServerConfig): http.Server {
 
     // ── Session management ──
     if (req.method === "POST" && req.url === "/api/sessions") {
-      getOrCreateSession(cfg).then((entry) => {
+      getOrCreateSession(server, cfg).then((entry) => {
         sendJson(res, 200, { id: entry.id, directory: entry.directory })
       }).catch((err: any) => {
         sendErrorJson(res, 500, err)
@@ -1869,7 +2072,7 @@ function createMainServer(cfg: ServerConfig): http.Server {
     }
 
     if (req.method === "GET" && req.url === "/api/sessions") {
-      const list = Array.from(sessions.values()).map((s) => ({
+      const list = Array.from(server.sessions.values()).map((s) => ({
         id: s.id, directory: s.directory, createdAt: s.createdAt,
       }))
       res.writeHead(200, { "Content-Type": "application/json" })
@@ -1880,8 +2083,8 @@ function createMainServer(cfg: ServerConfig): http.Server {
     // ── Window management APIs ───────────────────────────────────────────
     // GET /api/windows — list all windows
     if (req.method === "GET" && req.url?.startsWith("/api/windows")) {
-      getAllWindows(cfg).then(async (entries) => {
-        const rows = db.findMany("user_session", {})
+      getAllWindows(server, cfg).then(async (entries) => {
+        const rows = server.db.findMany("user_session", {})
         const defaultMap = new Map(rows.map((r: any) => [r.session_id, r.is_default === 1]))
         const list = entries.map((e) => ({
           id: e.id,
@@ -1899,7 +2102,7 @@ function createMainServer(cfg: ServerConfig): http.Server {
 
     // POST /api/windows — create new window
     if (req.method === "POST" && req.url === "/api/windows") {
-      createNewWindow(cfg, false).then((entry) => {
+      createNewWindow(server, cfg, false).then((entry) => {
         sendJson(res, 200, { id: entry.id, directory: entry.directory, isDefault: false })
       }).catch((err: any) => {
         sendErrorJson(res, 500, err)
@@ -1910,7 +2113,7 @@ function createMainServer(cfg: ServerConfig): http.Server {
     // DELETE /api/windows/:id — delete non-default window
     const windowDeleteMatch = req.url?.match(/^\/api\/windows\/([^/?]+)$/)
     if (req.method === "DELETE" && windowDeleteMatch) {
-      const ok = deleteWindow(windowDeleteMatch[1])
+      const ok = deleteWindow(server, windowDeleteMatch[1])
       if (ok) {
         res.writeHead(200, { "Content-Type": "application/json" })
         res.end(JSON.stringify({ ok: true }))
@@ -1924,7 +2127,7 @@ function createMainServer(cfg: ServerConfig): http.Server {
     // GET|POST /api/sessions/:id/...
     const sessionMatch = req.url?.match(/^\/api\/sessions\/([^/?]+)(?:\/([a-z]+))?/)
     if ((req.method === "GET" || req.method === "POST") && sessionMatch) {
-      const session = getSession(sessionMatch[1])
+      const session = getSession(server, sessionMatch[1])
       if (!session) {
         res.writeHead(404, { "Content-Type": "application/json" })
         res.end(JSON.stringify({ error: "Session not found" }))
@@ -1941,9 +2144,8 @@ function createMainServer(cfg: ServerConfig): http.Server {
           dir ? listDir(dir) : Promise.resolve([]),
           dir ? getGitChanges(dir) : Promise.resolve([]),
         ])
-        const hasPreview = previewSessionId === session.id && previewTarget
         res.writeHead(200, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ directory: dir, topLevel, changes, previewPort: hasPreview ? cfg.previewPort : null }))
+        res.end(JSON.stringify({ directory: dir, topLevel, changes, previewPort: server.getPreviewPortForSession(session.id) }))
         return
       }
 
@@ -2025,7 +2227,7 @@ function createMainServer(cfg: ServerConfig): http.Server {
     }
 
     if (req.method === "GET" && req.url === "/api/status") {
-      const list = await Promise.all(Array.from(sessions.values()).map(async (s) => ({
+      const list = await Promise.all(Array.from(server.sessions.values()).map(async (s) => ({
         id: s.id, directory: s.directory,
         stats: await s.chatAgent.getUsage(),
         sessionId: tryGetAgentSessionId(s.chatAgent),
@@ -2040,14 +2242,14 @@ function createMainServer(cfg: ServerConfig): http.Server {
     if (req.method === "GET" && req.url?.startsWith("/api/messages")) {
       const url = new URL(req.url, `http://localhost:${cfg.port}`)
       const sessionId = url.searchParams.get("sessionId")
-      let session = sessionId ? getSession(sessionId) : undefined
+      let session = sessionId ? getSession(server, sessionId) : undefined
 
       // Session may not be in memory after server restart — try resuming from DB
       if (!session && sessionId) {
-        const row = db.findOne("user_session", { op: "eq", field: "session_id", value: sessionId })
+        const row = server.db.findOne("user_session", { op: "eq", field: "session_id", value: sessionId })
         if (row) {
           try {
-            session = await resumeSession(cfg, row as Record<string, unknown>)
+            session = await resumeSession(server, cfg, row as Record<string, unknown>)
           } catch { /* ignore resume errors */ }
         }
       }
@@ -2061,7 +2263,7 @@ function createMainServer(cfg: ServerConfig): http.Server {
       session.chatAgent.getSessionMessages({ limit }).then((messages: any) => {
         const payload = session.runtimeAgentType === NO_AGENT_TYPE
           ? messages
-          : mergeSessionHistoryMessages(getPersistedNoAgentMessages(session.id, limit), messages, limit)
+          : mergeSessionHistoryMessages(getPersistedNoAgentMessages(server, session.id, limit), messages, limit)
         res.writeHead(200, { "Content-Type": "application/json" })
         res.end(JSON.stringify(payload))
       }).catch((err: any) => {
@@ -2081,177 +2283,13 @@ function createMainServer(cfg: ServerConfig): http.Server {
     res.writeHead(404, { "Content-Type": "application/json" })
     res.end(JSON.stringify({ error: "Not found" }))
   })
-  return server
+  return httpServer
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
 export async function startServer() {
-  const cfg = loadConfig()
-  process.on("uncaughtException", (err) => {
-    console.error("⚠  Uncaught exception:", err.message)
-  })
-  process.on("unhandledRejection", (reason) => {
-    console.error("⚠  Unhandled rejection:", reason instanceof Error ? reason.message : reason)
-  })
-  const previewServer = createPreviewServer(cfg)
-  const server = createMainServer(cfg)
-  console.log("🚀  Starting @any-code/server…")
-
-  // ── Initialise shared storage ──
-  sharedStorage = new SqlJsStorage(DB_PATH)
-  db = await sharedStorage.connect()
-
-  // Server-specific table: maps user IDs to their windows/sessions.
-  // Migrate from old schema (user_id PK, no is_default) to new schema
-  // (session_id PK, is_default) — preserves all existing data.
-  const cols = sharedStorage.query(`PRAGMA table_info("user_session")`)
-  if (cols.length > 0) {
-    const hasIsDefault = cols.some((c: any) => c.name === "is_default")
-    const hasUserId = cols.some((c: any) => c.name === "user_id")
-    const pkCol = cols.find((c: any) => c.pk === 1)
-    const needsPkMigration = pkCol && pkCol.name === "user_id"
-    const needsMigration = !hasIsDefault || needsPkMigration || hasUserId
-
-    if (needsMigration) {
-      console.log("🔄  Migrating user_session table…")
-      // Step 1: add is_default column if missing (needed before copying data)
-      if (!hasIsDefault) {
-        sharedStorage.exec(`ALTER TABLE "user_session" ADD COLUMN "is_default" INTEGER NOT NULL DEFAULT 0`)
-        sharedStorage.exec(`UPDATE "user_session" SET "is_default" = 1`)
-      }
-      // Step 2: rebuild table — drop user_id column and fix PK
-      if (needsPkMigration || hasUserId) {
-        sharedStorage.exec(`CREATE TABLE "user_session_new" (
-          "session_id"   TEXT PRIMARY KEY,
-          "directory"    TEXT NOT NULL DEFAULT '',
-          "time_created" INTEGER NOT NULL,
-          "is_default"   INTEGER NOT NULL DEFAULT 0
-        )`)
-        sharedStorage.exec(`INSERT INTO "user_session_new" SELECT "session_id","directory","time_created","is_default" FROM "user_session"`)
-        sharedStorage.exec(`DROP TABLE "user_session"`)
-        sharedStorage.exec(`ALTER TABLE "user_session_new" RENAME TO "user_session"`)
-      }
-      console.log("✅  user_session migration complete")
-    }
-    // Add cascade_id column if missing
-    if (!cols.some((c: any) => c.name === "cascade_id")) {
-      sharedStorage.exec(`ALTER TABLE "user_session" ADD COLUMN "cascade_id" TEXT NOT NULL DEFAULT ''`)
-      console.log("✅  Added cascade_id column to user_session")
-    }
-    if (!cols.some((c: any) => c.name === "agent_type")) {
-      sharedStorage.exec(`ALTER TABLE "user_session" ADD COLUMN "agent_type" TEXT NOT NULL DEFAULT 'anycode'`)
-      console.log("✅  Added agent_type column to user_session")
-    }
-  } else {
-    // Table doesn't exist — create fresh
-    sharedStorage.exec(`
-      CREATE TABLE IF NOT EXISTS "user_session" (
-        "session_id"   TEXT PRIMARY KEY,
-        "directory"    TEXT NOT NULL DEFAULT '',
-        "time_created" INTEGER NOT NULL,
-        "is_default"   INTEGER NOT NULL DEFAULT 0,
-        "cascade_id"   TEXT NOT NULL DEFAULT '',
-        "agent_type"   TEXT NOT NULL DEFAULT 'anycode'
-      )
-    `)
-  }
-
-  sharedStorage.exec(`
-    CREATE TABLE IF NOT EXISTS "user_session_message" (
-      "id"           INTEGER PRIMARY KEY AUTOINCREMENT,
-      "session_id"   TEXT NOT NULL,
-      "role"         TEXT NOT NULL,
-      "text"         TEXT NOT NULL DEFAULT '',
-      "time_created" INTEGER NOT NULL
-    )
-  `)
-  sharedStorage.exec(`CREATE INDEX IF NOT EXISTS "idx_user_session_message_session_time" ON "user_session_message" ("session_id", "id")`)
-
-  const appDistExists = fs.existsSync(cfg.appDist)
-
-
-
-  // ── WebSocket server on same HTTP server ──
-  const wss = new WebSocketServer({ server })
-
-  // Heartbeat: ping clients every 30s, terminate dead connections
-  const WS_PING_INTERVAL = 30_000
-  const aliveSet = new WeakSet<WS>()
-  const pingTimer = setInterval(() => {
-    for (const ws of wss.clients) {
-      if (!aliveSet.has(ws)) {
-        ws.terminate()
-        continue
-      }
-      aliveSet.delete(ws)
-      ws.ping()
-    }
-  }, WS_PING_INTERVAL)
-  wss.on("close", () => clearInterval(pingTimer))
-
-  wss.on("connection", (ws, req) => {
-    const url = new URL(req.url || "/", `http://localhost:${cfg.port}`)
-    const sessionId = url.searchParams.get("sessionId")
-    if (!sessionId || !getSession(sessionId)) {
-      ws.close(4001, "Invalid session")
-      return
-    }
-
-    // Mark alive on connect and on each pong
-    aliveSet.add(ws)
-    ws.on("pong", () => aliveSet.add(ws))
-
-    // Terminal WebSocket — separate lifecycle from state clients
-    if (url.pathname === "/terminal") {
-      handleTerminalWs(ws, sessionId)
-      return
-    }
-
-    const clients = getSessionClients(sessionId)
-    clients.add(ws as ClientLike)
-    console.log(`🔌  WS client connected to session ${sessionId} (${clients.size} total)`)
-
-    // Send current state to this client only (no broadcast)
-    const sessionModel = getSession(sessionId)?.state
-    if (sessionModel) {
-      ws.send(JSON.stringify(sessionModel.toJSON()))
-    }
-
-    ws.on("message", async (raw) => {
-      try {
-        const msg = JSON.parse(raw.toString())
-        handleClientMessage(sessionId, ws as ClientLike, msg).catch(() => { })
-      } catch { /* ignore malformed */ }
-    })
-
-    ws.on("close", () => {
-      removeClient(sessionId, ws as ClientLike)
-    })
-  })
-
-  const HOST = process.env.HOST ?? "0.0.0.0"
-
-  const proto = cfg.tlsCert ? "https" : "http"
-  const wsProto = cfg.tlsCert ? "wss" : "ws"
-
-  previewServer.listen(cfg.previewPort, HOST, () => {
-    console.log(`👁  Preview proxy: ${proto}://${HOST}:${cfg.previewPort}`)
-  })
-
-  server.listen(cfg.port, HOST, () => {
-    console.log(`🌐  ${proto}://${HOST}:${cfg.port}`)
-    console.log(`🤖  Provider: ${cfg.provider} / ${cfg.model}`)
-    console.log(`🖥  Admin: ${proto}://${HOST}:${cfg.port}/admin`)
-    if (appDistExists) {
-      console.log(`📱  App: ${proto}://${HOST}:${cfg.port}`)
-    } else {
-      console.log(`⚠  App dist not found at ${cfg.appDist} — run 'pnpm --filter @any-code/app build' first`)
-    }
-    console.log(`📋  Sessions: POST /api/sessions to create`)
-    console.log(`🔌  WebSocket: ${wsProto}://${HOST}:${cfg.port}?sessionId=xxx`)
-    if (cfg.tlsCert) console.log(`🔒  TLS enabled`)
-  })
+  return new AnyCodeServer().start()
 }
 
 export { CodeAgent, SqlJsStorage, NodeFS, NodeSearchProvider };

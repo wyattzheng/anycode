@@ -5,7 +5,7 @@ import fs from "fs";
 import readline from "readline";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
-import { startServer } from "@any-code/server";
+import { AnyCodeServer } from "@any-code/server";
 import { DEFAULT_MODEL, SettingsStore, type AccountSettings, type UserSettingsFile } from "@any-code/settings";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -323,7 +323,7 @@ async function cmdServer() {
 
     info("Starting server in foreground...");
     blank();
-    startServer();
+    await new AnyCodeServer().start();
 }
 
 async function cmdStart() {
