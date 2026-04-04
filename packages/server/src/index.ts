@@ -36,6 +36,7 @@ import { adminHTML } from "./admin"
 import { computeFileDiff, type DirEntry, getGitChanges, listDir } from "./filesystem"
 import { NodeGitProvider } from "./git"
 import { createPreviewServer, getOrCreatePreviewProvider, NodePreviewProvider } from "./preview"
+import { AccountQuotaManager } from "./quota"
 import { DirectoryWatchManager, SessionStateModel, watchDirectory } from "./session-state"
 import { getOrCreateTerminalProvider, handleTerminalWs, NodeTerminalProvider } from "./terminal"
 
@@ -53,6 +54,8 @@ const API_ERROR_CODES = {
   OAUTH_TOKEN_EXCHANGE_FAILED: "OAUTH_TOKEN_EXCHANGE_FAILED",
 } as const
 const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000
+const ACCOUNT_QUOTA_CACHE_TTL_MS = 10 * 1000
+
 interface ServerConfig {
   provider: string
   model: string
@@ -697,6 +700,7 @@ export class AnyCodeServer {
   readonly previewProviders = new Map<string, NodePreviewProvider>()
   readonly oauthSessions = new Map<string, OAuthSessionRecord>()
   readonly oauthStateIndex = new Map<string, string>()
+  readonly accountQuota = new AccountQuotaManager(ACCOUNT_QUOTA_CACHE_TTL_MS)
 
   previewTarget: string | null = null
   previewSessionId: string | null = null
@@ -746,7 +750,9 @@ export class AnyCodeServer {
   }
 
   writeUserSettingsFile(settings: UserSettingsFile) {
-    return this.settingsStore.write(settings).toJSON()
+    const saved = this.settingsStore.write(settings).toJSON()
+    this.accountQuota.clear()
+    return saved
   }
 
   applySettingsToConfig(settings: UserSettingsFile) {
@@ -798,29 +804,9 @@ export class AnyCodeServer {
 
   async getAccountQuotas() {
     const settings = new SettingsModel(this.readUserSettingsFile())
-    const quotas: Record<string, unknown> = {}
-
-    for (const account of settings.accounts) {
-      const apiKey = normalizeString(account.API_KEY)
-      if (!apiKey) {
-        quotas[account.id] = null
-        continue
-      }
-
-      try {
-        quotas[account.id] = await VendorRegistry.getVendorProvider({ id: account.PROVIDER }).getQuota({
-          apiKey,
-          agent: normalizeString(account.AGENT),
-          model: normalizeString(account.MODEL),
-          baseUrl: normalizeString(account.BASE_URL),
-        })
-      } catch (error) {
-        console.warn(`⚠  Failed to load quota for account ${account.id}:`, error)
-        quotas[account.id] = null
-      }
+    return {
+      quotas: await this.accountQuota.getForAccounts(settings.accounts),
     }
-
-    return { quotas }
   }
 
   private cleanupOAuthSessions() {
