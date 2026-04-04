@@ -2,9 +2,9 @@ import { createAnthropic } from "@ai-sdk/anthropic"
 import type { ModelMessage } from "ai"
 import { mergeDeep, unique } from "remeda"
 import { Hash } from "../util/hash"
-import type { ModelProvider } from "./types"
+import type { VendorProvider } from "./types"
 
-export const anthropicVendor: ModelProvider = {
+export const anthropicVendor: VendorProvider = {
   id: "anthropic",
   npms: ["@ai-sdk/anthropic"],
   bundled: {

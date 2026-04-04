@@ -1,8 +1,8 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import type { JSONSchema7 } from "@ai-sdk/provider"
-import type { ModelProvider } from "./types"
+import type { VendorProvider } from "./types"
 
-export const googleVendor: ModelProvider = {
+export const googleVendor: VendorProvider = {
   id: "google",
   npms: ["@ai-sdk/google"],
   bundled: {

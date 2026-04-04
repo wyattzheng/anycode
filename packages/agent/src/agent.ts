@@ -914,8 +914,8 @@ export class CodeAgent extends EventEmitter {
             systemPrompts.push("IMPORTANT: The user has requested structured output. You MUST use the StructuredOutput tool to provide your final response. Do NOT respond with plain text - you MUST call the StructuredOutput tool with your answer formatted according to the schema.")
         }
 
-        const modelProvider = VendorRegistry.getModelProvider({ model })
-        const includeProviderPrompt = modelProvider.shouldIncludeProviderSystemPrompt()
+        const vendorProvider = VendorRegistry.getVendorProvider({ model })
+        const includeProviderPrompt = vendorProvider.shouldIncludeProviderSystemPrompt()
 
         const system: string[] = [
             [
@@ -1303,4 +1303,3 @@ export class CodeAgent extends EventEmitter {
 // ── Utilities ────────────────────────────────────────────────────────────────
 
 const DOOM_LOOP_THRESHOLD = 3
-

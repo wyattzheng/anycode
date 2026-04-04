@@ -1,9 +1,9 @@
 import { createOpenAI } from "@ai-sdk/openai"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import type { ModelMessage } from "ai"
-import type { ModelProvider } from "./types"
+import type { VendorProvider } from "./types"
 
-export const openAIVendor: ModelProvider = {
+export const openAIVendor: VendorProvider = {
   id: "openai",
   npms: ["@ai-sdk/openai", "@ai-sdk/openai-compatible"],
   bundled: {

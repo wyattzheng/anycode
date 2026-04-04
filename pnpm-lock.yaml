@@ -123,6 +123,9 @@ importers:
         specifier: ^4.0.2
         version: 4.0.2
     devDependencies:
+      '@any-code/settings':
+        specifier: workspace:*
+        version: link:../settings
       '@capacitor/cli':
         specifier: ^8.2.0
         version: 8.2.0
@@ -259,6 +262,12 @@ importers:
 
   packages/server:
     dependencies:
+      '@any-code/provider':
+        specifier: workspace:*
+        version: link:../provider
+      '@any-code/settings':
+        specifier: workspace:*
+        version: link:../settings
       '@lydell/node-pty':
         specifier: 1.2.0-beta.3
         version: 1.2.0-beta.3
@@ -293,9 +302,6 @@ importers:
       '@any-code/codex-agent':
         specifier: workspace:*
         version: link:../codex-agent
-      '@any-code/settings':
-        specifier: workspace:*
-        version: link:../settings
       '@any-code/utils':
         specifier: workspace:*
         version: link:../utils

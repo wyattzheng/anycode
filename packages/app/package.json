@@ -27,6 +27,7 @@
         "shiki": "^4.0.2"
     },
     "devDependencies": {
+        "@any-code/settings": "workspace:*",
         "@capacitor/cli": "^8.2.0",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",

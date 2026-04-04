@@ -30,6 +30,7 @@ import { SetPreviewUrlTool } from "./tool-set-preview-url"
 import { WebSocketServer, WebSocket as WS } from "ws"
 import { SqlJsStorage, NodeFS, NodeSearchProvider } from "@any-code/utils"
 import { SettingsModel, SettingsStore, normalizeString, type UserSettingsFile } from "@any-code/settings"
+import { VendorRegistry } from "@any-code/provider"
 import { createChatAgent, type IChatAgent } from "./chat-agent"
 import { adminHTML } from "./admin"
 import { computeFileDiff, type DirEntry, getGitChanges, listDir } from "./filesystem"
@@ -44,7 +45,12 @@ const DEFAULT_ANYCODE_DIR = path.join(os.homedir(), ".anycode")
 const NO_AGENT_TYPE = "noagent"
 const API_ERROR_CODES = {
   SETTINGS_ACCOUNT_INCOMPLETE: "SETTINGS_ACCOUNT_INCOMPLETE",
+  OAUTH_PROVIDER_UNSUPPORTED: "OAUTH_PROVIDER_UNSUPPORTED",
+  OAUTH_SESSION_NOT_FOUND: "OAUTH_SESSION_NOT_FOUND",
+  OAUTH_SESSION_EXPIRED: "OAUTH_SESSION_EXPIRED",
+  OAUTH_TOKEN_EXCHANGE_FAILED: "OAUTH_TOKEN_EXCHANGE_FAILED",
 } as const
+const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000
 interface ServerConfig {
   provider: string
   model: string
@@ -142,6 +148,17 @@ interface SessionAgentBinding {
   chatAgent: IChatAgent
   agentType: string
   runtimeAgentType: string
+}
+
+interface OAuthSessionRecord {
+  id: string
+  provider: string
+  state: string
+  redirectUri: string
+  createdAt: number
+  status: "pending" | "success" | "error"
+  refreshToken?: string
+  error?: string
 }
 
 function createAgentConfig(server: AnyCodeServer, cfg: ServerConfig, directory: string, resumeToken?: string, terminal?: TerminalProvider, preview?: PreviewProvider) {
@@ -323,6 +340,102 @@ function getErrorCode(error: unknown) {
   return typeof error === "object" && error !== null && typeof (error as { code?: unknown }).code === "string"
     ? (error as { code: string }).code
     : undefined
+}
+
+function createApiError(message: string, code: string) {
+  const error = new Error(message) as Error & { code?: string }
+  error.code = code
+  return error
+}
+
+function normalizePublicBaseUrl(value: unknown) {
+  const normalized = normalizeString(value)
+  if (!normalized) return undefined
+  try {
+    const url = new URL(normalized)
+    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined
+    return url.origin + url.pathname.replace(/\/+$/, "")
+  } catch {
+    return undefined
+  }
+}
+
+function getRequestBaseUrl(req: http.IncomingMessage, cfg: ServerConfig) {
+  const fromOrigin = normalizePublicBaseUrl(req.headers.origin)
+  if (fromOrigin) return fromOrigin
+
+  const referer = normalizeString(req.headers.referer)
+  if (referer) {
+    try {
+      return new URL(referer).origin
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const host = normalizeString(req.headers.host) ?? `127.0.0.1:${cfg.port}`
+  return `${cfg.tlsCert ? "https" : "http"}://${host}`
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
+
+function oauthCallbackHtml(title: string, message: string, isError = false) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    background: #0d1117;
+    color: #e6edf3;
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 24px;
+  }
+  .card {
+    width: min(420px, 100%);
+    padding: 24px;
+    border-radius: 16px;
+    background: #161b22;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+  }
+  h1 {
+    margin: 0 0 10px;
+    font-size: 20px;
+    color: ${isError ? "#ff938a" : "#9be9a8"};
+  }
+  p { margin: 0; color: #c9d1d9; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>${escapeHtml(title)}</h1>
+    <p>${escapeHtml(message)}</p>
+  </div>
+  <script>setTimeout(() => window.close(), 1200)</script>
+</body>
+</html>`
+}
+
+function getProviderOAuth(provider: string) {
+  const oauth = VendorRegistry.getVendorProvider({ id: provider }).getOAuth()
+  if (!oauth) {
+    throw createApiError(`OAuth is not supported for provider "${provider}"`, API_ERROR_CODES.OAUTH_PROVIDER_UNSUPPORTED)
+  }
+  return oauth
 }
 
 // ── Channel abstraction ───────────────────────────────────────────────────
@@ -508,6 +621,8 @@ export class AnyCodeServer {
   readonly dirWatchManagers = new Map<string, DirectoryWatchManager>()
   readonly terminalProviders = new Map<string, NodeTerminalProvider>()
   readonly previewProviders = new Map<string, NodePreviewProvider>()
+  readonly oauthSessions = new Map<string, OAuthSessionRecord>()
+  readonly oauthStateIndex = new Map<string, string>()
 
   previewTarget: string | null = null
   previewSessionId: string | null = null
@@ -568,6 +683,102 @@ export class AnyCodeServer {
     this.cfg.apiKey = runtime.apiKey
     this.cfg.baseUrl = runtime.baseUrl
     this.cfg.model = runtime.model
+  }
+
+  private cleanupOAuthSessions() {
+    const now = Date.now()
+    for (const [sessionId, session] of this.oauthSessions.entries()) {
+      if (now - session.createdAt <= OAUTH_SESSION_TTL_MS) continue
+      this.oauthSessions.delete(sessionId)
+      this.oauthStateIndex.delete(session.state)
+    }
+  }
+
+  startProviderOAuth(provider: string, publicBaseUrl: string) {
+    this.cleanupOAuthSessions()
+    const oauth = getProviderOAuth(provider)
+
+    const id = crypto.randomUUID()
+    const state = crypto.randomUUID()
+    const redirectUri = `${publicBaseUrl.replace(/\/+$/, "")}/api/oauth/${provider}/callback`
+    const { authUrl } = oauth.start({ redirectUri, state })
+
+    const session: OAuthSessionRecord = {
+      id,
+      provider,
+      state,
+      redirectUri,
+      createdAt: Date.now(),
+      status: "pending",
+    }
+    this.oauthSessions.set(id, session)
+    this.oauthStateIndex.set(state, id)
+
+    return {
+      sessionId: id,
+      authUrl,
+    }
+  }
+
+  getProviderOAuthSession(provider: string, sessionId: string) {
+    this.cleanupOAuthSessions()
+    const session = this.oauthSessions.get(sessionId)
+    if (!session || session.provider !== provider) {
+      throw createApiError("OAuth session not found", API_ERROR_CODES.OAUTH_SESSION_NOT_FOUND)
+    }
+    return {
+      sessionId: session.id,
+      status: session.status,
+      refreshToken: session.refreshToken,
+      error: session.error,
+    }
+  }
+
+  async completeProviderOAuth(provider: string, params: URLSearchParams) {
+    this.cleanupOAuthSessions()
+
+    const state = normalizeString(params.get("state"))
+    if (!state) {
+      return oauthCallbackHtml("登录失败", "OAuth state is missing.", true)
+    }
+
+    const sessionId = this.oauthStateIndex.get(state)
+    const session = sessionId ? this.oauthSessions.get(sessionId) : undefined
+    if (!session || session.provider !== provider) {
+      return oauthCallbackHtml("登录已失效", "This OAuth session was not found or has expired.", true)
+    }
+
+    const deniedError = normalizeString(params.get("error"))
+    if (deniedError) {
+      const description = normalizeString(params.get("error_description")) ?? deniedError
+      session.status = "error"
+      session.error = description
+      return oauthCallbackHtml("登录未完成", description, true)
+    }
+
+    if (session.status === "success" && session.refreshToken) {
+      return oauthCallbackHtml("登录成功", "You can return to AnyCode now.")
+    }
+
+    const code = normalizeString(params.get("code"))
+    if (!code) {
+      session.status = "error"
+      session.error = "Authorization code is missing."
+      return oauthCallbackHtml("登录失败", session.error, true)
+    }
+
+    try {
+      const oauth = getProviderOAuth(provider)
+      const tokens = await oauth.exchangeCode({ code, redirectUri: session.redirectUri })
+      session.status = "success"
+      session.refreshToken = tokens.refreshToken
+      session.error = undefined
+      return oauthCallbackHtml("登录成功", "Token has been captured. Return to AnyCode and continue.")
+    } catch (error: any) {
+      session.status = "error"
+      session.error = error instanceof Error ? error.message : "OAuth exchange failed."
+      return oauthCallbackHtml("登录失败", session.error, true)
+    }
   }
 
   private bindSessionAgentEvents(entry: SessionEntry, chatAgent: IChatAgent) {
@@ -1089,6 +1300,38 @@ function createMainServer(server: AnyCodeServer, cfg: ServerConfig): http.Server
         accounts: settings.accounts ?? [],
         currentAccountId: settings.currentAccountId ?? null,
       }))
+      return
+    }
+
+    const oauthStartMatch = req.url?.match(/^\/api\/oauth\/([^/?]+)\/start$/)
+    if (req.method === "POST" && oauthStartMatch) {
+      const body = await readJsonBody(req)
+      const publicBaseUrl = normalizePublicBaseUrl(body.publicBaseUrl) ?? getRequestBaseUrl(req, cfg)
+      try {
+        const oauth = server.startProviderOAuth(oauthStartMatch[1], publicBaseUrl)
+        sendJson(res, 200, oauth)
+      } catch (error) {
+        sendErrorJson(res, 400, error, "Failed to start OAuth")
+      }
+      return
+    }
+
+    const oauthSessionMatch = req.url?.match(/^\/api\/oauth\/([^/?]+)\/sessions\/([^/?]+)$/)
+    if (req.method === "GET" && oauthSessionMatch) {
+      try {
+        sendJson(res, 200, server.getProviderOAuthSession(oauthSessionMatch[1], oauthSessionMatch[2]))
+      } catch (error) {
+        sendErrorJson(res, 404, error, "OAuth session not found")
+      }
+      return
+    }
+
+    const oauthCallbackMatch = req.url?.match(/^\/api\/oauth\/([^/?]+)\/callback(?:\?|$)/)
+    if (req.method === "GET" && oauthCallbackMatch) {
+      const url = new URL(req.url!, `${cfg.tlsCert ? "https" : "http"}://localhost:${cfg.port}`)
+      const html = await server.completeProviderOAuth(oauthCallbackMatch[1], url.searchParams)
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
+      res.end(html)
       return
     }
 

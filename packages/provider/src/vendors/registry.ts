@@ -4,13 +4,14 @@ import { mergeDeep } from "remeda"
 import type { Provider } from "../provider"
 import { Flag } from "../util/flag"
 import { anthropicVendor } from "./anthropic"
+import { antigravityVendor } from "./antigravity"
 import { githubCopilotVendor } from "./github-copilot"
 import { googleVendor } from "./google"
 import { liteLLMVendor } from "./litellm"
 import { openAIVendor } from "./openai"
 import type {
-  ModelProvider,
-  ModelProviderAccessor,
+  VendorProvider,
+  VendorProviderAccessor,
   ProviderInfoLike,
   ProviderModelLike,
   ProviderRuntimeInput,
@@ -67,17 +68,18 @@ function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMes
 
 const VENDORS = [
   anthropicVendor,
+  antigravityVendor,
   githubCopilotVendor,
   googleVendor,
   liteLLMVendor,
   openAIVendor,
-] satisfies ModelProvider[]
+] satisfies VendorProvider[]
 
 const VENDORS_BY_NPM = new Map(
   VENDORS.flatMap((vendor) => (vendor.npms ?? []).map((npm) => [npm, vendor] as const)),
 )
 
-type ModelProviderSelector = {
+type VendorProviderSelector = {
   npm?: string
   model?: Provider.Model | ProviderModelLike
   provider?: ProviderInfoLike
@@ -85,7 +87,7 @@ type ModelProviderSelector = {
   id?: string
 }
 
-function matchesRuntimeVendor(vendor: ModelProvider, input: ProviderRuntimeInput) {
+function matchesRuntimeVendor(vendor: VendorProvider, input: ProviderRuntimeInput) {
   return (
     vendor.matchesRuntime?.(input) ||
     vendor.id === input.provider.id ||
@@ -94,7 +96,7 @@ function matchesRuntimeVendor(vendor: ModelProvider, input: ProviderRuntimeInput
   )
 }
 
-function getMatchingVendors(input: ModelProviderSelector) {
+function getMatchingVendors(input: VendorProviderSelector) {
   if (input.id) return VENDORS.filter((vendor) => vendor.id === input.id)
   if (input.model && input.provider) {
     return VENDORS.filter((vendor) =>
@@ -122,12 +124,12 @@ function getMatchingVendors(input: ModelProviderSelector) {
   return VENDORS
 }
 
-function getSelectorNpm(input: ModelProviderSelector) {
+function getSelectorNpm(input: VendorProviderSelector) {
   return input.npm ?? input.model?.api.npm
 }
 
 export const VendorRegistry = {
-  getModelProvider(input: ModelProviderSelector = {}) {
+  getVendorProvider(input: VendorProviderSelector = {}) {
     const vendors = getMatchingVendors(input)
     const npm = getSelectorNpm(input)
     const model = input.model as Provider.Model | undefined
@@ -139,7 +141,7 @@ export const VendorRegistry = {
       }
       : undefined
 
-    const accessor: ModelProviderAccessor = {
+    const accessor: VendorProviderAccessor = {
       all() {
         return vendors
       },
@@ -151,6 +153,10 @@ export const VendorRegistry = {
 
       getCustomLoaders() {
         return Object.fromEntries(vendors.flatMap((vendor) => (vendor.customLoader ? [[vendor.id, vendor.customLoader]] : [])))
+      },
+
+      getOAuth() {
+        return vendors.find((vendor) => vendor.oauth)?.oauth
       },
 
       getOptionsKey() {

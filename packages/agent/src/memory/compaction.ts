@@ -12,12 +12,12 @@ const CHARS_PER_TOKEN = 4
 
 function getLimits(model: Provider.Model, config: any) {
   const contextLimit = model.limit.context ?? 0
-  const modelProvider = VendorRegistry.getModelProvider({ model })
+  const vendorProvider = VendorRegistry.getVendorProvider({ model })
   const reserved =
-    config.compaction?.reserved ?? Math.min(COMPACTION_BUFFER, modelProvider.getMaxOutputTokens())
+    config.compaction?.reserved ?? Math.min(COMPACTION_BUFFER, vendorProvider.getMaxOutputTokens())
   const compactionThreshold = model.limit.input
     ? model.limit.input - reserved
-    : contextLimit - modelProvider.getMaxOutputTokens()
+    : contextLimit - vendorProvider.getMaxOutputTokens()
   return { contextLimit, compactionThreshold }
 }
 

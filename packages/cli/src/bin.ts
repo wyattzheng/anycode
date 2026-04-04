@@ -6,7 +6,15 @@ import readline from "readline";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
 import { AnyCodeServer } from "@any-code/server";
-import { DEFAULT_MODEL, SettingsStore, type AccountSettings, type UserSettingsFile } from "@any-code/settings";
+import {
+    DEFAULT_MODEL,
+    SettingsStore,
+    getForcedProviderForAgent,
+    getProviderOptionsForAgent,
+    normalizeProviderForAgent,
+    type AccountSettings,
+    type UserSettingsFile,
+} from "@any-code/settings";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -128,7 +136,7 @@ async function ensureSettings(): Promise<Settings> {
             id: randomUUID(),
             name: name || "默认账号",
             AGENT: "anycode",
-            PROVIDER: "anthropic",
+            PROVIDER: normalizeProviderForAgent("anycode", undefined),
             MODEL: DEFAULT_MODEL,
             API_KEY: "",
         };
@@ -154,7 +162,13 @@ async function ensureSettings(): Promise<Settings> {
         changed = true;
     }
 
-    if (!account.PROVIDER) {
+    const forcedProvider = getForcedProviderForAgent(account.AGENT);
+    if (forcedProvider && account.PROVIDER !== forcedProvider) {
+        account.PROVIDER = forcedProvider;
+        changed = true;
+    }
+
+    if (!forcedProvider && !account.PROVIDER) {
         if (!changed) {
             blank();
             console.log(`  ${c.bold}${c.white}Let's finish configuring your current account.${c.reset}`);
@@ -162,8 +176,9 @@ async function ensureSettings(): Promise<Settings> {
             divider();
             blank();
         }
-        const val = await prompt(`  ${c.cyan}?${c.reset} ${c.bold}Provider${c.reset} ${c.gray}(anthropic, openai, google, litellm)${c.reset}: `);
-        account.PROVIDER = val || "anthropic";
+        const providerOptions = getProviderOptionsForAgent(account.AGENT).join(", ");
+        const val = await prompt(`  ${c.cyan}?${c.reset} ${c.bold}Provider${c.reset} ${c.gray}(${providerOptions})${c.reset}: `);
+        account.PROVIDER = normalizeProviderForAgent(account.AGENT, val);
         changed = true;
     }
 

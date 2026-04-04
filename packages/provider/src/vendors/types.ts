@@ -73,7 +73,30 @@ export interface VendorLLM {
   needsNoopToolFallback?: (input: ProviderRuntimeInput) => boolean
 }
 
-export interface ModelProvider {
+export interface VendorOAuthStartInput {
+  redirectUri: string
+  state: string
+}
+
+export interface VendorOAuthStartResult {
+  authUrl: string
+}
+
+export interface VendorOAuthExchangeInput {
+  code: string
+  redirectUri: string
+}
+
+export interface VendorOAuthExchangeResult {
+  refreshToken: string
+}
+
+export interface VendorOAuth {
+  start(input: VendorOAuthStartInput): VendorOAuthStartResult
+  exchangeCode(input: VendorOAuthExchangeInput): Promise<VendorOAuthExchangeResult>
+}
+
+export interface VendorProvider {
   id: string
   npms?: string[]
   bundled?: Partial<Record<string, ProviderSDKFactory>>
@@ -84,12 +107,14 @@ export interface ModelProvider {
   transform?: VendorTransform
   llm?: VendorLLM
   prompt?: VendorPrompt
+  oauth?: VendorOAuth
 }
 
-export interface ModelProviderAccessor {
-  all(): ModelProvider[]
+export interface VendorProviderAccessor {
+  all(): VendorProvider[]
   getBundledProvider(): ProviderSDKFactory | undefined
   getCustomLoaders(): Record<string, (context: ProviderContext, provider: ProviderInfoLike) => Promise<ProviderLoaderResult>>
+  getOAuth(): VendorOAuth | undefined
   getOptionsKey(): string | undefined
   applyRequestPatch(patchInput: Omit<ProviderRequestPatchInput, "model"> & { model?: ProviderModelLike }): void
   applyMessageTransforms(msgs: ModelMessage[], options: Record<string, unknown>): ModelMessage[]

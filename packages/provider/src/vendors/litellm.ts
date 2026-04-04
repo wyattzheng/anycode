@@ -1,6 +1,6 @@
-import type { ModelProvider } from "./types"
+import type { VendorProvider } from "./types"
 
-export const liteLLMVendor: ModelProvider = {
+export const liteLLMVendor: VendorProvider = {
   id: "litellm",
   matchesRuntime({ model, provider }) {
     return (

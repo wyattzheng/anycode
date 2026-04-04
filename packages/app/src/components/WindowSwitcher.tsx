@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getForcedProviderForAgent, getProviderOptionsForAgent, normalizeProviderForAgent } from "@any-code/settings/shared";
 import { GearIcon, CloseIcon } from "./Icons";
 import { getApiBase, getServerUrl, setServerUrl } from "../server-url";
 import "./WindowSwitcher.css";
@@ -24,6 +25,17 @@ interface AccountInfo {
 interface SettingsResponse {
     accounts: AccountInfo[];
     currentAccountId: string | null;
+}
+
+interface OAuthStartResponse {
+    sessionId: string;
+    authUrl: string;
+}
+
+interface OAuthSessionResponse {
+    status: "pending" | "success" | "error";
+    refreshToken?: string;
+    error?: string;
 }
 
 interface ApiResponseBody {
@@ -57,7 +69,7 @@ function createAccount(): AccountInfo {
             : `account-${Date.now()}`,
         name: "新账号",
         AGENT: "anycode",
-        PROVIDER: "anthropic",
+        PROVIDER: normalizeProviderForAgent("anycode", undefined),
         MODEL: "claude-sonnet-4-20250514",
         API_KEY: "",
         BASE_URL: "",
@@ -69,6 +81,18 @@ function createApiError(res: Response, body: ApiResponseBody, fallbackMessage: s
     error.code = body.code;
     error.status = res.status;
     return error;
+}
+
+function getProviderOAuthConfig(provider: string) {
+    if (provider === "antigravity") {
+        return {
+            buttonLabel: "Google OAuth 登录",
+            buttonLabelFilled: "重新 Google OAuth 登录",
+            pendingLabel: "等待 Google 授权…",
+            helperText: "登录成功后会自动把 refresh token 填入 API_KEY。",
+        };
+    }
+    return null;
 }
 
 async function readResponseJson<T>(res: Response): Promise<T & ApiResponseBody> {
@@ -95,11 +119,49 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
     const [dirty, setDirty] = useState(false);
+    const [oauthPendingAccountId, setOauthPendingAccountId] = useState<string | null>(null);
+    const oauthPollTimerRef = useRef<number | null>(null);
+    const oauthPollStartedAtRef = useRef(0);
+    const accountsRef = useRef<AccountInfo[]>([]);
+    const currentAccountIdRef = useRef<string | null>(null);
 
     const selectedAccount = useMemo(
         () => accounts.find((account) => account.id === selectedAccountId) ?? null,
         [accounts, selectedAccountId],
     );
+    const currentAccount = useMemo(
+        () => accounts.find((account) => account.id === currentAccountId) ?? null,
+        [accounts, currentAccountId],
+    );
+    const selectedAccountForcedProvider = selectedAccount ? getForcedProviderForAgent(selectedAccount.AGENT) : null;
+    const selectedAccountProviderOptions = useMemo(() => {
+        if (!selectedAccount) return [];
+        const options = getProviderOptionsForAgent(selectedAccount.AGENT);
+        const currentProvider = selectedAccount.PROVIDER.trim();
+        return currentProvider && !options.includes(currentProvider)
+            ? [...options, currentProvider]
+            : options;
+    }, [selectedAccount]);
+    const selectedAccountOAuth = selectedAccount ? getProviderOAuthConfig(selectedAccount.PROVIDER) : null;
+
+    useEffect(() => {
+        accountsRef.current = accounts;
+    }, [accounts]);
+
+    useEffect(() => {
+        currentAccountIdRef.current = currentAccountId;
+    }, [currentAccountId]);
+
+    const clearOAuthPolling = useCallback(() => {
+        if (oauthPollTimerRef.current != null) {
+            window.clearTimeout(oauthPollTimerRef.current);
+            oauthPollTimerRef.current = null;
+        }
+        oauthPollStartedAtRef.current = 0;
+        setOauthPendingAccountId(null);
+    }, []);
+
+    useEffect(() => () => clearOAuthPolling(), [clearOAuthPolling]);
 
     const fetchSettings = useCallback(async () => {
         setLoading(true);
@@ -129,7 +191,7 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
             ...account,
             name: account.name.trim(),
             AGENT: account.AGENT.trim(),
-            PROVIDER: account.PROVIDER.trim(),
+            PROVIDER: normalizeProviderForAgent(account.AGENT, account.PROVIDER),
             MODEL: account.MODEL.trim(),
             API_KEY: account.API_KEY.trim(),
             BASE_URL: account.BASE_URL?.trim() || "",
@@ -194,6 +256,14 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
         setDirty(true);
     };
 
+    const handleSelectedAgentChange = (nextAgent: string) => {
+        if (!selectedAccount) return;
+        updateSelectedAccount({
+            AGENT: nextAgent,
+            PROVIDER: normalizeProviderForAgent(nextAgent, selectedAccount.PROVIDER),
+        });
+    };
+
     const handleAddAccount = async () => {
         const account = createAccount();
         const nextAccounts = [...accounts, account];
@@ -231,6 +301,95 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
             setCurrentAccountId(selectedAccount.id);
         }
     };
+
+    const handleAgentOAuthLogin = useCallback(async () => {
+        if (!selectedAccount) return;
+        const oauthConfig = getProviderOAuthConfig(selectedAccount.PROVIDER);
+        if (!oauthConfig) return;
+
+        const accountId = selectedAccount.id;
+        const provider = selectedAccount.PROVIDER;
+        const popup = typeof window !== "undefined" ? window.open("", "_blank") : null;
+        setError("");
+        setOauthPendingAccountId(accountId);
+        oauthPollStartedAtRef.current = Date.now();
+
+        const pollSession = async (oauthProvider: string, sessionId: string) => {
+            try {
+                const res = await fetch(`${getApiBase()}/api/oauth/${oauthProvider}/sessions/${encodeURIComponent(sessionId)}`);
+                const data = await readResponseJson<OAuthSessionResponse>(res);
+                if (!res.ok || data.error) throw createApiError(res, data, `HTTP ${res.status}`);
+
+                if (data.status === "pending") {
+                    if (Date.now() - oauthPollStartedAtRef.current > 5 * 60 * 1000) {
+                        clearOAuthPolling();
+                        setError("OAuth 登录超时，请重试。");
+                        try { popup?.close(); } catch { /* ignore */ }
+                        return;
+                    }
+                    oauthPollTimerRef.current = window.setTimeout(() => {
+                        void pollSession(oauthProvider, sessionId);
+                    }, 1200);
+                    return;
+                }
+
+                clearOAuthPolling();
+                try { popup?.close(); } catch { /* ignore */ }
+
+                if (data.status === "error" || !data.refreshToken) {
+                    setError(data.error || "OAuth 登录失败");
+                    return;
+                }
+                const refreshToken = data.refreshToken;
+
+                const nextAccounts = accountsRef.current.map((account) => (
+                    account.id === accountId
+                        ? { ...account, API_KEY: refreshToken }
+                        : account
+                ));
+
+                setAccounts(nextAccounts);
+                setSelectedAccountId(accountId);
+                setDirty(true);
+
+                const ok = await persistSettings(nextAccounts, currentAccountIdRef.current, {
+                    nextSelectedAccountId: accountId,
+                });
+                if (!ok) setDirty(true);
+            } catch (e: any) {
+                clearOAuthPolling();
+                try { popup?.close(); } catch { /* ignore */ }
+                setError(e?.message || "OAuth 登录失败");
+            }
+        };
+
+        try {
+            const publicBaseUrl = getApiBase() || window.location.origin;
+            const res = await fetch(`${getApiBase()}/api/oauth/${provider}/start`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ publicBaseUrl }),
+            });
+            const data = await readResponseJson<OAuthStartResponse>(res);
+            if (!res.ok || data.error) throw createApiError(res, data, `HTTP ${res.status}`);
+
+            if (popup) {
+                popup.location.href = data.authUrl;
+            } else if (typeof window !== "undefined") {
+                const link = document.createElement("a");
+                link.href = data.authUrl;
+                link.target = "_blank";
+                link.rel = "noopener noreferrer";
+                link.click();
+            }
+
+            await pollSession(provider, data.sessionId);
+        } catch (e: any) {
+            clearOAuthPolling();
+            try { popup?.close(); } catch { /* ignore */ }
+            setError(e?.message || "无法启动 OAuth 登录");
+        }
+    }, [clearOAuthPolling, persistSettings, selectedAccount]);
 
     const handleClose = useCallback(async () => {
         if (saving) return;
@@ -303,6 +462,10 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                                     删除账号
                                 </button>
                             </div>
+                            <div className="settings-current-account">
+                                <span className="settings-current-account-label">当前账号</span>
+                                <span className="settings-current-account-value">{currentAccount?.name || "未启用"}</span>
+                            </div>
                         </div>
 
                         {loading ? (
@@ -313,7 +476,7 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                                     {accounts.map((account) => (
                                         <button
                                             key={account.id}
-                                            className={`settings-account-item ${account.id === selectedAccountId ? "active" : ""}`}
+                                            className={`settings-account-item ${account.id === selectedAccountId ? "active" : ""} ${account.id === currentAccountId ? "current" : ""}`}
                                             onClick={() => setSelectedAccountId(account.id)}
                                         >
                                             <span className="settings-account-name">{account.name || "未命名账号"}</span>
@@ -340,7 +503,7 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                                                     <select
                                                         className="settings-input"
                                                         value={selectedAccount.AGENT}
-                                                        onChange={(e) => updateSelectedAccount({ AGENT: e.target.value })}
+                                                        onChange={(e) => handleSelectedAgentChange(e.target.value)}
                                                     >
                                                         <option value="anycode">anycode</option>
                                                         <option value="claudecode">claudecode</option>
@@ -350,12 +513,21 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                                                 </div>
                                                 <div className="settings-row">
                                                     <label className="settings-label">PROVIDER</label>
-                                                    <input
+                                                    <select
                                                         className="settings-input"
                                                         value={selectedAccount.PROVIDER}
                                                         onChange={(e) => updateSelectedAccount({ PROVIDER: e.target.value })}
-                                                        placeholder="anthropic / openai / google"
-                                                    />
+                                                        disabled={Boolean(selectedAccountForcedProvider)}
+                                                    >
+                                                        {selectedAccountProviderOptions.map((provider) => (
+                                                            <option key={provider} value={provider}>{provider}</option>
+                                                        ))}
+                                                    </select>
+                                                    {selectedAccountForcedProvider && (
+                                                        <span className="settings-field-hint">
+                                                            {selectedAccount.AGENT} 固定使用 {selectedAccountForcedProvider}。
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className="settings-row">
                                                     <label className="settings-label">MODEL</label>
@@ -387,6 +559,20 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                                                     onChange={(e) => updateSelectedAccount({ API_KEY: e.target.value })}
                                                     placeholder="输入 API Key"
                                                 />
+                                                {selectedAccountOAuth && (
+                                                    <div className="settings-oauth-row">
+                                                        <button
+                                                            className="settings-btn settings-btn-primary"
+                                                            onClick={() => { void handleAgentOAuthLogin(); }}
+                                                            disabled={saving || oauthPendingAccountId === selectedAccount.id}
+                                                        >
+                                                            {oauthPendingAccountId === selectedAccount.id
+                                                                ? selectedAccountOAuth.pendingLabel
+                                                                : (selectedAccount.API_KEY ? selectedAccountOAuth.buttonLabelFilled : selectedAccountOAuth.buttonLabel)}
+                                                        </button>
+                                                        <span className="settings-oauth-hint">{selectedAccountOAuth.helperText}</span>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             <div className="settings-value-row">

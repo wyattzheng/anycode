@@ -52,11 +52,11 @@ export async function createLLMStream(
     ctx.auth.get(input.model.providerID),
   ])
   const runtime = { model: input.model, provider, auth }
-  const modelProvider = VendorRegistry.getModelProvider(runtime)
+  const vendorProvider = VendorRegistry.getVendorProvider(runtime)
 
   const base = input.small
-    ? modelProvider.getSmallOptions()
-    : modelProvider.getOptions({
+    ? vendorProvider.getSmallOptions()
+    : vendorProvider.getOptions({
       model: input.model,
       sessionID: input.sessionID,
       providerOptions: provider.options,
@@ -66,22 +66,22 @@ export async function createLLMStream(
     mergeDeep(input.model.options),
   )
 
-  if (modelProvider.shouldUseInstructionPrompt() && ctx.systemPrompt) {
+  if (vendorProvider.shouldUseInstructionPrompt() && ctx.systemPrompt) {
     options.instructions = ctx.systemPrompt.instructions(input.model)
   }
 
   const params = {
     temperature: input.model.capabilities.temperature
-      ? modelProvider.getTemperature()
+      ? vendorProvider.getTemperature()
       : undefined,
-    topP: modelProvider.getTopP(),
-    topK: modelProvider.getTopK(),
+    topP: vendorProvider.getTopP(),
+    topK: vendorProvider.getTopK(),
     options,
   }
 
-  const maxOutputTokens = modelProvider.shouldDisableMaxOutputTokens()
+  const maxOutputTokens = vendorProvider.shouldDisableMaxOutputTokens()
     ? undefined
-    : modelProvider.getMaxOutputTokens()
+    : vendorProvider.getMaxOutputTokens()
 
   // Convert LLMToolDef → AI SDK tool()
   const tools: Record<string, any> = {}
@@ -122,7 +122,7 @@ export async function createLLMStream(
     temperature: params.temperature,
     topP: params.topP,
     topK: params.topK,
-    providerOptions: modelProvider.wrapProviderOptions(params.options),
+    providerOptions: vendorProvider.wrapProviderOptions(params.options),
     activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
     tools,
     toolChoice: input.toolChoice,
@@ -148,7 +148,7 @@ export async function createLLMStream(
           async transformParams(args) {
             if (args.type === "stream") {
               // @ts-expect-error
-              args.params.prompt = modelProvider.applyMessageTransforms(args.params.prompt, options)
+              args.params.prompt = vendorProvider.applyMessageTransforms(args.params.prompt, options)
             }
             return args.params
           },
