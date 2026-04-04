@@ -1,8 +1,11 @@
+import { getVendorBrandVendor, getVendorDefaultBaseUrl, getVendorDefaultModel } from "@any-code/provider/vendor-metadata"
+
 export const ANYCODE_DIR_NAME = ".anycode"
 export const SETTINGS_FILE_NAME = "settings.json"
 export const DEFAULT_AGENT = "anycode"
 export const DEFAULT_PROVIDER = "anthropic"
-export const DEFAULT_MODEL = "claude-sonnet-4-20250514"
+export const DEFAULT_MODEL = getVendorDefaultModel(DEFAULT_PROVIDER) ?? "claude-opus-4-6"
+export const DEFAULT_BASE_URL = getVendorDefaultBaseUrl(DEFAULT_PROVIDER) ?? "https://api.anthropic.com/v1"
 export const DEFAULT_PROVIDER_OPTIONS = ["anthropic", "openai", "google", "litellm"] as const
 
 const FORCED_PROVIDER_BY_AGENT = {
@@ -49,6 +52,11 @@ export function normalizeString(value: unknown) {
   return trimmed || undefined
 }
 
+function normalizeAccountNameKey(value: unknown) {
+  const normalized = normalizeString(value)
+  return normalized ? normalized.toLocaleLowerCase() : undefined
+}
+
 function createAccountId() {
   if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID()
   return `account-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -73,6 +81,32 @@ export function accountDisplayName(input: Partial<AccountSettings>, index: numbe
   return `账号 ${index + 1}`
 }
 
+export function createUniqueAccountName(baseName: unknown, accounts: Array<Partial<AccountSettings>>) {
+  const base = normalizeString(baseName) ?? "账号"
+  const seen = new Set(
+    accounts
+      .map((account) => normalizeAccountNameKey(account.name))
+      .filter((name): name is string => Boolean(name)),
+  )
+
+  if (!seen.has(base.toLocaleLowerCase())) return base
+
+  let suffix = 2
+  while (seen.has(`${base} ${suffix}`.toLocaleLowerCase())) suffix += 1
+  return `${base} ${suffix}`
+}
+
+export function getDuplicateAccountName(accounts: Array<Partial<AccountSettings>>) {
+  const seen = new Set<string>()
+  for (const account of accounts) {
+    const key = normalizeAccountNameKey(account.name)
+    if (!key) continue
+    if (seen.has(key)) return normalizeString(account.name) ?? null
+    seen.add(key)
+  }
+  return null
+}
+
 export function getForcedProviderForAgent(agent: unknown): string | null {
   const normalizedAgent = normalizeString(agent)
   if (!normalizedAgent) return null
@@ -91,13 +125,32 @@ export function normalizeProviderForAgent(agent: unknown, provider: unknown) {
   return normalizeString(provider) ?? DEFAULT_PROVIDER
 }
 
-export function normalizeAccount(input: Partial<AccountSettings>, index: number, fallbackModel = DEFAULT_MODEL): AccountSettings {
+export function getDefaultModelForProvider(provider: unknown) {
+  return getVendorDefaultModel(normalizeString(provider) ?? DEFAULT_PROVIDER) ?? DEFAULT_MODEL
+}
+
+export function getProviderBrandVendor(provider: unknown) {
+  return getVendorBrandVendor(normalizeString(provider) ?? DEFAULT_PROVIDER) ?? DEFAULT_PROVIDER
+}
+
+export function getDefaultBaseUrlForProvider(provider: unknown) {
+  const normalized = normalizeString(provider)
+  if (!normalized) return DEFAULT_BASE_URL
+  return getVendorDefaultBaseUrl(normalized) ?? ""
+}
+
+export function normalizeAccount(
+  input: Partial<AccountSettings>,
+  index: number,
+  fallbackModel: string | undefined = DEFAULT_MODEL,
+  fallbackBaseUrl?: string,
+): AccountSettings {
   const id = normalizeString(input.id) ?? createAccountId()
   const AGENT = normalizeString(input.AGENT) ?? DEFAULT_AGENT
   const PROVIDER = normalizeProviderForAgent(AGENT, input.PROVIDER)
-  const MODEL = normalizeString(input.MODEL) ?? fallbackModel
+  const MODEL = normalizeString(input.MODEL) ?? normalizeString(fallbackModel) ?? getDefaultModelForProvider(PROVIDER)
   const API_KEY = normalizeString(input.API_KEY) ?? ""
-  const BASE_URL = normalizeString(input.BASE_URL)
+  const BASE_URL = normalizeString(input.BASE_URL) ?? normalizeString(fallbackBaseUrl) ?? getDefaultBaseUrlForProvider(PROVIDER)
   const normalized: AccountSettings = {
     id,
     name: normalizeString(input.name) ?? accountDisplayName({ AGENT, PROVIDER }, index),
@@ -122,12 +175,13 @@ function hasLegacyAccountConfig(raw: UserSettingsFile) {
 export function normalizeSettings(raw: unknown): UserSettingsFile {
   const base = raw && typeof raw === "object" ? { ...(raw as Record<string, any>) } : {}
   const input = base as UserSettingsFile
-  const legacyModel = normalizeString(input.MODEL) ?? DEFAULT_MODEL
+  const legacyModel = normalizeString(input.MODEL)
+  const legacyBaseUrl = normalizeString(input.BASE_URL)
 
   let accounts = Array.isArray(input.accounts)
     ? input.accounts
       .filter((item) => Boolean(item) && typeof item === "object")
-      .map((item, index) => normalizeAccount(item as Partial<AccountSettings>, index, legacyModel))
+      .map((item, index) => normalizeAccount(item as Partial<AccountSettings>, index, legacyModel, legacyBaseUrl))
     : []
 
   if (accounts.length === 0 && hasLegacyAccountConfig(input)) {
@@ -139,7 +193,7 @@ export function normalizeSettings(raw: unknown): UserSettingsFile {
       MODEL: input.MODEL,
       API_KEY: input.API_KEY,
       BASE_URL: input.BASE_URL,
-    }, 0, legacyModel)]
+    }, 0, legacyModel, legacyBaseUrl)]
   }
 
   const seenIds = new Set<string>()
@@ -211,9 +265,9 @@ export class SettingsModel {
     return {
       agent: normalizeString(currentAccount?.AGENT) ?? DEFAULT_AGENT,
       provider: normalizeString(currentAccount?.PROVIDER) ?? DEFAULT_PROVIDER,
-      model: normalizeString(currentAccount?.MODEL) ?? DEFAULT_MODEL,
+      model: normalizeString(currentAccount?.MODEL) ?? getDefaultModelForProvider(currentAccount?.PROVIDER),
       apiKey: normalizeString(currentAccount?.API_KEY) ?? "",
-      baseUrl: normalizeString(currentAccount?.BASE_URL) ?? "",
+      baseUrl: normalizeString(currentAccount?.BASE_URL) ?? getDefaultBaseUrlForProvider(currentAccount?.PROVIDER),
       currentAccount,
       userSettings: this.toJSON(),
     }

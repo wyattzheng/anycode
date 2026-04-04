@@ -1,7 +1,20 @@
+import { siAnthropic, siGoogle } from "simple-icons";
+
 interface IconProps {
     size?: number;
     color?: string;
 }
+
+interface VendorIconProps extends IconProps {
+    vendor: string;
+}
+
+const REAL_VENDOR_ICONS = {
+    anthropic: siAnthropic,
+    google: siGoogle,
+} as const;
+
+const CUSTOM_VENDOR_ICONS = new Set(["openai"]);
 
 export function MicIcon({ size = 18, color = "currentColor" }: IconProps) {
     return (
@@ -172,6 +185,14 @@ export function PlusIcon({ size = 14, color = "currentColor" }: IconProps) {
     );
 }
 
+export function CheckIcon({ size = 12, color = "currentColor" }: IconProps) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="5 13 9 17 19 7" />
+        </svg>
+    );
+}
+
 export function StopIcon({ size = 14, color = "currentColor" }: IconProps) {
     return (
         <svg width={size} height={size} viewBox="0 0 24 24" fill={color} stroke="none">
@@ -214,6 +235,44 @@ export function MinimizeIcon({ size = 10, color = "currentColor" }: IconProps) {
     return (
         <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round">
             <line x1="2" y1="8" x2="14" y2="8" />
+        </svg>
+    );
+}
+
+function getVendorIconData(vendor: string) {
+    const key = vendor.trim().toLowerCase();
+    return REAL_VENDOR_ICONS[key as keyof typeof REAL_VENDOR_ICONS] ?? null;
+}
+
+export function hasVendorIcon(vendor: string) {
+    const key = vendor.trim().toLowerCase();
+    return CUSTOM_VENDOR_ICONS.has(key) || Boolean(getVendorIconData(vendor));
+}
+
+export function VendorIcon({ vendor, size = 14, color = "currentColor" }: VendorIconProps) {
+    const key = vendor.trim().toLowerCase();
+    if (key === "openai") {
+        return (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <g stroke={color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="10.15" y="2.9" width="3.7" height="9" rx="1.85" transform="rotate(0 12 12)" />
+                    <rect x="10.15" y="2.9" width="3.7" height="9" rx="1.85" transform="rotate(60 12 12)" />
+                    <rect x="10.15" y="2.9" width="3.7" height="9" rx="1.85" transform="rotate(120 12 12)" />
+                    <rect x="10.15" y="2.9" width="3.7" height="9" rx="1.85" transform="rotate(180 12 12)" />
+                    <rect x="10.15" y="2.9" width="3.7" height="9" rx="1.85" transform="rotate(240 12 12)" />
+                    <rect x="10.15" y="2.9" width="3.7" height="9" rx="1.85" transform="rotate(300 12 12)" />
+                    <circle cx="12" cy="12" r="2.2" />
+                </g>
+            </svg>
+        );
+    }
+
+    const icon = getVendorIconData(vendor);
+    if (!icon) return null;
+
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d={icon.path} fill={color} />
         </svg>
     );
 }

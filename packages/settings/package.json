@@ -18,9 +18,19 @@
       "default": "./dist/shared.js"
     }
   },
+  "typesVersions": {
+    "*": {
+      "shared": [
+        "dist/shared.d.ts"
+      ]
+    }
+  },
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@any-code/provider": "workspace:*"
+  },
   "scripts": {
     "build": "tsup"
   },

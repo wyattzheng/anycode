@@ -73,6 +73,7 @@ function resolveBinaryPath(): string {
 const CLIENT_ID =
   "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
 const CLIENT_SECRET = "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"
+const DEFAULT_CLOUD_CODE_ENDPOINT = "https://daily-cloudcode-pa.googleapis.com"
 
 const ANYCODE_DIR = join(homedir(), ".anycode")
 const TOKEN_CACHE_PATH = join(ANYCODE_DIR, "oauth_token.json")
@@ -772,7 +773,7 @@ export class AntigravityAgent implements IChatAgent {
           "--csrf_token", this.lsCsrf,
           "--https_server_port", "0",
           "--workspace_id", "anycode-agent",
-          "--cloud_code_endpoint", "https://daily-cloudcode-pa.googleapis.com",
+          "--cloud_code_endpoint", this.config.baseUrl || DEFAULT_CLOUD_CODE_ENDPOINT,
           "--app_data_dir", "antigravity",
           "--extension_server_port", String(extPort),
           "--extension_server_csrf_token", this.extCsrf,

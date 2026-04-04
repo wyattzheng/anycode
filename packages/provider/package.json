@@ -10,6 +10,12 @@
             "import": "./dist/index.js",
             "require": "./dist/index.js",
             "default": "./dist/index.js"
+        },
+        "./vendor-metadata": {
+            "types": "./dist/vendor-metadata.d.ts",
+            "import": "./dist/vendor-metadata.js",
+            "require": "./dist/vendor-metadata.js",
+            "default": "./dist/vendor-metadata.js"
         }
     },
     "files": ["dist"],

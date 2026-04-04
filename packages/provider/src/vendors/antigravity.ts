@@ -1,3 +1,4 @@
+import { antigravityVendorMetadata } from "./metadata"
 import type { VendorProvider } from "./types"
 
 const ANTIGRAVITY_OAUTH_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
@@ -5,6 +6,7 @@ const ANTIGRAVITY_OAUTH_CLIENT_SECRET = "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"
 const ANTIGRAVITY_OAUTH_SCOPES = "openid email profile https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/experimentsandconfigs"
 
 export const antigravityVendor: VendorProvider = {
+  ...antigravityVendorMetadata,
   id: "antigravity",
   oauth: {
     start({ redirectUri, state }) {

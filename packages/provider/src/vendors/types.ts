@@ -98,6 +98,9 @@ export interface VendorOAuth {
 
 export interface VendorProvider {
   id: string
+  getDefaultModel?: () => string | undefined
+  getDefaultBaseUrl?: () => string | undefined
+  getBrandVendor?: () => string | undefined
   npms?: string[]
   bundled?: Partial<Record<string, ProviderSDKFactory>>
   sdkKeys?: Partial<Record<string, string>>
@@ -112,6 +115,9 @@ export interface VendorProvider {
 
 export interface VendorProviderAccessor {
   all(): VendorProvider[]
+  getDefaultModel(): string | undefined
+  getDefaultBaseUrl(): string | undefined
+  getBrandVendor(): string | undefined
   getBundledProvider(): ProviderSDKFactory | undefined
   getCustomLoaders(): Record<string, (context: ProviderContext, provider: ProviderInfoLike) => Promise<ProviderLoaderResult>>
   getOAuth(): VendorOAuth | undefined

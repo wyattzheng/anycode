@@ -122,6 +122,9 @@ importers:
       shiki:
         specifier: ^4.0.2
         version: 4.0.2
+      simple-icons:
+        specifier: ^16.14.0
+        version: 16.14.0
     devDependencies:
       '@any-code/settings':
         specifier: workspace:*
@@ -322,6 +325,10 @@ importers:
         version: 5.8.2
 
   packages/settings:
+    dependencies:
+      '@any-code/provider':
+        specifier: workspace:*
+        version: link:../provider
     devDependencies:
       '@types/node':
         specifier: ^25.5.0
@@ -2178,6 +2185,10 @@ packages:
   signal-exit@4.1.0:
     resolution: {integrity: sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==}
     engines: {node: '>=14'}
+
+  simple-icons@16.14.0:
+    resolution: {integrity: sha512-2Nvs3jJpCfMWQerD4zdv91g/MpnWn81a7uhyAC0reuhrjmS2MtSmwIKwewOJR6Xe97ZmfltDntCDqKJIBawQOw==}
+    engines: {node: '>=0.12.18'}
 
   sisteransi@1.0.5:
     resolution: {integrity: sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==}
@@ -4211,6 +4222,8 @@ snapshots:
   signal-exit@3.0.7: {}
 
   signal-exit@4.1.0: {}
+
+  simple-icons@16.14.0: {}
 
   sisteransi@1.0.5: {}
 

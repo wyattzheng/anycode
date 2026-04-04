@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getForcedProviderForAgent, getProviderOptionsForAgent, normalizeProviderForAgent } from "@any-code/settings/shared";
-import { GearIcon, CloseIcon } from "./Icons";
+import {
+    createUniqueAccountName,
+    getDefaultBaseUrlForProvider,
+    getDefaultModelForProvider,
+    getDuplicateAccountName,
+    getForcedProviderForAgent,
+    getProviderBrandVendor,
+    getProviderOptionsForAgent,
+    normalizeProviderForAgent,
+} from "@any-code/settings/shared";
+import { GearIcon, CloseIcon, ChevronIcon, PlusIcon, VendorIcon, hasVendorIcon } from "./Icons";
 import { getApiBase, getServerUrl, setServerUrl } from "../server-url";
 import "./WindowSwitcher.css";
 
@@ -62,17 +71,18 @@ function windowLabel(w: WindowInfo): string {
     return w.isDefault ? "默认" : "新窗口";
 }
 
-function createAccount(): AccountInfo {
+function createAccount(existingAccounts: AccountInfo[]): AccountInfo {
+    const provider = normalizeProviderForAgent("anycode", undefined);
     return {
         id: typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
             ? crypto.randomUUID()
             : `account-${Date.now()}`,
-        name: "新账号",
+        name: createUniqueAccountName("新账号", existingAccounts),
         AGENT: "anycode",
-        PROVIDER: normalizeProviderForAgent("anycode", undefined),
-        MODEL: "claude-sonnet-4-20250514",
+        PROVIDER: provider,
+        MODEL: getDefaultModelForProvider(provider),
         API_KEY: "",
-        BASE_URL: "",
+        BASE_URL: getDefaultBaseUrlForProvider(provider),
     };
 }
 
@@ -95,6 +105,19 @@ function getProviderOAuthConfig(provider: string) {
     return null;
 }
 
+const PROVIDER_LABELS: Record<string, string> = {
+    anthropic: "Anthropic",
+    openai: "OpenAI",
+    google: "Google",
+    litellm: "LiteLLM",
+    antigravity: "Antigravity",
+};
+
+function getProviderLabel(provider: string) {
+    const key = provider.trim().toLowerCase();
+    return PROVIDER_LABELS[key] ?? (provider.trim() || "未命名厂商");
+}
+
 async function readResponseJson<T>(res: Response): Promise<T & ApiResponseBody> {
     const text = await res.text();
     if (!text.trim()) {
@@ -115,6 +138,7 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
     const [accounts, setAccounts] = useState<AccountInfo[]>([]);
     const [currentAccountId, setCurrentAccountId] = useState<string | null>(null);
     const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+    const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
@@ -124,7 +148,6 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
     const oauthPollStartedAtRef = useRef(0);
     const accountsRef = useRef<AccountInfo[]>([]);
     const currentAccountIdRef = useRef<string | null>(null);
-
     const selectedAccount = useMemo(
         () => accounts.find((account) => account.id === selectedAccountId) ?? null,
         [accounts, selectedAccountId],
@@ -151,6 +174,12 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
     useEffect(() => {
         currentAccountIdRef.current = currentAccountId;
     }, [currentAccountId]);
+
+    useEffect(() => {
+        if (editingAccountId && !accounts.some((account) => account.id === editingAccountId)) {
+            setEditingAccountId(null);
+        }
+    }, [accounts, editingAccountId]);
 
     const clearOAuthPolling = useCallback(() => {
         if (oauthPollTimerRef.current != null) {
@@ -206,11 +235,16 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
         setSaving(true);
         setError("");
         try {
+            const sanitizedAccounts = sanitizeAccounts(nextAccounts);
+            const duplicateAccountName = getDuplicateAccountName(sanitizedAccounts);
+            if (duplicateAccountName) {
+                throw new Error(`Account name "${duplicateAccountName}" already exists`);
+            }
             const res = await fetch(`${getApiBase()}/api/settings`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    accounts: sanitizeAccounts(nextAccounts),
+                    accounts: sanitizedAccounts,
                     currentAccountId: nextCurrentAccountId,
                     applyCurrentAccount: options?.applyCurrentAccount === true,
                 }),
@@ -258,47 +292,60 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
 
     const handleSelectedAgentChange = (nextAgent: string) => {
         if (!selectedAccount) return;
+        const nextProvider = normalizeProviderForAgent(nextAgent, selectedAccount.PROVIDER);
         updateSelectedAccount({
             AGENT: nextAgent,
-            PROVIDER: normalizeProviderForAgent(nextAgent, selectedAccount.PROVIDER),
+            PROVIDER: nextProvider,
+            MODEL: getDefaultModelForProvider(nextProvider),
+            BASE_URL: getDefaultBaseUrlForProvider(nextProvider),
         });
     };
 
     const handleAddAccount = async () => {
-        const account = createAccount();
+        const account = createAccount(accounts);
         const nextAccounts = [...accounts, account];
         const nextCurrentAccountId = currentAccountId;
         setAccounts(nextAccounts);
         setSelectedAccountId(account.id);
+        setEditingAccountId(account.id);
         const ok = await persistSettings(nextAccounts, nextCurrentAccountId, { nextSelectedAccountId: account.id });
         if (!ok) setDirty(true);
     };
 
-    const handleDeleteAccount = async () => {
-        if (!selectedAccountId) return;
-        const remaining = accounts.filter((account) => account.id !== selectedAccountId);
-        const deletingCurrent = currentAccountId === selectedAccountId;
+    const startEditingAccount = useCallback((accountId: string) => {
+        setSelectedAccountId(accountId);
+        setEditingAccountId(accountId);
+    }, []);
+
+    const handleDeleteAccount = useCallback(async (accountId: string = selectedAccountId || "") => {
+        if (!accountId) return;
+        const remaining = accounts.filter((account) => account.id !== accountId);
+        const deletingCurrent = currentAccountId === accountId;
         const nextCurrentAccountId = deletingCurrent ? null : currentAccountId;
-        const nextSelectedAccountId = remaining[0]?.id ?? null;
+        const nextSelectedAccountId = selectedAccountId === accountId
+            ? (remaining[0]?.id ?? null)
+            : (selectedAccountId ?? remaining[0]?.id ?? null);
         setAccounts(remaining);
         setCurrentAccountId(nextCurrentAccountId);
         setSelectedAccountId(nextSelectedAccountId);
+        if (editingAccountId === accountId) {
+            setEditingAccountId(null);
+        }
         const ok = await persistSettings(remaining, nextCurrentAccountId, {
             applyCurrentAccount: deletingCurrent,
             nextSelectedAccountId,
         });
         if (!ok) setDirty(true);
-    };
+    }, [accounts, currentAccountId, editingAccountId, persistSettings, selectedAccountId]);
 
-    const handleActivateSelectedAccount = async () => {
-        if (!selectedAccount) return;
-        const ok = await persistSettings(accounts, selectedAccount.id, {
+    const handleActivateAccount = async (accountId: string, closeOnMobile = true) => {
+        const ok = await persistSettings(accounts, accountId, {
             applyCurrentAccount: true,
-            nextSelectedAccountId: selectedAccount.id,
-            closeOnMobile: true,
+            nextSelectedAccountId: accountId,
+            closeOnMobile,
         });
         if (ok) {
-            setCurrentAccountId(selectedAccount.id);
+            setCurrentAccountId(accountId);
         }
     };
 
@@ -450,147 +497,209 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                     </div>
 
                     <div className="settings-section">
-                        <div className="settings-section-head settings-section-head-sticky">
-                            <span className="settings-section-title">账号</span>
-                            <div className="settings-actions">
-                                <button className="settings-btn" onClick={handleAddAccount}>新增账号</button>
-                                <button
-                                    className="settings-btn settings-btn-dim"
-                                    onClick={handleDeleteAccount}
-                                    disabled={!selectedAccount}
-                                >
-                                    删除账号
+                        {editingAccountId && selectedAccount ? (
+                            <div className="settings-section-head settings-section-head-sticky settings-section-head-editing">
+                                <button className="settings-back-btn" onClick={() => setEditingAccountId(null)}>
+                                    <ChevronIcon size={10} />
+                                    <span>返回</span>
                                 </button>
+                                <div className="settings-editing-title">
+                                    <span className="settings-section-title">编辑账号</span>
+                                    <span className="settings-field-hint">{selectedAccount.name || "未命名账号"}</span>
+                                </div>
                             </div>
-                            <div className="settings-current-account">
-                                <span className="settings-current-account-label">当前账号</span>
-                                <span className="settings-current-account-value">{currentAccount?.name || "未启用"}</span>
+                        ) : (
+                            <div className="settings-section-head settings-section-head-sticky">
+                                <span className="settings-section-title">账号</span>
+                                <div className="settings-current-note">
+                                    <span className="settings-current-note-label">当前</span>
+                                    <span className="settings-current-note-value">{currentAccount?.name || "未启用"}</span>
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         {loading ? (
                             <div className="settings-placeholder">读取账号配置中…</div>
-                        ) : (
-                            <div className="settings-accounts-layout">
-                                <div className="settings-account-list">
-                                    {accounts.map((account) => (
-                                        <button
-                                            key={account.id}
-                                            className={`settings-account-item ${account.id === selectedAccountId ? "active" : ""} ${account.id === currentAccountId ? "current" : ""}`}
-                                            onClick={() => setSelectedAccountId(account.id)}
+                        ) : editingAccountId && selectedAccount ? (
+                            <div className="settings-account-editor">
+                                <div className="settings-grid">
+                                    <div className="settings-row">
+                                        <label className="settings-label">账号名称</label>
+                                        <input
+                                            className="settings-input"
+                                            value={selectedAccount.name}
+                                            onChange={(e) => updateSelectedAccount({ name: e.target.value })}
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <div className="settings-row">
+                                        <label className="settings-label">AGENT</label>
+                                        <select
+                                            className="settings-input"
+                                            value={selectedAccount.AGENT}
+                                            onChange={(e) => handleSelectedAgentChange(e.target.value)}
                                         >
-                                            <span className="settings-account-name">{account.name || "未命名账号"}</span>
-                                            <span className="settings-account-meta">{account.AGENT} / {account.PROVIDER} / {account.MODEL}</span>
-                                            {account.id === currentAccountId && <span className="settings-account-badge">当前</span>}
-                                        </button>
-                                    ))}
+                                            <option value="anycode">anycode</option>
+                                            <option value="claudecode">claudecode</option>
+                                            <option value="codex">codex</option>
+                                            <option value="antigravity">antigravity</option>
+                                        </select>
+                                    </div>
+                                    <div className="settings-row">
+                                        <label className="settings-label">PROVIDER</label>
+                                        <select
+                                            className="settings-input"
+                                            value={selectedAccount.PROVIDER}
+                                            onChange={(e) => {
+                                                const nextProvider = e.target.value;
+                                                updateSelectedAccount({
+                                                    PROVIDER: nextProvider,
+                                                    MODEL: getDefaultModelForProvider(nextProvider),
+                                                    BASE_URL: getDefaultBaseUrlForProvider(nextProvider),
+                                                });
+                                            }}
+                                            disabled={Boolean(selectedAccountForcedProvider)}
+                                        >
+                                            {selectedAccountProviderOptions.map((provider) => (
+                                                <option key={provider} value={provider}>{provider}</option>
+                                            ))}
+                                        </select>
+                                        {selectedAccountForcedProvider && (
+                                            <span className="settings-field-hint">
+                                                {selectedAccount.AGENT} 固定使用 {selectedAccountForcedProvider}。
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="settings-row">
+                                        <label className="settings-label">MODEL</label>
+                                        <input
+                                            className="settings-input"
+                                            value={selectedAccount.MODEL}
+                                            onChange={(e) => updateSelectedAccount({ MODEL: e.target.value })}
+                                            placeholder="claude-opus-4-6 / gpt-5.4 / gemini-3.1-pro"
+                                        />
+                                    </div>
+                                    <div className="settings-row">
+                                        <label className="settings-label">BASE_URL</label>
+                                        <input
+                                            className="settings-input"
+                                            type="url"
+                                            value={selectedAccount.BASE_URL || ""}
+                                            onChange={(e) => updateSelectedAccount({ BASE_URL: e.target.value })}
+                                            placeholder="https://api.example.com/v1"
+                                        />
+                                    </div>
                                 </div>
 
-                                <div className="settings-account-editor">
-                                    {selectedAccount ? (
-                                        <>
-                                            <div className="settings-grid">
-                                                <div className="settings-row">
-                                                    <label className="settings-label">账号名称</label>
-                                                    <input
-                                                        className="settings-input"
-                                                        value={selectedAccount.name}
-                                                        onChange={(e) => updateSelectedAccount({ name: e.target.value })}
-                                                    />
-                                                </div>
-                                                <div className="settings-row">
-                                                    <label className="settings-label">AGENT</label>
-                                                    <select
-                                                        className="settings-input"
-                                                        value={selectedAccount.AGENT}
-                                                        onChange={(e) => handleSelectedAgentChange(e.target.value)}
-                                                    >
-                                                        <option value="anycode">anycode</option>
-                                                        <option value="claudecode">claudecode</option>
-                                                        <option value="codex">codex</option>
-                                                        <option value="antigravity">antigravity</option>
-                                                    </select>
-                                                </div>
-                                                <div className="settings-row">
-                                                    <label className="settings-label">PROVIDER</label>
-                                                    <select
-                                                        className="settings-input"
-                                                        value={selectedAccount.PROVIDER}
-                                                        onChange={(e) => updateSelectedAccount({ PROVIDER: e.target.value })}
-                                                        disabled={Boolean(selectedAccountForcedProvider)}
-                                                    >
-                                                        {selectedAccountProviderOptions.map((provider) => (
-                                                            <option key={provider} value={provider}>{provider}</option>
-                                                        ))}
-                                                    </select>
-                                                    {selectedAccountForcedProvider && (
-                                                        <span className="settings-field-hint">
-                                                            {selectedAccount.AGENT} 固定使用 {selectedAccountForcedProvider}。
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="settings-row">
-                                                    <label className="settings-label">MODEL</label>
-                                                    <input
-                                                        className="settings-input"
-                                                        value={selectedAccount.MODEL}
-                                                        onChange={(e) => updateSelectedAccount({ MODEL: e.target.value })}
-                                                        placeholder="claude-sonnet-4-20250514 / gpt-4.1"
-                                                    />
-                                                </div>
-                                                <div className="settings-row">
-                                                    <label className="settings-label">BASE_URL</label>
-                                                    <input
-                                                        className="settings-input"
-                                                        type="url"
-                                                        value={selectedAccount.BASE_URL || ""}
-                                                        onChange={(e) => updateSelectedAccount({ BASE_URL: e.target.value })}
-                                                        placeholder="https://api.example.com/v1"
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            <div className="settings-row">
-                                                <label className="settings-label">API_KEY</label>
-                                                <input
-                                                    className="settings-input"
-                                                    type="password"
-                                                    value={selectedAccount.API_KEY}
-                                                    onChange={(e) => updateSelectedAccount({ API_KEY: e.target.value })}
-                                                    placeholder="输入 API Key"
-                                                />
-                                                {selectedAccountOAuth && (
-                                                    <div className="settings-oauth-row">
-                                                        <button
-                                                            className="settings-btn settings-btn-primary"
-                                                            onClick={() => { void handleAgentOAuthLogin(); }}
-                                                            disabled={saving || oauthPendingAccountId === selectedAccount.id}
-                                                        >
-                                                            {oauthPendingAccountId === selectedAccount.id
-                                                                ? selectedAccountOAuth.pendingLabel
-                                                                : (selectedAccount.API_KEY ? selectedAccountOAuth.buttonLabelFilled : selectedAccountOAuth.buttonLabel)}
-                                                        </button>
-                                                        <span className="settings-oauth-hint">{selectedAccountOAuth.helperText}</span>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            <div className="settings-value-row">
-                                                <button
-                                                    className="settings-btn settings-btn-primary"
-                                                    onClick={handleActivateSelectedAccount}
-                                                    disabled={saving}
-                                                >
-                                                    {saving
-                                                        ? "切换中…"
-                                                        : (selectedAccount.id === currentAccountId ? "应用当前账号" : "设为当前账号")}
-                                                </button>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <div className="settings-placeholder">请选择一个账号</div>
+                                <div className="settings-row">
+                                    <label className="settings-label">API_KEY</label>
+                                    <input
+                                        className="settings-input"
+                                        type="password"
+                                        value={selectedAccount.API_KEY}
+                                        onChange={(e) => updateSelectedAccount({ API_KEY: e.target.value })}
+                                        placeholder="输入 API Key"
+                                    />
+                                    {selectedAccountOAuth && (
+                                        <div className="settings-oauth-row">
+                                            <button
+                                                className="settings-btn settings-btn-primary"
+                                                onClick={() => { void handleAgentOAuthLogin(); }}
+                                                disabled={saving || oauthPendingAccountId === selectedAccount.id}
+                                            >
+                                                {oauthPendingAccountId === selectedAccount.id
+                                                    ? selectedAccountOAuth.pendingLabel
+                                                    : (selectedAccount.API_KEY ? selectedAccountOAuth.buttonLabelFilled : selectedAccountOAuth.buttonLabel)}
+                                            </button>
+                                            <span className="settings-oauth-hint">{selectedAccountOAuth.helperText}</span>
+                                        </div>
                                     )}
                                 </div>
+                                <div className="settings-editor-actions">
+                                    <button
+                                        className="settings-btn settings-editor-action-btn"
+                                        onClick={() => setEditingAccountId(null)}
+                                    >
+                                        返回列表
+                                    </button>
+                                    <button
+                                        className="settings-btn settings-editor-action-btn"
+                                        onClick={() => { void handleDeleteAccount(selectedAccount.id); }}
+                                        disabled={saving}
+                                    >
+                                        删除账号
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="settings-account-list">
+                                {accounts.length > 0 ? accounts.map((account) => {
+                                    const brandVendor = getProviderBrandVendor(account.PROVIDER);
+                                    return (
+                                        <div
+                                            key={account.id}
+                                            className={`settings-account-item ${account.id === currentAccountId ? "current" : ""}`}
+                                        >
+                                        <button
+                                            className={`settings-btn settings-account-selector ${account.id === currentAccountId ? "checked" : ""}`}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                void handleActivateAccount(account.id);
+                                            }}
+                                            disabled={saving}
+                                            role="checkbox"
+                                            aria-checked={account.id === currentAccountId}
+                                            aria-label={account.id === currentAccountId ? "当前账号" : "设为当前账号"}
+                                        >
+                                            <span className="settings-account-current-box" aria-hidden="true">
+                                                <span className="settings-account-current-fill" />
+                                            </span>
+                                        </button>
+                                        <button
+                                            className="settings-account-summary"
+                                            type="button"
+                                            onClick={() => startEditingAccount(account.id)}
+                                        >
+                                            <div className="settings-account-top-row">
+                                                <div className="settings-account-identity">
+                                                    <span className="settings-account-name">{account.name || "未命名账号"}</span>
+                                                </div>
+                                            </div>
+                                            <div className="settings-account-middle-row">
+                                                <div
+                                                    className="settings-account-model-row"
+                                                    title={`${getProviderLabel(account.PROVIDER)} / ${account.MODEL || "未配置模型"}`}
+                                                >
+                                                    {hasVendorIcon(brandVendor) && (
+                                                        <span className="settings-account-vendor-icon">
+                                                            <VendorIcon vendor={brandVendor} size={12} />
+                                                        </span>
+                                                    )}
+                                                    <span className="settings-account-vendor-name">{getProviderLabel(account.PROVIDER)}</span>
+                                                    <span className="settings-account-divider">/</span>
+                                                    <span className="settings-account-model">{account.MODEL || "未配置模型"}</span>
+                                                </div>
+                                            </div>
+                                            <div className="settings-account-quota-row">
+                                                <div className="settings-account-quota" aria-label="额度占位">
+                                                    <span className="settings-account-quota-bar" aria-hidden="true">
+                                                        <span className="settings-account-quota-fill" />
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </button>
+                                        </div>
+                                    );
+                                }) : (
+                                    <div className="settings-account-empty-row">
+                                        <span className="settings-account-empty-text">还没有账号</span>
+                                        <span className="settings-field-hint">创建一个账号后就可以在这里切换。</span>
+                                    </div>
+                                )}
+                                <button className="settings-account-add-row" onClick={handleAddAccount}>
+                                    <PlusIcon size={12} />
+                                    <span>{accounts.length > 0 ? "新增账号" : "新增第一个账号"}</span>
+                                </button>
                             </div>
                         )}
 

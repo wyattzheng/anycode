@@ -146,6 +146,30 @@ export const VendorRegistry = {
         return vendors
       },
 
+      getDefaultModel() {
+        for (const vendor of vendors) {
+          const model = vendor.getDefaultModel?.()
+          if (model) return model
+        }
+        return undefined
+      },
+
+      getDefaultBaseUrl() {
+        for (const vendor of vendors) {
+          const baseUrl = vendor.getDefaultBaseUrl?.()
+          if (baseUrl) return baseUrl
+        }
+        return undefined
+      },
+
+      getBrandVendor() {
+        for (const vendor of vendors) {
+          const brandVendor = vendor.getBrandVendor?.()
+          if (brandVendor) return brandVendor
+        }
+        return input.id
+      },
+
       getBundledProvider() {
         if (!npm) return undefined
         return vendors.find((vendor) => vendor.bundled?.[npm])?.bundled?.[npm]

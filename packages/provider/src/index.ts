@@ -4,6 +4,7 @@ export { Flag } from "./util/flag"
 export { ModelID, ProviderID } from "./schema"
 export { ProviderError } from "./error"
 export { VendorRegistry } from "./vendors"
+export { getVendorBrandVendor, getVendorDefaultBaseUrl, getVendorDefaultModel, getVendorMetadata } from "./vendors"
 
 // LLM stream adapter
 export { createLLMStream, convertUIToModelMessages, isAPICallError, isLoadAPIKeyError } from "./llm-stream"

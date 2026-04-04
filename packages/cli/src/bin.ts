@@ -7,7 +7,8 @@ import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
 import { AnyCodeServer } from "@any-code/server";
 import {
-    DEFAULT_MODEL,
+    getDefaultBaseUrlForProvider,
+    getDefaultModelForProvider,
     SettingsStore,
     getForcedProviderForAgent,
     getProviderOptionsForAgent,
@@ -137,7 +138,8 @@ async function ensureSettings(): Promise<Settings> {
             name: name || "默认账号",
             AGENT: "anycode",
             PROVIDER: normalizeProviderForAgent("anycode", undefined),
-            MODEL: DEFAULT_MODEL,
+            MODEL: getDefaultModelForProvider(normalizeProviderForAgent("anycode", undefined)),
+            BASE_URL: getDefaultBaseUrlForProvider(normalizeProviderForAgent("anycode", undefined)),
             API_KEY: "",
         };
         settings.accounts = [account];
@@ -199,14 +201,19 @@ async function ensureSettings(): Promise<Settings> {
     }
 
     if (!account.MODEL) {
-        const val = await prompt(`  ${c.cyan}?${c.reset} ${c.bold}Model${c.reset} ${c.gray}(${DEFAULT_MODEL})${c.reset}: `);
-        account.MODEL = val || DEFAULT_MODEL;
+        const defaultModel = getDefaultModelForProvider(account.PROVIDER);
+        const val = await prompt(`  ${c.cyan}?${c.reset} ${c.bold}Model${c.reset} ${c.gray}(${defaultModel})${c.reset}: `);
+        account.MODEL = val || defaultModel;
         changed = true;
     }
 
     if (account.BASE_URL === undefined) {
-        const val = await prompt(`  ${c.cyan}?${c.reset} ${c.bold}Base URL${c.reset} ${c.gray}(optional, Enter to skip)${c.reset}: `);
-        account.BASE_URL = val || undefined;
+        const defaultBaseUrl = getDefaultBaseUrlForProvider(account.PROVIDER);
+        const promptText = defaultBaseUrl
+            ? `  ${c.cyan}?${c.reset} ${c.bold}Base URL${c.reset} ${c.gray}(${defaultBaseUrl})${c.reset}: `
+            : `  ${c.cyan}?${c.reset} ${c.bold}Base URL${c.reset} ${c.gray}(optional, Enter to skip)${c.reset}: `;
+        const val = await prompt(promptText);
+        account.BASE_URL = val || defaultBaseUrl || undefined;
         changed = true;
     }
 

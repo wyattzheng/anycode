@@ -29,7 +29,7 @@ import { TerminalTool } from "./tool-terminal-write"
 import { SetPreviewUrlTool } from "./tool-set-preview-url"
 import { WebSocketServer, WebSocket as WS } from "ws"
 import { SqlJsStorage, NodeFS, NodeSearchProvider } from "@any-code/utils"
-import { SettingsModel, SettingsStore, normalizeString, type UserSettingsFile } from "@any-code/settings"
+import { getDuplicateAccountName, SettingsModel, SettingsStore, normalizeString, type UserSettingsFile } from "@any-code/settings"
 import { VendorRegistry } from "@any-code/provider"
 import { createChatAgent, type IChatAgent } from "./chat-agent"
 import { adminHTML } from "./admin"
@@ -45,6 +45,7 @@ const DEFAULT_ANYCODE_DIR = path.join(os.homedir(), ".anycode")
 const NO_AGENT_TYPE = "noagent"
 const API_ERROR_CODES = {
   SETTINGS_ACCOUNT_INCOMPLETE: "SETTINGS_ACCOUNT_INCOMPLETE",
+  SETTINGS_ACCOUNT_NAME_DUPLICATE: "SETTINGS_ACCOUNT_NAME_DUPLICATE",
   OAUTH_PROVIDER_UNSUPPORTED: "OAUTH_PROVIDER_UNSUPPORTED",
   OAUTH_SESSION_NOT_FOUND: "OAUTH_SESSION_NOT_FOUND",
   OAUTH_SESSION_EXPIRED: "OAUTH_SESSION_EXPIRED",
@@ -1356,6 +1357,15 @@ function createMainServer(server: AnyCodeServer, cfg: ServerConfig): http.Server
         sendJson(res, 400, {
           error: `Account "${invalidName}" is incomplete`,
           code: API_ERROR_CODES.SETTINGS_ACCOUNT_INCOMPLETE,
+        })
+        return
+      }
+
+      const duplicateAccountName = getDuplicateAccountName(rawAccounts as Array<Record<string, unknown>>)
+      if (duplicateAccountName) {
+        sendJson(res, 400, {
+          error: `Account name "${duplicateAccountName}" already exists`,
+          code: API_ERROR_CODES.SETTINGS_ACCOUNT_NAME_DUPLICATE,
         })
         return
       }
