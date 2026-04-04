@@ -241,23 +241,6 @@
     flex-wrap: wrap;
 }
 
-.settings-current-note {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 6px;
-    min-width: 0;
-}
-
-.settings-current-note-label {
-    font-size: 11px;
-    color: var(--color-text-dim);
-}
-
-.settings-current-note-value {
-    font-size: 12px;
-    color: var(--color-text);
-}
-
 .settings-row {
     display: flex;
     flex-direction: column;
@@ -640,17 +623,10 @@
     transform: rotate(180deg);
 }
 
-.settings-editing-title {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-}
-
 .settings-editor-actions {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 8px;
     padding-top: 4px;
 }
@@ -659,6 +635,16 @@
     color: var(--color-text-dim);
     background: rgba(255, 255, 255, 0.05);
     border-color: rgba(255, 255, 255, 0.1);
+}
+
+.settings-editor-action-btn-dirty {
+    color: #dce9ff;
+    background: rgba(72, 128, 255, 0.18);
+    border-color: rgba(96, 148, 255, 0.34);
+}
+
+.settings-editor-action-btn-dirty:active {
+    background: rgba(72, 128, 255, 0.24);
 }
 
 @media (max-width: 720px) {
@@ -714,11 +700,6 @@
         width: 100%;
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .settings-current-note {
-        width: 100%;
-        justify-content: space-between;
     }
 
     .settings-account-list {

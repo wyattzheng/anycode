@@ -163,6 +163,11 @@ interface OAuthSessionRecord {
   error?: string
 }
 
+interface RuntimeConfigResolution {
+  config: ServerConfig
+  persistedApiKey?: string
+}
+
 function createAgentConfig(server: AnyCodeServer, cfg: ServerConfig, directory: string, resumeToken?: string, terminal?: TerminalProvider, preview?: PreviewProvider) {
   return {
     directory: directory,
@@ -306,7 +311,11 @@ async function createSessionAgentBinding(
     }
   }
 
-  const runtimeCfg = await resolveRuntimeConfig(cfg)
+  const runtimeResolution = await resolveRuntimeConfig(cfg)
+  if (runtimeResolution.persistedApiKey && runtimeResolution.persistedApiKey !== cfg.apiKey) {
+    server.persistCurrentAccountApiKey(runtimeResolution.persistedApiKey)
+  }
+  const runtimeCfg = runtimeResolution.config
   const chatAgent = await createChatAgent(runtimeCfg.agent, createChatAgentConfig(server, runtimeCfg, directory, terminal, preview, resumeToken))
   await chatAgent.init()
   return {
@@ -388,12 +397,18 @@ function getForwardedBaseUrl(req: http.IncomingMessage, cfg: ServerConfig) {
   return `${protocol}://${host}`
 }
 
-async function resolveRuntimeConfig(cfg: ServerConfig): Promise<ServerConfig> {
-  const apiKey = await VendorRegistry.getVendorProvider({ id: cfg.provider }).resolveApiKey({
+async function resolveRuntimeConfig(cfg: ServerConfig): Promise<RuntimeConfigResolution> {
+  const resolved = await VendorRegistry.getVendorProvider({ id: cfg.provider }).resolveApiKey({
     apiKey: cfg.apiKey,
     agent: cfg.agent,
-  }).catch(() => cfg.apiKey)
-  return apiKey === cfg.apiKey ? cfg : { ...cfg, apiKey }
+  }).catch((): { apiKey: string, persistedApiKey?: string } => ({ apiKey: cfg.apiKey }))
+  const runtimeCfg = resolved.apiKey === cfg.apiKey ? cfg : { ...cfg, apiKey: resolved.apiKey }
+  return {
+    config: runtimeCfg,
+    ...(resolved.persistedApiKey && resolved.persistedApiKey !== cfg.apiKey
+      ? { persistedApiKey: resolved.persistedApiKey }
+      : {}),
+  }
 }
 
 function normalizePublicBaseUrl(value: unknown) {
@@ -402,6 +417,9 @@ function normalizePublicBaseUrl(value: unknown) {
   try {
     const url = new URL(normalized)
     if (url.protocol !== "http:" && url.protocol !== "https:") return undefined
+    if (url.hostname === "127.0.0.1" || url.hostname === "::1" || url.hostname === "[::1]" || url.hostname === "0.0.0.0") {
+      url.hostname = "localhost"
+    }
     return url.origin + url.pathname.replace(/\/+$/, "")
   } catch {
     return undefined
@@ -424,7 +442,7 @@ function getRequestBaseUrl(req: http.IncomingMessage, cfg: ServerConfig) {
     }
   }
 
-  const host = normalizeString(req.headers.host) ?? `127.0.0.1:${cfg.port}`
+  const host = normalizeString(req.headers.host) ?? `localhost:${cfg.port}`
   return `${cfg.tlsCert ? "https" : "http"}://${host}`
 }
 
@@ -736,6 +754,23 @@ export class AnyCodeServer {
     this.cfg.model = runtime.model
   }
 
+  persistCurrentAccountApiKey(apiKey: string) {
+    const normalizedApiKey = normalizeString(apiKey)
+    if (!normalizedApiKey) return
+
+    const settings = new SettingsModel(this.readUserSettingsFile())
+    const currentAccount = settings.getCurrentAccount()
+    if (!currentAccount || normalizeString(currentAccount.API_KEY) === normalizedApiKey) return
+
+    const accounts = settings.accounts.map((account) => (
+      account.id === currentAccount.id
+        ? { ...account, API_KEY: normalizedApiKey }
+        : account
+    ))
+    const saved = this.writeUserSettingsFile(settings.replaceAccounts(accounts, settings.currentAccountId).toJSON())
+    this.applySettingsToConfig(saved)
+  }
+
   private cleanupOAuthSessions() {
     const now = Date.now()
     for (const [sessionId, session] of this.oauthSessions.entries()) {
@@ -750,25 +785,33 @@ export class AnyCodeServer {
     const oauth = getProviderOAuth(provider)
 
     const id = crypto.randomUUID()
-    const state = crypto.randomUUID()
-    const redirectUri = `${publicBaseUrl.replace(/\/+$/, "")}/api/oauth/${provider}/callback`
-    const { authUrl, exchangeData } = oauth.start({ redirectUri, state })
+    const requestedState = crypto.randomUUID()
+    const defaultRedirectUri = `${publicBaseUrl.replace(/\/+$/, "")}/auth/callback`
+    const { authUrl, exchangeData, state, redirectUri, captureMode } = oauth.start({
+      redirectUri: defaultRedirectUri,
+      state: requestedState,
+    })
+    const effectiveState = state ?? requestedState
+    const effectiveRedirectUri = redirectUri ?? defaultRedirectUri
+    console.info("[AnyCode][OAuth]", JSON.stringify({ provider, redirectUri: effectiveRedirectUri, authUrl, captureMode: captureMode ?? "callback" }))
 
     const session: OAuthSessionRecord = {
       id,
       provider,
-      state,
-      redirectUri,
+      state: effectiveState,
+      redirectUri: effectiveRedirectUri,
       createdAt: Date.now(),
       status: "pending",
       exchangeData,
     }
     this.oauthSessions.set(id, session)
-    this.oauthStateIndex.set(state, id)
+    this.oauthStateIndex.set(effectiveState, id)
 
     return {
       sessionId: id,
       authUrl,
+      redirectUri: effectiveRedirectUri,
+      captureMode: captureMode ?? "callback",
     }
   }
 
@@ -784,6 +827,17 @@ export class AnyCodeServer {
       apiKey: session.apiKey,
       error: session.error,
     }
+  }
+
+  cancelProviderOAuthSession(provider: string, sessionId: string) {
+    this.cleanupOAuthSessions()
+    const session = this.oauthSessions.get(sessionId)
+    if (!session || session.provider !== provider) {
+      throw createApiError("OAuth session not found", API_ERROR_CODES.OAUTH_SESSION_NOT_FOUND)
+    }
+    this.oauthSessions.delete(sessionId)
+    this.oauthStateIndex.delete(session.state)
+    return { ok: true }
   }
 
   async completeProviderOAuth(provider: string, params: URLSearchParams) {
@@ -823,6 +877,7 @@ export class AnyCodeServer {
       const oauth = getProviderOAuth(provider)
       const tokens = await oauth.exchangeCode({
         code,
+        state,
         redirectUri: session.redirectUri,
         exchangeData: session.exchangeData,
       })
@@ -835,6 +890,23 @@ export class AnyCodeServer {
       session.error = error instanceof Error ? error.message : "OAuth exchange failed."
       return oauthCallbackHtml("登录失败", session.error, true)
     }
+  }
+
+  async completeProviderOAuthFromState(params: URLSearchParams) {
+    this.cleanupOAuthSessions()
+
+    const state = normalizeString(params.get("state"))
+    if (!state) {
+      return oauthCallbackHtml("登录失败", "OAuth state is missing.", true)
+    }
+
+    const sessionId = this.oauthStateIndex.get(state)
+    const session = sessionId ? this.oauthSessions.get(sessionId) : undefined
+    if (!session) {
+      return oauthCallbackHtml("登录已失效", "This OAuth session was not found or has expired.", true)
+    }
+
+    return this.completeProviderOAuth(session.provider, params)
   }
 
   private bindSessionAgentEvents(entry: SessionEntry, chatAgent: IChatAgent) {
@@ -1344,7 +1416,7 @@ function createMainServer(server: AnyCodeServer, cfg: ServerConfig): http.Server
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return }
 
     // ── Static files first — never blocked by async API operations ──
-    if (req.method === "GET" && !req.url?.startsWith("/api/") && !req.url?.startsWith("/admin")) {
+    if (req.method === "GET" && !req.url?.startsWith("/api/") && !req.url?.startsWith("/admin") && !req.url?.startsWith("/auth/")) {
       if (serveStatic(cfg, req, res)) return
       if (serveAppIndex(cfg, res)) return
     }
@@ -1382,10 +1454,27 @@ function createMainServer(server: AnyCodeServer, cfg: ServerConfig): http.Server
       return
     }
 
+    if (req.method === "DELETE" && oauthSessionMatch) {
+      try {
+        sendJson(res, 200, server.cancelProviderOAuthSession(oauthSessionMatch[1], oauthSessionMatch[2]))
+      } catch (error) {
+        sendErrorJson(res, 404, error, "OAuth session not found")
+      }
+      return
+    }
+
     const oauthCallbackMatch = req.url?.match(/^\/api\/oauth\/([^/?]+)\/callback(?:\?|$)/)
     if (req.method === "GET" && oauthCallbackMatch) {
       const url = new URL(req.url!, `${cfg.tlsCert ? "https" : "http"}://localhost:${cfg.port}`)
       const html = await server.completeProviderOAuth(oauthCallbackMatch[1], url.searchParams)
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
+      res.end(html)
+      return
+    }
+
+    if (req.method === "GET" && req.url?.match(/^\/auth\/callback(?:\?|$)/)) {
+      const url = new URL(req.url!, `${cfg.tlsCert ? "https" : "http"}://localhost:${cfg.port}`)
+      const html = await server.completeProviderOAuthFromState(url.searchParams)
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
       res.end(html)
       return
@@ -1442,10 +1531,11 @@ function createMainServer(server: AnyCodeServer, cfg: ServerConfig): http.Server
       }
 
       try {
-        server.applySettingsToConfig(next)
+        const saved = server.writeUserSettingsFile(next)
+        server.applySettingsToConfig(saved)
         await server.applyAgentSwitchToSessions()
-        server.writeUserSettingsFile(next)
       } catch (err: any) {
+        server.writeUserSettingsFile(previous)
         server.applySettingsToConfig(previous)
         try {
           await server.applyAgentSwitchToSessions()
@@ -1456,10 +1546,11 @@ function createMainServer(server: AnyCodeServer, cfg: ServerConfig): http.Server
         return
       }
 
+      const saved = server.readUserSettingsFile()
       sendJson(res, 200, {
         ok: true,
-        accounts: next.accounts ?? [],
-        currentAccountId: next.currentAccountId ?? null,
+        accounts: saved.accounts ?? [],
+        currentAccountId: saved.currentAccountId ?? null,
       })
       return
     }

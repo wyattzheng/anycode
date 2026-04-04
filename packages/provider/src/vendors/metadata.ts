@@ -22,7 +22,7 @@ export const openAIVendorOAuthUi = {
   buttonLabel: "ChatGPT OAuth 登录",
   buttonLabelFilled: "重新 ChatGPT OAuth 登录",
   pendingLabel: "等待 ChatGPT 授权…",
-  helperText: "登录成功后会自动把 OAuth 凭证填入 API_KEY。",
+  helperText: "授权完成后，把回调地址粘贴到 API_KEY。",
 } satisfies VendorOAuthUiConfig
 
 export const anthropicVendorMetadata = {

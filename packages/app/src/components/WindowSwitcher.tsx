@@ -40,6 +40,8 @@ interface SettingsResponse {
 interface OAuthStartResponse {
     sessionId: string;
     authUrl: string;
+    redirectUri?: string;
+    captureMode?: "callback" | "manual";
 }
 
 interface OAuthSessionResponse {
@@ -63,6 +65,8 @@ interface WindowSwitcherProps {
     creating?: boolean;
 }
 
+const DRAFT_ACCOUNT_ID = "__draft-account__";
+
 function windowLabel(w: WindowInfo): string {
     if (w.directory) {
         const parts = w.directory.split("/");
@@ -85,6 +89,22 @@ function createAccount(existingAccounts: AccountInfo[]): AccountInfo {
         API_KEY: "",
         BASE_URL: getDefaultBaseUrlForProvider(provider),
     };
+}
+
+function normalizeValue(value: string | undefined) {
+    return value?.trim() || "";
+}
+
+function getAccountValidationError(account: AccountInfo | null | undefined, existingAccounts: AccountInfo[]) {
+    if (!account) return "账号信息不存在";
+    if (!normalizeValue(account.name)) return "请填写账号名称";
+    if (!normalizeValue(account.AGENT)) return "请填写 AGENT";
+    if (!normalizeValue(account.PROVIDER)) return "请填写 PROVIDER";
+    if (!normalizeValue(account.MODEL)) return "请填写 MODEL";
+    if (!normalizeValue(account.API_KEY)) return "请填写 API_KEY";
+    const duplicateAccountName = getDuplicateAccountName([...existingAccounts, account]);
+    if (duplicateAccountName) return `账号名称 "${duplicateAccountName}" 已存在`;
+    return null;
 }
 
 function createApiError(res: Response, body: ApiResponseBody, fallbackMessage: string) {
@@ -137,22 +157,30 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
     const [currentAccountId, setCurrentAccountId] = useState<string | null>(null);
     const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
     const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+    const [draftAccount, setDraftAccount] = useState<AccountInfo | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
+    const [oauthNotice, setOauthNotice] = useState("");
     const [dirty, setDirty] = useState(false);
     const [oauthPendingAccountId, setOauthPendingAccountId] = useState<string | null>(null);
     const oauthPollTimerRef = useRef<number | null>(null);
     const oauthPollStartedAtRef = useRef(0);
+    const oauthPopupRef = useRef<Window | null>(null);
+    const oauthPendingSessionRef = useRef<{ provider: string; sessionId: string; accountId: string } | null>(null);
     const accountsRef = useRef<AccountInfo[]>([]);
     const currentAccountIdRef = useRef<string | null>(null);
+    const draftAccountRef = useRef<AccountInfo | null>(null);
+    const isEditingDraft = editingAccountId === DRAFT_ACCOUNT_ID;
     const selectedAccount = useMemo(
-        () => accounts.find((account) => account.id === selectedAccountId) ?? null,
-        [accounts, selectedAccountId],
+        () => isEditingDraft
+            ? draftAccount
+            : (accounts.find((account) => account.id === selectedAccountId) ?? null),
+        [accounts, draftAccount, isEditingDraft, selectedAccountId],
     );
-    const currentAccount = useMemo(
-        () => accounts.find((account) => account.id === currentAccountId) ?? null,
-        [accounts, currentAccountId],
+    const draftAccountValidationError = useMemo(
+        () => isEditingDraft ? getAccountValidationError(selectedAccount, accounts) : null,
+        [accounts, isEditingDraft, selectedAccount],
     );
     const selectedAccountForcedProvider = selectedAccount ? getForcedProviderForAgent(selectedAccount.AGENT) : null;
     const selectedAccountProviderOptions = useMemo(() => {
@@ -170,14 +198,22 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
     }, [accounts]);
 
     useEffect(() => {
+        draftAccountRef.current = draftAccount;
+    }, [draftAccount]);
+
+    useEffect(() => {
         currentAccountIdRef.current = currentAccountId;
     }, [currentAccountId]);
 
     useEffect(() => {
-        if (editingAccountId && !accounts.some((account) => account.id === editingAccountId)) {
+        if (editingAccountId && editingAccountId !== DRAFT_ACCOUNT_ID && !accounts.some((account) => account.id === editingAccountId)) {
             setEditingAccountId(null);
         }
     }, [accounts, editingAccountId]);
+
+    useEffect(() => {
+        setOauthNotice("");
+    }, [editingAccountId, selectedAccountId]);
 
     const clearOAuthPolling = useCallback(() => {
         if (oauthPollTimerRef.current != null) {
@@ -185,10 +221,19 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
             oauthPollTimerRef.current = null;
         }
         oauthPollStartedAtRef.current = 0;
+        oauthPendingSessionRef.current = null;
         setOauthPendingAccountId(null);
     }, []);
 
-    useEffect(() => () => clearOAuthPolling(), [clearOAuthPolling]);
+    const closeOAuthPopup = useCallback(() => {
+        try { oauthPopupRef.current?.close(); } catch { /* ignore */ }
+        oauthPopupRef.current = null;
+    }, []);
+
+    useEffect(() => () => {
+        clearOAuthPolling();
+        closeOAuthPopup();
+    }, [clearOAuthPolling, closeOAuthPopup]);
 
     const fetchSettings = useCallback(async () => {
         setLoading(true);
@@ -277,7 +322,21 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
         setEditingServerUrl(false);
     };
 
+    const discardDraftAccount = useCallback(() => {
+        setDraftAccount(null);
+        setEditingAccountId(null);
+        setSelectedAccountId((prev) => (
+            prev && accountsRef.current.some((account) => account.id === prev)
+                ? prev
+                : (currentAccountIdRef.current ?? accountsRef.current[0]?.id ?? null)
+        ));
+    }, []);
+
     const updateSelectedAccount = (patch: Partial<AccountInfo>) => {
+        if (isEditingDraft) {
+            setDraftAccount((prev) => (prev ? { ...prev, ...patch } : prev));
+            return;
+        }
         if (!selectedAccountId) return;
         setAccounts((prev) => prev.map((account) => (
             account.id === selectedAccountId ? { ...account, ...patch } : account
@@ -296,16 +355,31 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
         });
     };
 
-    const handleAddAccount = async () => {
-        const account = createAccount(accounts);
-        const nextAccounts = [...accounts, account];
-        const nextCurrentAccountId = currentAccountId;
-        setAccounts(nextAccounts);
-        setSelectedAccountId(account.id);
-        setEditingAccountId(account.id);
-        const ok = await persistSettings(nextAccounts, nextCurrentAccountId, { nextSelectedAccountId: account.id });
-        if (!ok) setDirty(true);
+    const handleAddAccount = () => {
+        setError("");
+        setDraftAccount(createAccount(accounts));
+        setSelectedAccountId(null);
+        setEditingAccountId(DRAFT_ACCOUNT_ID);
     };
+
+    const handleCreateAccount = useCallback(async () => {
+        const draft = draftAccountRef.current;
+        const validationError = getAccountValidationError(draft, accountsRef.current);
+        if (!draft || validationError) {
+            setError(validationError || "账号信息不完整");
+            return;
+        }
+
+        const nextAccounts = [...accountsRef.current, draft];
+        const ok = await persistSettings(nextAccounts, currentAccountIdRef.current, {
+            nextSelectedAccountId: draft.id,
+        });
+        if (!ok) return;
+
+        setDraftAccount(null);
+        setEditingAccountId(null);
+        setSelectedAccountId(draft.id);
+    }, [persistSettings]);
 
     const startEditingAccount = useCallback((accountId: string) => {
         setSelectedAccountId(accountId);
@@ -343,6 +417,35 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
         }
     };
 
+    const handleBackToAccountList = useCallback(async () => {
+        if (!dirty) {
+            setEditingAccountId(null);
+            return;
+        }
+        const shouldApplyCurrentAccount = !isEditingDraft && Boolean(selectedAccountId) && selectedAccountId === currentAccountId;
+        const ok = await persistSettings(accounts, currentAccountId, {
+            applyCurrentAccount: shouldApplyCurrentAccount,
+            nextSelectedAccountId: selectedAccountId,
+        });
+        if (!ok) return;
+        setEditingAccountId(null);
+    }, [accounts, currentAccountId, dirty, isEditingDraft, persistSettings, selectedAccountId]);
+
+    const cancelPendingOAuth = useCallback(async () => {
+        const pending = oauthPendingSessionRef.current;
+        clearOAuthPolling();
+        closeOAuthPopup();
+        setOauthNotice("");
+        if (!pending) return;
+        try {
+            await fetch(`${getApiBase()}/api/oauth/${pending.provider}/sessions/${encodeURIComponent(pending.sessionId)}`, {
+                method: "DELETE",
+            });
+        } catch {
+            // Ignore cancellation failures; local pending state is already cleared.
+        }
+    }, [clearOAuthPolling, closeOAuthPopup]);
+
     const handleAgentOAuthLogin = useCallback(async () => {
         if (!selectedAccount) return;
         const oauthConfig = getOAuthUiForProvider(selectedAccount.PROVIDER);
@@ -350,8 +453,15 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
 
         const accountId = selectedAccount.id;
         const provider = selectedAccount.PROVIDER;
+        if (oauthPendingAccountId === accountId) {
+            await cancelPendingOAuth();
+            return;
+        }
+
         const popup = typeof window !== "undefined" ? window.open("", "_blank") : null;
+        oauthPopupRef.current = popup;
         setError("");
+        setOauthNotice("");
         setOauthPendingAccountId(accountId);
         oauthPollStartedAtRef.current = Date.now();
 
@@ -365,7 +475,7 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                     if (Date.now() - oauthPollStartedAtRef.current > 5 * 60 * 1000) {
                         clearOAuthPolling();
                         setError("OAuth 登录超时，请重试。");
-                        try { popup?.close(); } catch { /* ignore */ }
+                        closeOAuthPopup();
                         return;
                     }
                     oauthPollTimerRef.current = window.setTimeout(() => {
@@ -375,13 +485,22 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                 }
 
                 clearOAuthPolling();
-                try { popup?.close(); } catch { /* ignore */ }
+                closeOAuthPopup();
 
                 if (data.status === "error" || !data.apiKey) {
                     setError(data.error || "OAuth 登录失败");
                     return;
                 }
                 const apiKey = data.apiKey;
+
+                if (draftAccountRef.current?.id === accountId) {
+                    setDraftAccount((prev) => (
+                        prev && prev.id === accountId
+                            ? { ...prev, API_KEY: apiKey }
+                            : prev
+                    ));
+                    return;
+                }
 
                 const nextAccounts = accountsRef.current.map((account) => (
                     account.id === accountId
@@ -394,12 +513,13 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                 setDirty(true);
 
                 const ok = await persistSettings(nextAccounts, currentAccountIdRef.current, {
+                    applyCurrentAccount: currentAccountIdRef.current === accountId,
                     nextSelectedAccountId: accountId,
                 });
                 if (!ok) setDirty(true);
             } catch (e: any) {
                 clearOAuthPolling();
-                try { popup?.close(); } catch { /* ignore */ }
+                closeOAuthPopup();
                 setError(e?.message || "OAuth 登录失败");
             }
         };
@@ -413,6 +533,19 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
             });
             const data = await readResponseJson<OAuthStartResponse>(res);
             if (!res.ok || data.error) throw createApiError(res, data, `HTTP ${res.status}`);
+            oauthPendingSessionRef.current = {
+                provider,
+                sessionId: data.sessionId,
+                accountId,
+            };
+
+            console.info("[AnyCode][OAuth]", {
+                provider,
+                publicBaseUrl,
+                authUrl: data.authUrl,
+                captureMode: data.captureMode ?? "callback",
+                redirectUri: data.redirectUri,
+            });
 
             if (popup) {
                 popup.location.href = data.authUrl;
@@ -424,25 +557,36 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                 link.click();
             }
 
+            if (data.captureMode === "manual") {
+                clearOAuthPolling();
+                setOauthNotice(`授权完成后，把浏览器回调地址粘贴到 API_KEY。预期回调地址前缀：${data.redirectUri ?? "http://localhost:1455/auth/callback"}`);
+                return;
+            }
+
             await pollSession(provider, data.sessionId);
         } catch (e: any) {
             clearOAuthPolling();
-            try { popup?.close(); } catch { /* ignore */ }
+            closeOAuthPopup();
             setError(e?.message || "无法启动 OAuth 登录");
         }
-    }, [clearOAuthPolling, persistSettings, selectedAccount]);
+    }, [cancelPendingOAuth, clearOAuthPolling, closeOAuthPopup, oauthPendingAccountId, persistSettings, selectedAccount]);
 
     const handleClose = useCallback(async () => {
         if (saving) return;
         if (!dirty) {
+            if (draftAccountRef.current) discardDraftAccount();
             onClose();
             return;
         }
+        const shouldApplyCurrentAccount = !isEditingDraft && Boolean(selectedAccountId) && selectedAccountId === currentAccountId;
         const ok = await persistSettings(accounts, currentAccountId, {
+            applyCurrentAccount: shouldApplyCurrentAccount,
             nextSelectedAccountId: selectedAccountId,
         });
-        if (ok) onClose();
-    }, [accounts, currentAccountId, dirty, onClose, persistSettings, saving, selectedAccountId]);
+        if (!ok) return;
+        if (draftAccountRef.current) discardDraftAccount();
+        onClose();
+    }, [accounts, currentAccountId, dirty, discardDraftAccount, isEditingDraft, onClose, persistSettings, saving, selectedAccountId]);
 
     return (
         <div className="settings-overlay" onClick={() => { void handleClose(); }}>
@@ -493,22 +637,20 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                     <div className="settings-section">
                         {editingAccountId && selectedAccount ? (
                             <div className="settings-section-head settings-section-head-sticky settings-section-head-editing">
-                                <button className="settings-back-btn" onClick={() => setEditingAccountId(null)}>
+                                <button className="settings-back-btn" onClick={() => {
+                                    if (isEditingDraft) {
+                                        discardDraftAccount();
+                                        return;
+                                    }
+                                    setEditingAccountId(null);
+                                }}>
                                     <ChevronIcon size={10} />
                                     <span>返回</span>
                                 </button>
-                                <div className="settings-editing-title">
-                                    <span className="settings-section-title">编辑账号</span>
-                                    <span className="settings-field-hint">{selectedAccount.name || "未命名账号"}</span>
-                                </div>
                             </div>
                         ) : (
                             <div className="settings-section-head settings-section-head-sticky">
                                 <span className="settings-section-title">账号</span>
-                                <div className="settings-current-note">
-                                    <span className="settings-current-note-label">当前</span>
-                                    <span className="settings-current-note-value">{currentAccount?.name || "未启用"}</span>
-                                </div>
                             </div>
                         )}
 
@@ -592,7 +734,7 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                                         type="text"
                                         value={selectedAccount.API_KEY}
                                         onChange={(e) => updateSelectedAccount({ API_KEY: e.target.value })}
-                                        placeholder="输入 API Key"
+                                        placeholder="输入 API Key 或 OAuth 回调地址"
                                         autoCapitalize="off"
                                         autoCorrect="off"
                                         spellCheck={false}
@@ -602,30 +744,53 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                                             <button
                                                 className="settings-btn settings-btn-primary"
                                                 onClick={() => { void handleAgentOAuthLogin(); }}
-                                                disabled={saving || oauthPendingAccountId === selectedAccount.id}
+                                                disabled={saving}
                                             >
                                                 {oauthPendingAccountId === selectedAccount.id
-                                                    ? selectedAccountOAuth.pendingLabel
+                                                    ? "取消授权等待"
                                                     : (selectedAccount.API_KEY ? selectedAccountOAuth.buttonLabelFilled : selectedAccountOAuth.buttonLabel)}
                                             </button>
                                             <span className="settings-oauth-hint">{selectedAccountOAuth.helperText}</span>
                                         </div>
                                     )}
+                                    {oauthNotice && <span className="settings-field-hint">{oauthNotice}</span>}
                                 </div>
                                 <div className="settings-editor-actions">
-                                    <button
-                                        className="settings-btn settings-editor-action-btn"
-                                        onClick={() => setEditingAccountId(null)}
-                                    >
-                                        返回列表
-                                    </button>
-                                    <button
-                                        className="settings-btn settings-editor-action-btn"
-                                        onClick={() => { void handleDeleteAccount(selectedAccount.id); }}
-                                        disabled={saving}
-                                    >
-                                        删除账号
-                                    </button>
+                                    {isEditingDraft ? (
+                                        <>
+                                            <button
+                                                className="settings-btn settings-editor-action-btn"
+                                                onClick={discardDraftAccount}
+                                            >
+                                                取消
+                                            </button>
+                                            <button
+                                                className="settings-btn settings-btn-primary settings-editor-action-btn"
+                                                onClick={() => { void handleCreateAccount(); }}
+                                                disabled={saving || Boolean(draftAccountValidationError)}
+                                                title={draftAccountValidationError || undefined}
+                                            >
+                                                添加账号
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <button
+                                                className={`settings-btn settings-editor-action-btn ${dirty ? "settings-editor-action-btn-dirty" : ""}`}
+                                                onClick={() => { void handleBackToAccountList(); }}
+                                                disabled={saving}
+                                            >
+                                                {dirty ? "保存并返回列表" : "返回列表"}
+                                            </button>
+                                            <button
+                                                className="settings-btn settings-editor-action-btn"
+                                                onClick={() => { void handleDeleteAccount(selectedAccount.id); }}
+                                                disabled={saving}
+                                            >
+                                                删除账号
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         ) : (
