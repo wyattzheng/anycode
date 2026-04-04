@@ -186,8 +186,8 @@ export const VendorRegistry = {
       async resolveApiKey(input) {
         let result = { apiKey: input.apiKey }
         for (const vendor of vendors) {
-          if (!vendor.oauth?.resolveApiKey) continue
-          result = await vendor.oauth.resolveApiKey({
+          if (!vendor.resolveApiKey) continue
+          result = await vendor.resolveApiKey({
             ...input,
             apiKey: result.apiKey,
           })

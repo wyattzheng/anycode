@@ -110,7 +110,6 @@ export interface VendorOAuthExchangeResult {
 export interface VendorOAuth {
   start(input: VendorOAuthStartInput): VendorOAuthStartResult
   exchangeCode(input: VendorOAuthExchangeInput): Promise<VendorOAuthExchangeResult>
-  resolveApiKey?: (input: VendorApiKeyResolveInput) => Promise<VendorApiKeyResolveResult>
 }
 
 export interface VendorProvider {
@@ -128,6 +127,7 @@ export interface VendorProvider {
   llm?: VendorLLM
   prompt?: VendorPrompt
   oauth?: VendorOAuth
+  resolveApiKey?: (input: VendorApiKeyResolveInput) => Promise<VendorApiKeyResolveResult>
 }
 
 export interface VendorProviderAccessor {

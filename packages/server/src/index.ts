@@ -44,6 +44,7 @@ import { getOrCreateTerminalProvider, handleTerminalWs, NodeTerminalProvider } f
 const DEFAULT_ANYCODE_DIR = path.join(os.homedir(), ".anycode")
 const NO_AGENT_TYPE = "noagent"
 const API_ERROR_CODES = {
+  INVALID_REQUEST: "INVALID_REQUEST",
   SETTINGS_ACCOUNT_INCOMPLETE: "SETTINGS_ACCOUNT_INCOMPLETE",
   SETTINGS_ACCOUNT_NAME_DUPLICATE: "SETTINGS_ACCOUNT_NAME_DUPLICATE",
   OAUTH_PROVIDER_UNSUPPORTED: "OAUTH_PROVIDER_UNSUPPORTED",
@@ -166,6 +167,10 @@ interface OAuthSessionRecord {
 interface RuntimeConfigResolution {
   config: ServerConfig
   persistedApiKey?: string
+}
+
+interface ApiKeyNormalizationResult {
+  apiKey: string
 }
 
 function createAgentConfig(server: AnyCodeServer, cfg: ServerConfig, directory: string, resumeToken?: string, terminal?: TerminalProvider, preview?: PreviewProvider) {
@@ -769,6 +774,26 @@ export class AnyCodeServer {
     ))
     const saved = this.writeUserSettingsFile(settings.replaceAccounts(accounts, settings.currentAccountId).toJSON())
     this.applySettingsToConfig(saved)
+  }
+
+  async normalizeProviderApiKey(provider: string, apiKey: string, agent?: string): Promise<ApiKeyNormalizationResult> {
+    const normalizedProvider = normalizeString(provider)
+    const normalizedApiKey = normalizeString(apiKey)
+    if (!normalizedProvider) {
+      throw createApiError("Provider is required", API_ERROR_CODES.INVALID_REQUEST)
+    }
+    if (!normalizedApiKey) {
+      throw createApiError("API key is required", API_ERROR_CODES.INVALID_REQUEST)
+    }
+
+    const resolved = await VendorRegistry.getVendorProvider({ id: normalizedProvider }).resolveApiKey({
+      apiKey: normalizedApiKey,
+      agent: normalizeString(agent),
+    })
+
+    return {
+      apiKey: normalizeString(resolved.persistedApiKey) ?? normalizedApiKey,
+    }
   }
 
   private cleanupOAuthSessions() {
@@ -1440,6 +1465,22 @@ function createMainServer(server: AnyCodeServer, cfg: ServerConfig): http.Server
         sendJson(res, 200, oauth)
       } catch (error) {
         sendErrorJson(res, 400, error, "Failed to start OAuth")
+      }
+      return
+    }
+
+    const providerApiKeyResolveMatch = req.url?.match(/^\/api\/providers\/([^/?]+)\/api-key\/resolve$/)
+    if (req.method === "POST" && providerApiKeyResolveMatch) {
+      const body = await readJsonBody(req)
+      try {
+        const result = await server.normalizeProviderApiKey(
+          providerApiKeyResolveMatch[1],
+          String(body.apiKey ?? ""),
+          normalizeString(body.agent),
+        )
+        sendJson(res, 200, result)
+      } catch (error) {
+        sendErrorJson(res, 400, error, "Failed to resolve provider API key")
       }
       return
     }

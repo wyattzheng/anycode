@@ -50,6 +50,16 @@ interface OAuthSessionResponse {
     error?: string;
 }
 
+interface ApiKeyNormalizationResponse {
+    apiKey: string;
+}
+
+interface ManualOAuthPrompt {
+    accountId: string;
+    provider: string;
+    redirectUri: string;
+}
+
 interface ApiResponseBody {
     error?: string;
     code?: string;
@@ -162,6 +172,8 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
     const [oauthNotice, setOauthNotice] = useState("");
+    const [manualOAuthPrompt, setManualOAuthPrompt] = useState<ManualOAuthPrompt | null>(null);
+    const [manualOAuthCallbackUrl, setManualOAuthCallbackUrl] = useState("");
     const [dirty, setDirty] = useState(false);
     const [oauthPendingAccountId, setOauthPendingAccountId] = useState<string | null>(null);
     const oauthPollTimerRef = useRef<number | null>(null);
@@ -213,6 +225,8 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
 
     useEffect(() => {
         setOauthNotice("");
+        setManualOAuthPrompt(null);
+        setManualOAuthCallbackUrl("");
     }, [editingAccountId, selectedAccountId]);
 
     const clearOAuthPolling = useCallback(() => {
@@ -446,6 +460,51 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
         }
     }, [clearOAuthPolling, closeOAuthPopup]);
 
+    const applyManualOAuthCallback = useCallback(async () => {
+        if (!manualOAuthPrompt || !selectedAccount) return;
+        const callbackUrl = manualOAuthCallbackUrl.trim();
+        if (!callbackUrl) {
+            setError("请填写回调地址");
+            return;
+        }
+
+        try {
+            const url = new URL(callbackUrl);
+            if (!url.searchParams.get("code")) {
+                setError("回调地址缺少 code 参数");
+                return;
+            }
+        } catch {
+            setError("回调地址格式不正确");
+            return;
+        }
+
+        setSaving(true);
+        setError("");
+        try {
+            const res = await fetch(`${getApiBase()}/api/providers/${manualOAuthPrompt.provider}/api-key/resolve`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    apiKey: callbackUrl,
+                    agent: selectedAccount.AGENT,
+                }),
+            });
+            const data = await readResponseJson<ApiKeyNormalizationResponse>(res);
+            if (!res.ok || data.error) throw createApiError(res, data, `HTTP ${res.status}`);
+
+            updateSelectedAccount({ API_KEY: data.apiKey });
+            setManualOAuthPrompt(null);
+            setManualOAuthCallbackUrl("");
+            setOauthNotice("已完成转换，保存后会按当前账号语义应用。");
+            closeOAuthPopup();
+        } catch (e: any) {
+            setError(e?.message || "转换 OAuth 回调地址失败");
+        } finally {
+            setSaving(false);
+        }
+    }, [closeOAuthPopup, manualOAuthCallbackUrl, manualOAuthPrompt, selectedAccount]);
+
     const handleAgentOAuthLogin = useCallback(async () => {
         if (!selectedAccount) return;
         const oauthConfig = getOAuthUiForProvider(selectedAccount.PROVIDER);
@@ -462,8 +521,8 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
         oauthPopupRef.current = popup;
         setError("");
         setOauthNotice("");
-        setOauthPendingAccountId(accountId);
-        oauthPollStartedAtRef.current = Date.now();
+        setManualOAuthPrompt(null);
+        setManualOAuthCallbackUrl("");
 
         const pollSession = async (oauthProvider: string, sessionId: string) => {
             try {
@@ -533,11 +592,6 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
             });
             const data = await readResponseJson<OAuthStartResponse>(res);
             if (!res.ok || data.error) throw createApiError(res, data, `HTTP ${res.status}`);
-            oauthPendingSessionRef.current = {
-                provider,
-                sessionId: data.sessionId,
-                accountId,
-            };
 
             console.info("[AnyCode][OAuth]", {
                 provider,
@@ -559,10 +613,23 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
 
             if (data.captureMode === "manual") {
                 clearOAuthPolling();
-                setOauthNotice(`授权完成后，把浏览器回调地址粘贴到 API_KEY。预期回调地址前缀：${data.redirectUri ?? "http://localhost:1455/auth/callback"}`);
+                setManualOAuthPrompt({
+                    accountId,
+                    provider,
+                    redirectUri: data.redirectUri ?? "http://localhost:1455/auth/callback",
+                });
+                setManualOAuthCallbackUrl("");
+                setOauthNotice("授权页已打开，完成后把浏览器回调地址粘贴进来。");
                 return;
             }
 
+            oauthPendingSessionRef.current = {
+                provider,
+                sessionId: data.sessionId,
+                accountId,
+            };
+            setOauthPendingAccountId(accountId);
+            oauthPollStartedAtRef.current = Date.now();
             await pollSession(provider, data.sessionId);
         } catch (e: any) {
             clearOAuthPolling();
@@ -754,6 +821,44 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                                         </div>
                                     )}
                                     {oauthNotice && <span className="settings-field-hint">{oauthNotice}</span>}
+                                    {manualOAuthPrompt && manualOAuthPrompt.accountId === selectedAccount.id && (
+                                        <div className="settings-manual-oauth-card">
+                                            <span className="settings-manual-oauth-title">
+                                                粘贴 {getProviderLabel(manualOAuthPrompt.provider)} 回调地址
+                                            </span>
+                                            <span className="settings-field-hint">
+                                                预期前缀：{manualOAuthPrompt.redirectUri}
+                                            </span>
+                                            <input
+                                                className="settings-input"
+                                                type="url"
+                                                value={manualOAuthCallbackUrl}
+                                                onChange={(e) => setManualOAuthCallbackUrl(e.target.value)}
+                                                placeholder={manualOAuthPrompt.redirectUri}
+                                                autoCapitalize="off"
+                                                autoCorrect="off"
+                                                spellCheck={false}
+                                            />
+                                            <div className="settings-manual-oauth-actions">
+                                                <button
+                                                    className="settings-btn settings-editor-action-btn"
+                                                    onClick={() => {
+                                                        setManualOAuthPrompt(null);
+                                                        setManualOAuthCallbackUrl("");
+                                                        closeOAuthPopup();
+                                                    }}
+                                                >
+                                                    取消
+                                                </button>
+                                                <button
+                                                    className="settings-btn settings-btn-primary"
+                                                    onClick={applyManualOAuthCallback}
+                                                >
+                                                    确定
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="settings-editor-actions">
                                     {isEditingDraft ? (

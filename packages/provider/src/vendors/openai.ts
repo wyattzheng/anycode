@@ -174,94 +174,94 @@ export const openAIVendor: VendorProvider = {
         }),
       }
     },
-    async resolveApiKey({ apiKey, agent }) {
-      const callback = parseOpenAIOAuthCallbackApiKey(apiKey)
-      if (callback) {
-        const data = await exchangeOpenAIToken({
-          grant_type: "authorization_code",
-          client_id: OPENAI_OAUTH_CLIENT_ID,
-          code: callback.code,
-          redirect_uri: callback.redirectUri,
-          code_verifier: callback.codeVerifier,
-        })
+  },
+  async resolveApiKey({ apiKey, agent }) {
+    const callback = parseOpenAIOAuthCallbackApiKey(apiKey)
+    if (callback) {
+      const data = await exchangeOpenAIToken({
+        grant_type: "authorization_code",
+        client_id: OPENAI_OAUTH_CLIENT_ID,
+        code: callback.code,
+        redirect_uri: callback.redirectUri,
+        code_verifier: callback.codeVerifier,
+      })
 
-        const accessToken = typeof data.access_token === "string" ? data.access_token.trim() : ""
-        const refreshToken = typeof data.refresh_token === "string" ? data.refresh_token.trim() : ""
-        const idToken = typeof data.id_token === "string" ? data.id_token.trim() : ""
+      const accessToken = typeof data.access_token === "string" ? data.access_token.trim() : ""
+      const refreshToken = typeof data.refresh_token === "string" ? data.refresh_token.trim() : ""
+      const idToken = typeof data.id_token === "string" ? data.id_token.trim() : ""
 
-        if (!accessToken) {
-          throw new Error("OpenAI OAuth completed but no access token was returned.")
-        }
-        if (!refreshToken) {
-          throw new Error("OpenAI OAuth completed but no refresh token was returned.")
-        }
-
-        const runtimeApiKey = encodeOpenAIOAuthApiKey({ accessToken, refreshToken, idToken })
-        return {
-          apiKey: agent === "codex" ? runtimeApiKey : (getOpenAIOAuthAccessToken(runtimeApiKey) ?? runtimeApiKey),
-          persistedApiKey: refreshToken,
-        }
+      if (!accessToken) {
+        throw new Error("OpenAI OAuth completed but no access token was returned.")
+      }
+      if (!refreshToken) {
+        throw new Error("OpenAI OAuth completed but no refresh token was returned.")
       }
 
-      const refreshToken = parseOpenAIRefreshToken(apiKey)
-      if (refreshToken) {
-        const data = await exchangeOpenAIToken({
-          grant_type: "refresh_token",
-          client_id: OPENAI_OAUTH_CLIENT_ID,
-          refresh_token: refreshToken,
-          scope: OPENAI_OAUTH_REFRESH_SCOPES,
-        })
+      const runtimeApiKey = encodeOpenAIOAuthApiKey({ accessToken, refreshToken, idToken })
+      return {
+        apiKey: agent === "codex" ? runtimeApiKey : (getOpenAIOAuthAccessToken(runtimeApiKey) ?? runtimeApiKey),
+        persistedApiKey: refreshToken,
+      }
+    }
 
-        const accessToken = typeof data.access_token === "string" ? data.access_token.trim() : ""
-        if (!accessToken) {
-          throw new Error("OpenAI OAuth refresh completed but no access token was returned.")
-        }
+    const refreshToken = parseOpenAIRefreshToken(apiKey)
+    if (refreshToken) {
+      const data = await exchangeOpenAIToken({
+        grant_type: "refresh_token",
+        client_id: OPENAI_OAUTH_CLIENT_ID,
+        refresh_token: refreshToken,
+        scope: OPENAI_OAUTH_REFRESH_SCOPES,
+      })
 
-        const nextRefreshToken = typeof data.refresh_token === "string" ? data.refresh_token.trim() : refreshToken
-        const runtimeApiKey = encodeOpenAIOAuthApiKey({
-          accessToken,
-          refreshToken: nextRefreshToken,
-          idToken: typeof data.id_token === "string" ? data.id_token.trim() : "",
-        })
-
-        return {
-          apiKey: agent === "codex" ? runtimeApiKey : (getOpenAIOAuthAccessToken(runtimeApiKey) ?? runtimeApiKey),
-          ...(nextRefreshToken !== refreshToken ? { persistedApiKey: nextRefreshToken } : {}),
-        }
+      const accessToken = typeof data.access_token === "string" ? data.access_token.trim() : ""
+      if (!accessToken) {
+        throw new Error("OpenAI OAuth refresh completed but no access token was returned.")
       }
 
-      const tokens = parseOpenAIOAuthApiKey(apiKey)
-      if (!tokens?.refreshToken) return { apiKey }
-
-      const expiration = decodeJwtExpiration(tokens.accessToken)
-      let nextApiKey = apiKey
-      let nextRefreshToken = tokens.refreshToken
-      if (!(expiration && expiration > Date.now() + 5 * 60 * 1000)) {
-        const data = await exchangeOpenAIToken({
-          grant_type: "refresh_token",
-          client_id: OPENAI_OAUTH_CLIENT_ID,
-          refresh_token: tokens.refreshToken,
-          scope: OPENAI_OAUTH_REFRESH_SCOPES,
-        })
-
-        const accessToken = typeof data.access_token === "string" ? data.access_token.trim() : ""
-        if (!accessToken) {
-          throw new Error("OpenAI OAuth refresh completed but no access token was returned.")
-        }
-
-        nextRefreshToken = typeof data.refresh_token === "string" ? data.refresh_token.trim() : tokens.refreshToken
-        nextApiKey = encodeOpenAIOAuthApiKey({
-          accessToken,
-          refreshToken: nextRefreshToken,
-          idToken: typeof data.id_token === "string" ? data.id_token.trim() : tokens.idToken,
-        })
-      }
+      const nextRefreshToken = typeof data.refresh_token === "string" ? data.refresh_token.trim() : refreshToken
+      const runtimeApiKey = encodeOpenAIOAuthApiKey({
+        accessToken,
+        refreshToken: nextRefreshToken,
+        idToken: typeof data.id_token === "string" ? data.id_token.trim() : "",
+      })
 
       return {
-        apiKey: agent === "codex" ? nextApiKey : (getOpenAIOAuthAccessToken(nextApiKey) ?? nextApiKey),
-        ...(nextRefreshToken ? { persistedApiKey: nextRefreshToken } : {}),
+        apiKey: agent === "codex" ? runtimeApiKey : (getOpenAIOAuthAccessToken(runtimeApiKey) ?? runtimeApiKey),
+        ...(nextRefreshToken !== refreshToken ? { persistedApiKey: nextRefreshToken } : {}),
       }
-    },
+    }
+
+    const tokens = parseOpenAIOAuthApiKey(apiKey)
+    if (!tokens?.refreshToken) return { apiKey }
+
+    const expiration = decodeJwtExpiration(tokens.accessToken)
+    let nextApiKey = apiKey
+    let nextRefreshToken = tokens.refreshToken
+    if (!(expiration && expiration > Date.now() + 5 * 60 * 1000)) {
+      const data = await exchangeOpenAIToken({
+        grant_type: "refresh_token",
+        client_id: OPENAI_OAUTH_CLIENT_ID,
+        refresh_token: tokens.refreshToken,
+        scope: OPENAI_OAUTH_REFRESH_SCOPES,
+      })
+
+      const accessToken = typeof data.access_token === "string" ? data.access_token.trim() : ""
+      if (!accessToken) {
+        throw new Error("OpenAI OAuth refresh completed but no access token was returned.")
+      }
+
+      nextRefreshToken = typeof data.refresh_token === "string" ? data.refresh_token.trim() : tokens.refreshToken
+      nextApiKey = encodeOpenAIOAuthApiKey({
+        accessToken,
+        refreshToken: nextRefreshToken,
+        idToken: typeof data.id_token === "string" ? data.id_token.trim() : tokens.idToken,
+      })
+    }
+
+    return {
+      apiKey: agent === "codex" ? nextApiKey : (getOpenAIOAuthAccessToken(nextApiKey) ?? nextApiKey),
+      ...(nextRefreshToken ? { persistedApiKey: nextRefreshToken } : {}),
+    }
   },
   npms: ["@ai-sdk/openai", "@ai-sdk/openai-compatible"],
   bundled: {
