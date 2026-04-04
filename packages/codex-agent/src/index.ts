@@ -11,7 +11,7 @@
 import { createServer as createTcpServer, type Server as TcpServer, type Socket } from "net"
 import { statSync } from "fs"
 import { join, dirname } from "path"
-import type { IChatAgent, ChatAgentEvent, ChatAgentConfig } from "@any-code/utils"
+import { consoleLogger, type IChatAgent, type ChatAgentEvent, type ChatAgentConfig, type Logger } from "@any-code/utils"
 
 export type { IChatAgent, ChatAgentEvent, ChatAgentConfig }
 
@@ -50,6 +50,7 @@ function extractOpenAIAccountId(idToken: string | undefined, accessToken: string
 export class CodexAgent implements IChatAgent {
   readonly name: string
   private config: ChatAgentConfig
+  private readonly logger: Logger
   private abortController: AbortController | null = null
   private eventHandlers = new Map<string, Array<(data: any) => void>>()
   private _codex: any = null
@@ -62,6 +63,7 @@ export class CodexAgent implements IChatAgent {
 
   constructor(config: ChatAgentConfig) {
     this.config = config
+    this.logger = config.logger ?? consoleLogger
     this.name = config.name || "Codex Agent"
     this._threadId = config.sessionId || `codex-${Date.now()}`
   }
@@ -137,6 +139,13 @@ export class CodexAgent implements IChatAgent {
         }
 
         const isOAuth = this.config.apiKey?.startsWith("oauth:")
+        this.logger.info("[CodexAgent] init Codex SDK", {
+          isOAuth,
+          hasApiKey: Boolean(this.config.apiKey),
+          baseUrl: this.config.baseUrl,
+          mcpPort: this._mcpPort,
+          hasMcpConfig: true,
+        })
         if (isOAuth) {
           const parts = this.config.apiKey!.slice("oauth:".length).split(":")
           const accessToken = parts[0]
@@ -190,6 +199,11 @@ export class CodexAgent implements IChatAgent {
         }
         const resumeThreadId = (this.config.sessionId && this.config.sessionId.trim())
           || (!this._threadId.startsWith("codex-") ? this._threadId : "")
+        this.logger.info("[CodexAgent] request Codex CLI thread", {
+          action: resumeThreadId ? "resumeThread" : "startThread",
+          resumeThreadId: resumeThreadId || undefined,
+          threadOptions,
+        })
         this._thread = resumeThreadId
           ? this._codex.resumeThread(resumeThreadId, threadOptions)
           : this._codex.startThread(threadOptions)

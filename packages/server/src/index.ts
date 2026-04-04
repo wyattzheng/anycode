@@ -28,7 +28,7 @@ import { SetWorkingDirectoryTool } from "./tool-set-directory"
 import { TerminalTool } from "./tool-terminal-write"
 import { SetPreviewUrlTool } from "./tool-set-preview-url"
 import { WebSocketServer, WebSocket as WS } from "ws"
-import { SqlJsStorage, NodeFS, NodeSearchProvider } from "@any-code/utils"
+import { SqlJsStorage, NodeFS, NodeSearchProvider, consoleLogger } from "@any-code/utils"
 import { getDuplicateAccountName, SettingsModel, SettingsStore, normalizeString, type UserSettingsFile } from "@any-code/settings"
 import { VendorRegistry } from "@any-code/provider"
 import { createChatAgent, type IChatAgent } from "./chat-agent"
@@ -226,6 +226,7 @@ function createChatAgentConfig(server: AnyCodeServer, cfg: ServerConfig, directo
     model: cfg.model,
     baseUrl: cfg.baseUrl,
     reasoningEffort: cfg.reasoningEffort,
+    logger: consoleLogger,
     terminal,
     preview,
     sessionId: resumeToken,

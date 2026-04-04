@@ -24,11 +24,14 @@ export interface ChatAgentEvent {
  * to avoid @any-code/utils depending on @any-code/agent.
  * Each agent package casts internally.
  */
+import type { Logger } from "./logger"
+
 export interface ChatAgentConfig {
   apiKey: string
   model: string
   baseUrl?: string
   reasoningEffort?: string
+  logger?: Logger
   /** Override the default agent name */
   name?: string
   /** AnyCode-specific: full CodeAgentOptions for internal CodeAgent creation */
