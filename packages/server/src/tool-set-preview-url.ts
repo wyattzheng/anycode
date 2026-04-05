@@ -8,7 +8,7 @@ This tool configures a reverse proxy so the user can preview a locally running w
 - **forwarded_local_url**: The absolute local URL to reverse-proxy to (e.g. "http://localhost:5173" for Vite, "http://localhost:3000" for React).
 
 ## Usage notes
-- Use this after starting a local dev server (e.g. via terminal) to let the user see the result.
+- Use this after starting a local dev server (e.g. via user_watch_terminal) to let the user see the result.
 - The preview tab will automatically load the proxied page.
 - Calling this again will update the target and refresh the preview.
 `

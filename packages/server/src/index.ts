@@ -156,15 +156,32 @@ export class AnyCodeServer {
     return this.previewSessionId === sessionId && this.previewTarget ? this.cfg.previewPort : null
   }
 
+  getPreviewPathForSession(sessionId: string) {
+    if (this.previewSessionId !== sessionId || !this.previewTarget) return null
+
+    try {
+      const target = new URL(this.previewTarget)
+      return `${target.pathname || "/"}${target.search || ""}` || "/"
+    } catch {
+      return "/"
+    }
+  }
+
   setPreviewTarget(sessionId: string, forwardedLocalUrl: string) {
+    const previousSessionId = this.previewSessionId
+
     try {
       const next = new URL(forwardedLocalUrl)
       if (next.hostname === "localhost") next.hostname = "127.0.0.1"
-      this.previewTarget = next.origin
+      next.hash = ""
+      this.previewTarget = next.toString()
     } catch {
       this.previewTarget = forwardedLocalUrl.replace(/\/+$/, "")
     }
     this.previewSessionId = sessionId
+    if (previousSessionId && previousSessionId !== sessionId) {
+      this.getSession(previousSessionId)?.state.setPreview(null, null)
+    }
     return this.previewTarget
   }
 

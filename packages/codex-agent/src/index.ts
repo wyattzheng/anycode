@@ -17,7 +17,7 @@ const OFFICIAL_CLIENT_INFO = {
   version: "0.1.0",
 }
 
-const CUSTOM_TOOL_IDS = new Set(["set_user_watch_project", "terminal", "set_preview_url"])
+const CUSTOM_TOOL_IDS = new Set(["set_user_watch_project", "user_watch_terminal", "set_preview_url"])
 const RESUME_TOKEN_PREFIX = "codexapp:"
 const OPENAI_OAUTH_TOKEN_ENDPOINT = "https://auth.openai.com/oauth/token"
 const OPENAI_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
@@ -1169,7 +1169,7 @@ export class CodexAgent implements IChatAgent {
         ...(serviceTier ? { serviceTier } : {}),
         ...(cwd ? { cwd } : {}),
         approvalPolicy: "never",
-        sandbox: "workspace-write",
+        sandbox: "danger-full-access",
         ...(threadConfig ? { config: threadConfig } : {}),
         persistExtendedHistory: true,
       })
@@ -1185,7 +1185,7 @@ export class CodexAgent implements IChatAgent {
       ...(serviceTier ? { serviceTier } : {}),
       ...(cwd ? { cwd } : {}),
       approvalPolicy: "never",
-      sandbox: "workspace-write",
+      sandbox: "danger-full-access",
       ...(dynamicTools.length > 0 ? { dynamicTools } : {}),
       ...(threadConfig ? { config: threadConfig } : {}),
       persistExtendedHistory: true,

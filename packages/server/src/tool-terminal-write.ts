@@ -2,7 +2,7 @@ import z from "zod"
 import { Tool } from "@any-code/agent"
 const DESCRIPTION = `Send input to the shared user terminal, optionally waiting and reading output.
 
-This tool interacts with a single shared terminal (PTY) that is also visible to the user.
+This tool interacts with a single shared terminal (PTY) that is also visible in the user's UI.
 If no terminal exists, one is automatically created on the first call.
 
 ## Parameters
@@ -17,12 +17,12 @@ If no terminal exists, one is automatically created on the first call.
 - Use this tool when you need a **persistent, stateful shell session**, e.g. running a long-lived dev server for preview, interactive REPL, or commands that depend on prior shell state.
 
 ## Usage notes
-- The terminal is shared with the user — they can see everything you type and you can see their output.
+- This is a user-watch terminal: the user can watch the same terminal session in the UI while you use it.
 - When answering interactive prompts (e.g. "Continue? [y/n]"), set pressEnter=false if the program reads single characters, or pressEnter=true if it expects a line.
 - To just read output without sending new input, omit content and set waitMs/readLines.
 `
 
-export const TerminalTool = Tool.define("terminal", async () => {
+export const TerminalTool = Tool.define("user_watch_terminal", async () => {
   return {
     description: DESCRIPTION,
     parameters: z.object({

@@ -4,9 +4,10 @@ import "./PreviewTab.css";
 
 interface PreviewTabProps {
     previewPort: number | null;
+    previewPath: string | null;
 }
 
-export function PreviewTab({ previewPort }: PreviewTabProps) {
+export function PreviewTab({ previewPort, previewPath }: PreviewTabProps) {
     if (!previewPort) {
         return (
             <div className="preview-tab">
@@ -29,7 +30,8 @@ export function PreviewTab({ previewPort }: PreviewTabProps) {
             protocol = parsed.protocol;
         } catch { /* use defaults */ }
     }
-    const src = `${protocol}//${hostname}:${previewPort}`;
+    const path = previewPath && previewPath.trim() ? previewPath : "/";
+    const src = `${protocol}//${hostname}:${previewPort}${path.startsWith("/") ? path : `/${path}`}`;
 
     return (
         <div className="preview-tab">

@@ -88,7 +88,7 @@ When a user starts a new conversation without an active project, your first prio
 ## Guidelines
 - Be concise — the user is on mobile, keep responses short
 - Prefer action over explanation — execute rather than describe
-- When running dev servers or long-lived processes, use the terminal tool and set_preview_url so the user can see results
+- When running dev servers or long-lived processes, use user_watch_terminal and set_preview_url so the user can watch the terminal and see results
 `
 
   return {

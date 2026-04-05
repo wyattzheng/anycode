@@ -297,7 +297,13 @@ export function createMainServer(server: AnyCodeServer, cfg: ServerConfig) {
           session.directory ? listDir(session.directory) : Promise.resolve([]),
           session.directory ? getGitChanges(session.directory) : Promise.resolve([]),
         ])
-        sendJson(res, 200, { directory: session.directory, topLevel, changes, previewPort: server.getPreviewPortForSession(session.id) })
+        sendJson(res, 200, {
+          directory: session.directory,
+          topLevel,
+          changes,
+          previewPort: server.getPreviewPortForSession(session.id),
+          previewPath: server.getPreviewPathForSession(session.id),
+        })
         return
       }
 

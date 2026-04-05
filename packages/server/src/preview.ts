@@ -14,7 +14,12 @@ export interface PreviewServerRuntime {
   previewProviders: Map<string, NodePreviewProvider>
   previewTarget: string | null
   setPreviewTarget(sessionId: string, forwardedLocalUrl: string): string | null
-  getSession(id: string): { state: { setPreviewPort(port: number | null): void } } | undefined
+  getPreviewPathForSession(sessionId: string): string | null
+  getSession(id: string): { state: { setPreview(port: number | null, path: string | null): void } } | undefined
+}
+
+function requestModule(protocol: string) {
+  return protocol === "https:" ? https : http
 }
 
 function createHttpServer(cfg: PreviewServerConfig, handler: http.RequestListener): http.Server {
@@ -37,7 +42,7 @@ export class NodePreviewProvider implements PreviewProvider {
   setPreviewTarget(forwardedLocalUrl: string): void {
     const previewTarget = this.server.setPreviewTarget(this.sessionId, forwardedLocalUrl)
     console.log(`🔗  Preview proxy: :${this.cfg.previewPort} → ${previewTarget} (session ${this.sessionId})`)
-    this.server.getSession(this.sessionId)?.state.setPreviewPort(this.cfg.previewPort)
+    this.server.getSession(this.sessionId)?.state.setPreview(this.cfg.previewPort, this.server.getPreviewPathForSession(this.sessionId))
   }
 }
 
@@ -64,15 +69,24 @@ export function createPreviewServer(server: PreviewServerRuntime, cfg: PreviewSe
     }
 
     try {
-      const targetUrl = server.previewTarget + (req.url || "/")
-      const parsed = new URL(targetUrl)
+      const parsed = new URL(server.previewTarget)
+      const requestUrl = req.url || "/"
+      const previewPath = `${parsed.pathname || "/"}${parsed.search || ""}` || "/"
+      if ((requestUrl === "/" || requestUrl === "") && previewPath !== "/") {
+        res.writeHead(307, { Location: previewPath })
+        res.end()
+        return
+      }
+
+      const targetPath = requestUrl === "/" || requestUrl === "" ? previewPath : requestUrl
       const options: http.RequestOptions = {
         hostname: parsed.hostname,
         port: parsed.port,
-        path: parsed.pathname + parsed.search,
+        path: targetPath,
         method: req.method,
         headers: { ...req.headers, host: parsed.host },
       }
+      const proxyModule = requestModule(parsed.protocol)
 
       const chunks: Buffer[] = []
       req.on("data", (c: Buffer) => chunks.push(c))
@@ -81,7 +95,7 @@ export function createPreviewServer(server: PreviewServerRuntime, cfg: PreviewSe
         const RETRY_DELAY = 2000
 
         const attempt = () => {
-          const proxyReq = http.request(options, (proxyRes) => {
+          const proxyReq = proxyModule.request(options, (proxyRes) => {
             res.writeHead(proxyRes.statusCode || 502, proxyRes.headers)
             proxyRes.pipe(res)
           })
@@ -113,18 +127,18 @@ export function createPreviewServer(server: PreviewServerRuntime, cfg: PreviewSe
 
     try {
       const parsed = new URL(server.previewTarget)
-      const targetWs = `ws://${parsed.hostname}:${parsed.port}${req.url || "/"}`
-      const wsTarget = new URL(targetWs)
+      const targetPath = req.url && req.url !== "/" ? req.url : `${parsed.pathname || "/"}${parsed.search || ""}` || "/"
+      const proxyModule = requestModule(parsed.protocol)
 
       const options: http.RequestOptions = {
-        hostname: wsTarget.hostname,
-        port: wsTarget.port,
-        path: wsTarget.pathname + wsTarget.search,
+        hostname: parsed.hostname,
+        port: parsed.port,
+        path: targetPath,
         method: "GET",
-        headers: { ...req.headers, host: wsTarget.host },
+        headers: { ...req.headers, host: parsed.host },
       }
 
-      const proxyReq = http.request(options)
+      const proxyReq = proxyModule.request(options)
 
       proxyReq.on("upgrade", (_proxyRes, proxySocket, proxyHead) => {
         socket.write(

@@ -147,6 +147,8 @@ function summarizeToolInfo(tool: ToolCard) {
         case "grep":
         case "GrepTool":
             return firstString(tool.args, ["pattern", "query", "include"]);
+        case "user_watch_terminal":
+            return firstString(tool.args, ["content"]) || compactInlineText(tool.title);
         case "bash":
         case "Bash":
             return firstString(tool.args, ["command", "description"]) || compactInlineText(tool.title);

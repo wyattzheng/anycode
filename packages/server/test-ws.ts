@@ -8,7 +8,7 @@ ws.on("open", () => {
   setTimeout(() => {
     ws.send(JSON.stringify({
       type: "chat.send",
-      message: 'Use the terminal_write tool to create a terminal, then use terminal_write to send "echo hello" to it. Report the result of each tool call.'
+      message: 'Use the user_watch_terminal tool to send "echo hello" to the shared terminal visible in the user UI. Report the result of each tool call.'
     }))
     console.log("[WS] Sent chat.send\n")
   }, 500)

@@ -5,10 +5,9 @@
  * Spawned by the Codex CLI as a stdio MCP server.
  * Communicates with the parent AnyCode server via TCP (port from ANYCODE_MCP_PORT env).
  *
- * Exposes 4 custom tools matching the AnyCode extraTools:
+ * Exposes 3 custom tools matching the AnyCode extraTools:
  *   - set_user_watch_project
- *   - terminal_write
- *   - terminal_read
+ *   - user_watch_terminal
  *   - set_preview_url
  *
  * Implements MCP protocol (JSON-RPC 2.0 over stdio) directly, no external deps.
@@ -30,26 +29,16 @@ const TOOLS = [
     },
   },
   {
-    name: "terminal_write",
-    description: "Write input to a persistent shared terminal visible to the user.\n\nUse for long-running processes (dev servers). For simple commands, prefer the built-in shell.\n\n- \"create\": Spawn a new terminal\n- \"destroy\": Kill the terminal\n- \"input\": Send text (requires content)",
+    name: "user_watch_terminal",
+    description: "Send input to the persistent shared terminal that the user can watch in the UI, optionally waiting and reading output.\n\nUse this for long-running or stateful shell sessions such as dev servers, REPLs, or interactive prompts. For simple one-shot commands, prefer the built-in shell.",
     inputSchema: {
       type: "object",
       properties: {
-        type: { type: "string", enum: ["input", "create", "destroy"] },
-        content: { type: "string", description: "Text to send. Required for type=input." },
-        pressEnter: { type: "boolean", description: "Press Enter after input. Default: true." },
-      },
-      required: ["type"],
-    },
-  },
-  {
-    name: "terminal_read",
-    description: "Read terminal output from the bottom of the buffer.\n\nReturns the last N lines from the shared user terminal.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        length: { type: "number", description: "Lines to read from bottom." },
-        waitBefore: { type: "number", description: "Ms to wait before reading. Max 5000." },
+        content: { type: "string", description: "Text to send to the terminal. Omit to just read output." },
+        pressEnter: { type: "boolean", description: "Whether to press Enter after the input. Default: true." },
+        reset: { type: "boolean", description: "If true, recreate the terminal before sending input." },
+        waitMs: { type: "number", description: "Milliseconds to wait before reading output. Max 5000." },
+        readLines: { type: "number", description: "Number of lines to read from the bottom after waiting. Default: 50." },
       },
     },
   },
@@ -59,9 +48,9 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        url: { type: "string", description: "Full URL (http:// or https://) to preview." },
+        forwarded_local_url: { type: "string", description: "Full local URL (http:// or https://) to preview through the proxy." },
       },
-      required: ["url"],
+      required: ["forwarded_local_url"],
     },
   },
 ]

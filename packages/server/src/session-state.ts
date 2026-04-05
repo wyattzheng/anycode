@@ -122,6 +122,7 @@ export class SessionStateModel {
   topLevel: any[] = []
   changes: any[] = []
   previewPort: number | null = null
+  previewPath: string | null = null
   chatBusy = false
   contextUsed = 0
   compactionThreshold = 0
@@ -142,8 +143,10 @@ export class SessionStateModel {
     }
 
     const expectedPort = this.server.getPreviewPortForSession(this.sessionId)
-    if (this.previewPort !== expectedPort) {
+    const expectedPath = this.server.getPreviewPathForSession(this.sessionId)
+    if (this.previewPort !== expectedPort || this.previewPath !== expectedPath) {
       this.previewPort = expectedPort
+      this.previewPath = expectedPath
     }
 
     if (this.isComputing) {
@@ -179,9 +182,10 @@ export class SessionStateModel {
     }
   }
 
-  setPreviewPort(port: number | null) {
-    if (this.previewPort !== port) {
+  setPreview(port: number | null, path: string | null) {
+    if (this.previewPort !== port || this.previewPath !== path) {
       this.previewPort = port
+      this.previewPath = path
       this.notify()
     }
   }
@@ -208,6 +212,7 @@ export class SessionStateModel {
       topLevel: this.topLevel,
       changes: this.changes,
       previewPort: this.previewPort,
+      previewPath: this.previewPath,
       chatBusy: this.chatBusy,
       contextUsed: this.contextUsed,
       compactionThreshold: this.compactionThreshold,
@@ -217,7 +222,7 @@ export class SessionStateModel {
   notify() {
     const json = JSON.stringify(this.toJSON())
     const clients = this.server.getSessionClients(this.sessionId)
-    console.log(`📤  SessionStateModel(${this.sessionId}): dir="${this.directory}", topLevel=${this.topLevel.length} entries, changes=${this.changes.length}, previewPort=${this.previewPort}, clients=${clients.size}`)
+    console.log(`📤  SessionStateModel(${this.sessionId}): dir="${this.directory}", topLevel=${this.topLevel.length} entries, changes=${this.changes.length}, previewPort=${this.previewPort}, previewPath=${this.previewPath}, clients=${clients.size}`)
     for (const client of clients) {
       if (client.readyState === WS.OPEN) client.send(json)
     }
