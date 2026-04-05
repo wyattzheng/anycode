@@ -55,11 +55,24 @@ export interface ProviderRuntimeInput {
 export interface VendorApiKeyResolveInput {
   apiKey: string
   agent?: string
+  oauth?: VendorOAuthState | null
 }
 
 export interface VendorApiKeyResolveResult {
   apiKey: string
   persistedApiKey?: string
+  persistedOAuth?: VendorOAuthState | null
+}
+
+export interface VendorOAuthState {
+  provider: string
+  accessToken?: string
+  refreshToken?: string
+  idToken?: string
+  expiresAt?: string
+  clientId?: string
+  scope?: string
+  updatedAt?: string
 }
 
 export interface VendorQuotaWindow {
@@ -88,6 +101,7 @@ export interface VendorQuotaInput {
   agent?: string
   model?: string
   baseUrl?: string
+  oauth?: VendorOAuthState | null
 }
 
 export interface VendorTransform {
@@ -133,6 +147,7 @@ export interface VendorOAuthExchangeInput {
 
 export interface VendorOAuthExchangeResult {
   apiKey: string
+  oauth?: VendorOAuthState | null
 }
 
 export interface VendorOAuth {

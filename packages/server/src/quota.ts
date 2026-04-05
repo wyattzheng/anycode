@@ -1,188 +1,118 @@
 import { createHash } from "crypto"
-import { VendorRegistry } from "@any-code/provider"
-import { normalizeString, type AccountSettings } from "@any-code/settings"
+import { VendorRegistry, type VendorOAuthState } from "@any-code/provider"
+import { type AccountSettings } from "@any-code/settings"
 
-interface AccountQuotaCacheEntry<T> {
+type AccountQuotaAccount = Pick<AccountSettings, "id" | "AGENT" | "PROVIDER" | "MODEL" | "API_KEY" | "BASE_URL" | "OAUTH">
+
+interface AccountQuotaEntry {
   signature: string
   expiresAt: number
-  value: T
+  value: unknown
 }
 
-interface AccountQuotaRefreshEntry {
-  signature: string
-  promise: Promise<void>
-}
+export class AccountQuotaManager {
+  private readonly entries = new Map<string, AccountQuotaEntry>()
+  private readonly refreshes = new Map<string, Promise<void>>()
+  private readonly persistCredentials?: (accountId: string, credentials: { apiKey?: string; oauth?: VendorOAuthState | null }) => void | Promise<void>
 
-export interface AccountQuotaCacheReadResult<T> {
-  value: T
-  stale: boolean
-}
-
-export interface AccountQuotaCacheGetOptions<T> {
-  fallbackValue: T
-  loader: () => Promise<T>
-  onError?: (phase: "load" | "refresh", error: unknown) => void
-}
-
-export interface AccountQuotaCacheGetManyOptions<Item, T> {
-  getKey: (item: Item) => string
-  getSignature: (item: Item) => string
-  getFallbackValue: (item: Item) => T
-  loader: (item: Item) => Promise<T>
-  onError?: (item: Item, phase: "load" | "refresh", error: unknown) => void
-}
-
-export class AccountQuotaCache<T> {
-  readonly entries = new Map<string, AccountQuotaCacheEntry<T>>()
-  readonly refreshes = new Map<string, AccountQuotaRefreshEntry>()
-
-  constructor(readonly ttlMs: number) {}
+  constructor(
+    private readonly ttlMs: number,
+    options: { persistCredentials?: (accountId: string, credentials: { apiKey?: string; oauth?: VendorOAuthState | null }) => void | Promise<void> } = {},
+  ) {
+    this.persistCredentials = options.persistCredentials
+  }
 
   clear() {
     this.entries.clear()
     this.refreshes.clear()
   }
 
-  prune(activeAccountIds: Iterable<string>) {
-    const active = new Set(activeAccountIds)
-    for (const accountId of this.entries.keys()) {
-      if (active.has(accountId)) continue
-      this.entries.delete(accountId)
-    }
-    for (const accountId of this.refreshes.keys()) {
-      if (active.has(accountId)) continue
-      this.refreshes.delete(accountId)
-    }
+  async getForAccounts(accounts: AccountQuotaAccount[]) {
+    const activeIds = new Set(accounts.map((account) => account.id))
+    for (const accountId of this.entries.keys()) if (!activeIds.has(accountId)) this.entries.delete(accountId)
+    for (const accountId of this.refreshes.keys()) if (!activeIds.has(accountId)) this.refreshes.delete(accountId)
+
+    const quotas: Record<string, unknown> = {}
+    for (const account of accounts) quotas[account.id] = await this.get(account)
+    return quotas
   }
 
-  read(accountId: string, signature: string): AccountQuotaCacheReadResult<T> | null {
-    const entry = this.entries.get(accountId)
-    if (!entry || entry.signature !== signature) return null
-    return {
-      value: entry.value,
-      stale: entry.expiresAt <= Date.now(),
-    }
-  }
-
-  set(accountId: string, signature: string, value: T) {
-    this.entries.set(accountId, {
-      signature,
-      expiresAt: Date.now() + this.ttlMs,
-      value,
-    })
-  }
-
-  async getOrLoad(accountId: string, signature: string, options: AccountQuotaCacheGetOptions<T>): Promise<T> {
-    const cached = this.read(accountId, signature)
-    if (cached) {
-      if (cached.stale) {
-        this.refreshInBackground(accountId, signature, options.loader, (error) => {
-          options.onError?.("refresh", error)
-        })
-      }
+  private async get(account: AccountQuotaAccount) {
+    const signature = this.signature(account)
+    const cached = this.entries.get(account.id)
+    if (cached?.signature === signature) {
+      if (cached.expiresAt <= Date.now()) this.refresh(account, signature)
       return cached.value
     }
-
-    try {
-      const value = await options.loader()
-      this.set(accountId, signature, value)
-      return value
-    } catch (error) {
-      options.onError?.("load", error)
-      this.set(accountId, signature, options.fallbackValue)
-      return options.fallbackValue
-    }
+    return this.load(account, signature, null, "load")
   }
 
-  async getMany<Item>(items: Iterable<Item>, options: AccountQuotaCacheGetManyOptions<Item, T>) {
-    const list = Array.from(items)
-    this.prune(list.map((item) => options.getKey(item)))
-
-    const result: Record<string, T> = {}
-    for (const item of list) {
-      const accountId = options.getKey(item)
-      const signature = options.getSignature(item)
-      result[accountId] = await this.getOrLoad(accountId, signature, {
-        fallbackValue: options.getFallbackValue(item),
-        loader: () => options.loader(item),
-        onError: (phase, error) => {
-          options.onError?.(item, phase, error)
-        },
+  private refresh(account: AccountQuotaAccount, signature: string) {
+    if (this.refreshes.has(account.id)) return
+    const promise = this.load(account, signature, this.entries.get(account.id)?.value ?? null, "refresh")
+      .then(() => undefined)
+      .finally(() => {
+        if (this.refreshes.get(account.id) === promise) this.refreshes.delete(account.id)
       })
-    }
-    return result
+    this.refreshes.set(account.id, promise)
   }
 
-  refreshInBackground(accountId: string, signature: string, loader: () => Promise<T>, onError?: (error: unknown) => void) {
-    const current = this.refreshes.get(accountId)
-    if (current?.signature === signature) return
-
-    let promise!: Promise<void>
-    promise = (async () => {
-      try {
-        const value = await loader()
-        const entry = this.entries.get(accountId)
-        if (!entry || entry.signature !== signature) return
-        this.set(accountId, signature, value)
-      } catch (error) {
-        onError?.(error)
-      } finally {
-        const active = this.refreshes.get(accountId)
-        if (active?.promise === promise) {
-          this.refreshes.delete(accountId)
-        }
+  private async load(account: AccountQuotaAccount, signature: string, fallbackValue: unknown, phase: "load" | "refresh") {
+    try {
+      const apiKey = account.API_KEY
+      if (!apiKey) {
+        console.warn(`⚠  Skipping quota load for account ${account.id}: missing API key`)
+        this.entries.set(account.id, { signature, expiresAt: Date.now() + this.ttlMs, value: null })
+        return null
       }
-    })()
 
-    this.refreshes.set(accountId, { signature, promise })
-  }
-}
+      const vendor = VendorRegistry.getVendorProvider({ id: account.PROVIDER })
+      const resolved = await vendor.resolveApiKey({
+        apiKey,
+        agent: account.AGENT,
+        oauth: account.OAUTH ?? null,
+      })
+      const persistedApiKey = typeof resolved.persistedApiKey === "string" ? resolved.persistedApiKey.trim() : ""
+      if (persistedApiKey || resolved.persistedOAuth) {
+        await this.persistCredentials?.(account.id, {
+          ...(persistedApiKey ? { apiKey: persistedApiKey } : {}),
+          ...(resolved.persistedOAuth ? { oauth: resolved.persistedOAuth } : {}),
+        })
+      }
 
-type AccountQuotaAccount = Pick<AccountSettings, "id" | "AGENT" | "PROVIDER" | "MODEL" | "API_KEY" | "BASE_URL">
-
-export class AccountQuotaManager {
-  readonly cache: AccountQuotaCache<unknown>
-
-  constructor(ttlMs: number) {
-    this.cache = new AccountQuotaCache<unknown>(ttlMs)
-  }
-
-  clear() {
-    this.cache.clear()
-  }
-
-  async getForAccounts(accounts: AccountQuotaAccount[]) {
-    return this.cache.getMany(accounts, {
-      getKey: (account) => account.id,
-      getSignature: (account) => this.getSignature(account),
-      getFallbackValue: () => null,
-      loader: (account) => this.load(account),
-      onError: (account, phase, error) => {
-        console.warn(`⚠  Failed to ${phase} quota for account ${account.id}:`, error)
-      },
-    })
-  }
-
-  private async load(account: AccountQuotaAccount) {
-    const apiKey = normalizeString(account.API_KEY)
-    if (!apiKey) return null
-    return VendorRegistry.getVendorProvider({ id: account.PROVIDER }).getQuota({
-      apiKey,
-      agent: normalizeString(account.AGENT),
-      model: normalizeString(account.MODEL),
-      baseUrl: normalizeString(account.BASE_URL),
-    })
+      const quota = await vendor.getQuota({
+        apiKey: persistedApiKey || apiKey,
+        agent: account.AGENT,
+        model: account.MODEL,
+        baseUrl: account.BASE_URL,
+        oauth: resolved.persistedOAuth ?? account.OAUTH ?? null,
+      })
+      if (!quota) {
+        console.warn(`⚠  Quota provider returned null for account ${account.id}`, {
+          agent: account.AGENT,
+          provider: account.PROVIDER,
+          model: account.MODEL,
+        })
+      }
+      this.entries.set(account.id, { signature, expiresAt: Date.now() + this.ttlMs, value: quota })
+      return quota
+    } catch (error) {
+      console.warn(`⚠  Failed to ${phase} quota for account ${account.id}:`, error)
+      if (phase === "refresh") return fallbackValue
+      this.entries.set(account.id, { signature, expiresAt: Date.now() + this.ttlMs, value: fallbackValue })
+      return fallbackValue
+    }
   }
 
-  private getSignature(account: AccountQuotaAccount) {
-    const raw = [
+  private signature(account: AccountQuotaAccount) {
+    return createHash("sha1").update([
       account.id,
-      normalizeString(account.AGENT),
-      normalizeString(account.PROVIDER),
-      normalizeString(account.MODEL),
-      normalizeString(account.API_KEY),
-      normalizeString(account.BASE_URL),
-    ].join("\u0000")
-    return createHash("sha1").update(raw).digest("hex")
+      account.AGENT,
+      account.PROVIDER,
+      account.MODEL,
+      account.API_KEY,
+      account.BASE_URL ?? "",
+      JSON.stringify(account.OAUTH ?? null),
+    ].join("\u0000")).digest("hex")
   }
 }

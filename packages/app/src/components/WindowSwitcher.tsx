@@ -1,16 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-    createUniqueAccountName,
+    AccountsManager,
     DEFAULT_REASONING_EFFORT,
-    getDefaultBaseUrlForProvider,
-    getDefaultModelForProvider,
-    getDuplicateAccountName,
-    getForcedProviderForAgent,
-    getOAuthUiForProvider,
-    getProviderBrandVendor,
-    getProviderOptionsForAgent,
     REASONING_EFFORT_OPTIONS,
-    normalizeProviderForAgent,
+    type AccountSettings,
 } from "@any-code/settings/shared";
 import { GearIcon, CloseIcon, ChevronIcon, PlusIcon, VendorIcon, hasVendorIcon } from "./Icons";
 import { getApiBase, getServerUrl, setServerUrl } from "../server-url";
@@ -24,16 +17,7 @@ export interface WindowInfo {
     createdAt: number;
 }
 
-interface AccountInfo {
-    id: string;
-    name: string;
-    AGENT: string;
-    PROVIDER: string;
-    MODEL: string;
-    REASONING_EFFORT: string;
-    API_KEY: string;
-    BASE_URL?: string;
-}
+type AccountInfo = AccountSettings;
 
 interface SettingsResponse {
     accounts: AccountInfo[];
@@ -50,11 +34,13 @@ interface OAuthStartResponse {
 interface OAuthSessionResponse {
     status: "pending" | "success" | "error";
     apiKey?: string;
+    oauth?: AccountInfo["OAUTH"] | null;
     error?: string;
 }
 
-interface ApiKeyNormalizationResponse {
+interface ApiKeyResolveResponse {
     apiKey: string;
+    oauth?: AccountInfo["OAUTH"] | null;
 }
 
 interface AccountQuotaWindowInfo {
@@ -114,34 +100,18 @@ function windowLabel(w: WindowInfo): string {
     return w.isDefault ? "默认" : "新窗口";
 }
 
-function createAccount(existingAccounts: AccountInfo[]): AccountInfo {
-    const provider = normalizeProviderForAgent("anycode", undefined);
-    return {
-        id: typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-            ? crypto.randomUUID()
-            : `account-${Date.now()}`,
-        name: createUniqueAccountName("新账号", existingAccounts),
-        AGENT: "anycode",
-        PROVIDER: provider,
-        MODEL: getDefaultModelForProvider(provider),
-        REASONING_EFFORT: DEFAULT_REASONING_EFFORT,
-        API_KEY: "",
-        BASE_URL: getDefaultBaseUrlForProvider(provider),
-    };
-}
-
-function normalizeValue(value: string | undefined) {
+function trimmedValue(value: string | undefined) {
     return value?.trim() || "";
 }
 
 function getAccountValidationError(account: AccountInfo | null | undefined, existingAccounts: AccountInfo[]) {
     if (!account) return "账号信息不存在";
-    if (!normalizeValue(account.name)) return "请填写账号名称";
-    if (!normalizeValue(account.AGENT)) return "请填写 AGENT";
-    if (!normalizeValue(account.PROVIDER)) return "请填写 PROVIDER";
-    if (!normalizeValue(account.MODEL)) return "请填写 MODEL";
-    if (!normalizeValue(account.API_KEY)) return "请填写 API_KEY";
-    const duplicateAccountName = getDuplicateAccountName([...existingAccounts, account]);
+    if (!trimmedValue(account.name)) return "请填写账号名称";
+    if (!trimmedValue(account.AGENT)) return "请填写 AGENT";
+    if (!trimmedValue(account.PROVIDER)) return "请填写 PROVIDER";
+    if (!trimmedValue(account.MODEL)) return "请填写 MODEL";
+    if (!trimmedValue(account.API_KEY)) return "请填写 API_KEY";
+    const duplicateAccountName = AccountsManager.getDuplicateName([...existingAccounts, account]);
     if (duplicateAccountName) return `账号名称 "${duplicateAccountName}" 已存在`;
     return null;
 }
@@ -313,20 +283,28 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
             : (accounts.find((account) => account.id === selectedAccountId) ?? null),
         [accounts, draftAccount, isEditingDraft, selectedAccountId],
     );
+    const accountsManager = useMemo(
+        () => new AccountsManager({
+            accounts,
+            currentAccountId,
+            hasExplicitCurrentAccount: true,
+        }),
+        [accounts, currentAccountId],
+    );
     const draftAccountValidationError = useMemo(
         () => isEditingDraft ? getAccountValidationError(selectedAccount, accounts) : null,
         [accounts, isEditingDraft, selectedAccount],
     );
-    const selectedAccountForcedProvider = selectedAccount ? getForcedProviderForAgent(selectedAccount.AGENT) : null;
+    const selectedAccountForcedProvider = selectedAccount ? AccountsManager.getForcedProviderForAgent(selectedAccount.AGENT) : null;
     const selectedAccountProviderOptions = useMemo(() => {
         if (!selectedAccount) return [];
-        const options = getProviderOptionsForAgent(selectedAccount.AGENT);
+        const options = AccountsManager.getProviderOptionsForAgent(selectedAccount.AGENT);
         const currentProvider = selectedAccount.PROVIDER.trim();
         return currentProvider && !options.includes(currentProvider)
             ? [...options, currentProvider]
             : options;
     }, [selectedAccount]);
-    const selectedAccountOAuth = selectedAccount ? getOAuthUiForProvider(selectedAccount.PROVIDER) : null;
+    const selectedAccountOAuth = selectedAccount ? AccountsManager.getOAuthUiForProvider(selectedAccount.PROVIDER) : null;
 
     useEffect(() => {
         accountsRef.current = accounts;
@@ -408,16 +386,7 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
     }, [fetchAccountQuotas, fetchSettings]);
 
     const sanitizeAccounts = useCallback((items: AccountInfo[]) => (
-        items.map((account) => ({
-            ...account,
-            name: account.name.trim(),
-            AGENT: account.AGENT.trim(),
-            PROVIDER: normalizeProviderForAgent(account.AGENT, account.PROVIDER),
-            MODEL: account.MODEL.trim(),
-            REASONING_EFFORT: account.REASONING_EFFORT.trim() || DEFAULT_REASONING_EFFORT,
-            API_KEY: account.API_KEY.trim(),
-            BASE_URL: account.BASE_URL?.trim() || "",
-        }))
+        items.map((account, index) => AccountsManager.materializeAccount(account, index) as AccountInfo)
     ), []);
 
     const persistSettings = useCallback(async (
@@ -429,7 +398,7 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
         setError("");
         try {
             const sanitizedAccounts = sanitizeAccounts(nextAccounts);
-            const duplicateAccountName = getDuplicateAccountName(sanitizedAccounts);
+            const duplicateAccountName = AccountsManager.getDuplicateName(sanitizedAccounts);
             if (duplicateAccountName) {
                 throw new Error(`Account name "${duplicateAccountName}" already exists`);
             }
@@ -497,18 +466,23 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
 
     const handleSelectedAgentChange = (nextAgent: string) => {
         if (!selectedAccount) return;
-        const nextProvider = normalizeProviderForAgent(nextAgent, selectedAccount.PROVIDER);
+        const nextProvider = AccountsManager.resolveProviderForAgent(nextAgent, selectedAccount.PROVIDER);
         updateSelectedAccount({
             AGENT: nextAgent,
             PROVIDER: nextProvider,
-            MODEL: getDefaultModelForProvider(nextProvider),
-            BASE_URL: getDefaultBaseUrlForProvider(nextProvider),
+            MODEL: AccountsManager.getDefaultModelForProvider(nextProvider),
+            BASE_URL: AccountsManager.getDefaultBaseUrlForProvider(nextProvider),
+            OAUTH: undefined,
         });
     };
 
     const handleAddAccount = () => {
         setError("");
-        setDraftAccount(createAccount(accounts));
+        setDraftAccount(accountsManager.create({
+            name: AccountsManager.createUniqueName("新账号", accounts),
+            AGENT: "anycode",
+            REASONING_EFFORT: DEFAULT_REASONING_EFFORT,
+        }) as AccountInfo);
         setSelectedAccountId(null);
         setEditingAccountId(DRAFT_ACCOUNT_ID);
     };
@@ -625,12 +599,16 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                 body: JSON.stringify({
                     apiKey: callbackUrl,
                     agent: selectedAccount.AGENT,
+                    oauth: selectedAccount.OAUTH ?? null,
                 }),
             });
-            const data = await readResponseJson<ApiKeyNormalizationResponse>(res);
+            const data = await readResponseJson<ApiKeyResolveResponse>(res);
             if (!res.ok || data.error) throw createApiError(res, data, `HTTP ${res.status}`);
 
-            updateSelectedAccount({ API_KEY: data.apiKey });
+            updateSelectedAccount({
+                API_KEY: data.apiKey,
+                OAUTH: data.oauth ?? undefined,
+            });
             setManualOAuthPrompt(null);
             setManualOAuthCallbackUrl("");
             setOauthNotice("已完成转换，保存后会按当前账号语义应用。");
@@ -644,7 +622,7 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
 
     const handleAgentOAuthLogin = useCallback(async () => {
         if (!selectedAccount) return;
-        const oauthConfig = getOAuthUiForProvider(selectedAccount.PROVIDER);
+        const oauthConfig = AccountsManager.getOAuthUiForProvider(selectedAccount.PROVIDER);
         if (!oauthConfig) return;
 
         const accountId = selectedAccount.id;
@@ -688,11 +666,12 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                     return;
                 }
                 const apiKey = data.apiKey;
+                const oauth = data.oauth ?? undefined;
 
                 if (draftAccountRef.current?.id === accountId) {
                     setDraftAccount((prev) => (
                         prev && prev.id === accountId
-                            ? { ...prev, API_KEY: apiKey }
+                            ? { ...prev, API_KEY: apiKey, OAUTH: oauth }
                             : prev
                     ));
                     return;
@@ -700,7 +679,7 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
 
                 const nextAccounts = accountsRef.current.map((account) => (
                     account.id === accountId
-                        ? { ...account, API_KEY: apiKey }
+                        ? { ...account, API_KEY: apiKey, OAUTH: oauth }
                         : account
                 ));
 
@@ -858,8 +837,9 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                                                 const nextProvider = e.target.value;
                                                 updateSelectedAccount({
                                                     PROVIDER: nextProvider,
-                                                    MODEL: getDefaultModelForProvider(nextProvider),
-                                                    BASE_URL: getDefaultBaseUrlForProvider(nextProvider),
+                                                    MODEL: AccountsManager.getDefaultModelForProvider(nextProvider),
+                                                    BASE_URL: AccountsManager.getDefaultBaseUrlForProvider(nextProvider),
+                                                    OAUTH: undefined,
                                                 });
                                             }}
                                             disabled={Boolean(selectedAccountForcedProvider)}
@@ -913,7 +893,10 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                                         className="settings-input"
                                         type="text"
                                         value={selectedAccount.API_KEY}
-                                        onChange={(e) => updateSelectedAccount({ API_KEY: e.target.value })}
+                                        onChange={(e) => updateSelectedAccount({
+                                            API_KEY: e.target.value,
+                                            OAUTH: undefined,
+                                        })}
                                         placeholder="输入 API Key 或 OAuth 回调地址"
                                         autoCapitalize="off"
                                         autoCorrect="off"
@@ -1014,7 +997,7 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                         ) : (
                             <div className="settings-account-list">
                                 {accounts.length > 0 ? accounts.map((account) => {
-                                    const brandVendor = getProviderBrandVendor(account.PROVIDER);
+                                    const brandVendor = AccountsManager.getProviderBrandVendor(account.PROVIDER);
                                     const quota = accountQuotas[account.id] ?? null;
                                     const quotaStatus = getQuotaStatus(quota);
                                     const quotaLabel = getQuotaLabel(quota);

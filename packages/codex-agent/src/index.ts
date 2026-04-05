@@ -15,16 +15,16 @@ import { consoleLogger, type IChatAgent, type ChatAgentEvent, type ChatAgentConf
 
 export type { IChatAgent, ChatAgentEvent, ChatAgentConfig }
 
-function normalizeString(value: unknown): string | undefined {
+function toTrimmedString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined
 }
 
 function decodeJwtPayload(token: string | undefined): Record<string, any> | undefined {
-  const normalized = normalizeString(token)
-  if (!normalized) return undefined
+  const tokenValue = toTrimmedString(token)
+  if (!tokenValue) return undefined
 
   try {
-    const [, payload] = normalized.split(".")
+    const [, payload] = tokenValue.split(".")
     if (!payload) return undefined
     return JSON.parse(Buffer.from(payload, "base64url").toString("utf8"))
   } catch {
@@ -36,11 +36,11 @@ function extractOpenAIAccountId(idToken: string | undefined, accessToken: string
   const payloads = [decodeJwtPayload(idToken), decodeJwtPayload(accessToken)]
 
   for (const payload of payloads) {
-    const direct = normalizeString(payload?.account_id)
+    const direct = toTrimmedString(payload?.account_id)
     if (direct) return direct
 
     const auth = payload?.["https://api.openai.com/auth"]
-    const nested = normalizeString(auth?.chatgpt_account_id)
+    const nested = toTrimmedString(auth?.chatgpt_account_id)
     if (nested) return nested
   }
 
@@ -192,7 +192,7 @@ export class CodexAgent implements IChatAgent {
         const threadOptions = {
           model: this.config.model || "o4-mini",
           ...(this._workingDirectory ? { workingDirectory: this._workingDirectory } : {}),
-          ...(normalizeString(this.config.reasoningEffort) ? { modelReasoningEffort: normalizeString(this.config.reasoningEffort) as "minimal" | "low" | "medium" | "high" | "xhigh" } : {}),
+          ...(toTrimmedString(this.config.reasoningEffort) ? { modelReasoningEffort: toTrimmedString(this.config.reasoningEffort) as "minimal" | "low" | "medium" | "high" | "xhigh" } : {}),
           approvalPolicy: "never",
           sandboxMode: "danger-full-access",
           skipGitRepoCheck: true,
@@ -337,7 +337,7 @@ export class CodexAgent implements IChatAgent {
             const err = (event as any).error
             yield {
               type: "error" as const,
-              error: normalizeString(err?.message) ?? "Turn failed",
+              error: toTrimmedString(err?.message) ?? "Turn failed",
             }
             break
           }
@@ -373,7 +373,7 @@ export class CodexAgent implements IChatAgent {
       } else {
         yield {
           type: "error" as const,
-          error: normalizeString(err?.message) ?? String(err),
+          error: toTrimmedString(err?.message) ?? String(err),
         }
       }
     }

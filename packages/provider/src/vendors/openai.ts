@@ -2,8 +2,10 @@ import { createOpenAI } from "@ai-sdk/openai"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import type { ModelMessage } from "ai"
 import { createHash, randomBytes } from "node:crypto"
+import { consoleLogger } from "@any-code/utils"
 import { openAIVendorMetadata } from "./metadata"
-import type { VendorProvider } from "./types"
+import { OAuthTokenState } from "./oauth-state"
+import type { VendorOAuthState, VendorProvider } from "./types"
 
 const OPENAI_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 const OPENAI_OAUTH_AUTHORIZATION_ENDPOINT = "https://auth.openai.com/oauth/authorize"
@@ -14,6 +16,8 @@ const OPENAI_OAUTH_SCOPES = "openid profile email offline_access api.connectors.
 const OPENAI_OAUTH_REFRESH_SCOPES = "openid profile email"
 const OPENAI_OAUTH_ORIGINATOR = "Codex Desktop"
 const OPENAI_OAUTH_USER_AGENT = "codex-cli/0.91.0"
+const OPENAI_ACCESS_TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000
+const OPENAI_REFRESH_IN_FLIGHT = new Map<string, Promise<Record<string, any>>>()
 
 function createPkceVerifier() {
   return randomBytes(64).toString("hex")
@@ -23,7 +27,7 @@ function createPkceChallenge(codeVerifier: string) {
   return createHash("sha256").update(codeVerifier).digest("base64url")
 }
 
-function normalizeString(value: unknown) {
+function toTrimmedString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined
 }
 
@@ -37,8 +41,8 @@ function encodeOpenAIOAuthState(params: { state: string, codeVerifier: string })
 function decodeOpenAIOAuthState(value: string) {
   try {
     const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8"))
-    const state = normalizeString(parsed?.state)
-    const codeVerifier = normalizeString(parsed?.codeVerifier)
+    const state = toTrimmedString(parsed?.state)
+    const codeVerifier = toTrimmedString(parsed?.codeVerifier)
     if (!state || !codeVerifier) return undefined
     return { state, codeVerifier }
   } catch {
@@ -54,13 +58,13 @@ function encodeOpenAIOAuthCallbackApiKey(params: { redirectUri: string, code: st
 }
 
 function parseOpenAIOAuthCallbackApiKey(apiKey: string) {
-  const normalized = normalizeString(apiKey)
-  if (!normalized || !/^https?:\/\//i.test(normalized)) return undefined
+  const callbackUrl = toTrimmedString(apiKey)
+  if (!callbackUrl || !/^https?:\/\//i.test(callbackUrl)) return undefined
 
   try {
-    const url = new URL(normalized)
-    const code = normalizeString(url.searchParams.get("code"))
-    const state = normalizeString(url.searchParams.get("state"))
+    const url = new URL(callbackUrl)
+    const code = toTrimmedString(url.searchParams.get("code"))
+    const state = toTrimmedString(url.searchParams.get("state"))
     if (!code || !state) return undefined
 
     const payload = decodeOpenAIOAuthState(state)
@@ -89,17 +93,82 @@ function parseOpenAIOAuthApiKey(apiKey: string) {
 }
 
 function parseOpenAIRefreshToken(apiKey: string) {
-  const normalized = normalizeString(apiKey)
-  if (!normalized || !normalized.startsWith("rt_")) return undefined
-  return normalized
+  const refreshToken = toTrimmedString(apiKey)
+  if (!refreshToken || !refreshToken.startsWith("rt_")) return undefined
+  return refreshToken
 }
 
-function getOpenAIOAuthAccessToken(apiKey: string) {
-  return parseOpenAIOAuthApiKey(apiKey)?.accessToken
+function getOpenAIAccessTokenExpiry(accessToken: string, idToken?: string) {
+  return decodeJwtExpiration(accessToken) ?? (idToken ? decodeJwtExpiration(idToken) : undefined)
 }
 
-function encodeOpenAIOAuthApiKey(tokens: { accessToken: string, refreshToken?: string, idToken?: string }) {
+function encodeOpenAIRuntimeApiKey(tokens: { accessToken: string, refreshToken?: string, idToken?: string }) {
   return `oauth:${tokens.accessToken}:${tokens.refreshToken ?? ""}:${tokens.idToken ?? ""}`
+}
+
+function createOpenAIOAuthState(
+  tokens: { accessToken: string, refreshToken?: string, idToken?: string, scope?: string, expiresInSeconds?: number },
+  previous?: VendorOAuthState | null,
+) {
+  const expiresAt = tokens.expiresInSeconds != null
+    ? new Date(Date.now() + tokens.expiresInSeconds * 1000).toISOString()
+    : (
+      getOpenAIAccessTokenExpiry(tokens.accessToken, tokens.idToken)
+        ? new Date(getOpenAIAccessTokenExpiry(tokens.accessToken, tokens.idToken)!).toISOString()
+        : previous?.expiresAt
+    )
+  const state = new OAuthTokenState("openai", {
+    ...previous,
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken ?? previous?.refreshToken,
+    idToken: tokens.idToken ?? previous?.idToken,
+    ...(expiresAt ? { expiresAt } : {}),
+    clientId: previous?.clientId ?? OPENAI_OAUTH_CLIENT_ID,
+    scope: tokens.scope ?? previous?.scope ?? OPENAI_OAUTH_SCOPES,
+    updatedAt: new Date().toISOString(),
+  })
+  return state
+}
+
+function createOpenAIRuntimeApiKey(state: OAuthTokenState | VendorOAuthState) {
+  const value = state instanceof OAuthTokenState ? state.value : state
+  if (!value.accessToken) return ""
+  return encodeOpenAIRuntimeApiKey({
+    accessToken: value.accessToken,
+    refreshToken: value.refreshToken,
+    idToken: value.idToken,
+  })
+}
+
+function createLegacyOpenAIOAuthState(apiKey: string) {
+  const tokens = parseOpenAIOAuthApiKey(apiKey)
+  if (!tokens?.accessToken) return null
+  return createOpenAIOAuthState({
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    idToken: tokens.idToken,
+  })
+}
+
+function getOpenAIApiKeyKind(apiKey: string, oauth?: VendorOAuthState | null) {
+  if (OAuthTokenState.from("openai", oauth)) return "oauth-state"
+  if (parseOpenAIOAuthCallbackApiKey(apiKey)) return "callback-url"
+  if (parseOpenAIRefreshToken(apiKey)) return "refresh-token"
+  if (parseOpenAIOAuthApiKey(apiKey)) return "oauth-runtime"
+  if (toTrimmedString(apiKey)) return "plain"
+  return "empty"
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) return error.message
+  if (error && typeof error === "object") {
+    try {
+      return JSON.stringify(error)
+    } catch {
+      return Object.prototype.toString.call(error)
+    }
+  }
+  return String(error)
 }
 
 function readNumber(value: unknown) {
@@ -137,7 +206,7 @@ function mapOpenAIQuotaResult(raw: any) {
   const rateLimit = raw.rate_limit && typeof raw.rate_limit === "object" ? raw.rate_limit : raw.rate_limits
   const primary = mapOpenAIQuotaWindow(rateLimit?.primary_window ?? rateLimit?.primary)
   const secondary = mapOpenAIQuotaWindow(rateLimit?.secondary_window ?? rateLimit?.secondary)
-  const planType = normalizeString(raw.plan_type ?? rateLimit?.plan_type)
+  const planType = toTrimmedString(raw.plan_type ?? rateLimit?.plan_type)
   const creditsRaw = rateLimit?.credits
   const credits = creditsRaw && typeof creditsRaw === "object"
     ? {
@@ -146,7 +215,7 @@ function mapOpenAIQuotaResult(raw: any) {
       ...(readNumber(creditsRaw.balance) != null ? { balance: readNumber(creditsRaw.balance) ?? null } : {}),
     }
     : null
-  const updatedAt = normalizeString(raw.updated_at) ?? new Date().toISOString()
+  const updatedAt = toTrimmedString(raw.updated_at) ?? new Date().toISOString()
 
   if (!primary && !secondary && !planType && !credits) return null
 
@@ -181,20 +250,56 @@ async function exchangeOpenAIToken(params: Record<string, string>) {
   })
 
   const text = await res.text()
+  const contentType = res.headers.get("content-type") ?? ""
+  const snippet = text.trim().slice(0, 240)
   let data: Record<string, any> = {}
   if (text) {
     try {
       data = JSON.parse(text)
-    } catch {
+    } catch (error) {
+      consoleLogger.warn("[OpenAIProvider] oauth token response parse failed", {
+        status: res.status,
+        contentType,
+        snippet,
+        error: getErrorMessage(error),
+      })
       throw new Error(text || `OAuth token exchange failed (${res.status})`)
     }
   }
 
   if (!res.ok) {
-    throw new Error(String(data.error_description || data.error || text || `OAuth token exchange failed (${res.status})`))
+    const errorMessage = toTrimmedString(data.error_description)
+      ?? toTrimmedString(data.error?.message)
+      ?? toTrimmedString(data.error)
+      ?? (text || `OAuth token exchange failed (${res.status})`)
+    consoleLogger.warn("[OpenAIProvider] oauth token exchange failed", {
+      status: res.status,
+      contentType,
+      body: data,
+      snippet,
+      grantType: params.grant_type,
+    })
+    throw new Error(errorMessage)
   }
 
   return data
+}
+
+async function exchangeOpenAIRefreshToken(params: Record<string, string>) {
+  const refreshToken = toTrimmedString(params.refresh_token)
+  if (!refreshToken) return exchangeOpenAIToken(params)
+
+  const cacheKey = `${toTrimmedString(params.client_id) ?? OPENAI_OAUTH_CLIENT_ID}\u0000${refreshToken}`
+  const existing = OPENAI_REFRESH_IN_FLIGHT.get(cacheKey)
+  if (existing) return existing
+
+  const promise = exchangeOpenAIToken(params).finally(() => {
+    if (OPENAI_REFRESH_IN_FLIGHT.get(cacheKey) === promise) {
+      OPENAI_REFRESH_IN_FLIGHT.delete(cacheKey)
+    }
+  })
+  OPENAI_REFRESH_IN_FLIGHT.set(cacheKey, promise)
+  return promise
 }
 
 async function fetchOpenAICodexUsage(accessToken: string) {
@@ -209,22 +314,93 @@ async function fetchOpenAICodexUsage(accessToken: string) {
   })
 
   const text = await res.text()
+  const contentType = res.headers.get("content-type") ?? ""
+  const snippet = text.trim().slice(0, 240)
   if (!res.ok) {
+    consoleLogger.warn("[OpenAIProvider] quota usage request failed", {
+      status: res.status,
+      contentType,
+      snippet,
+    })
     throw new Error(text || `Failed to fetch Codex usage (${res.status})`)
   }
-  if (!text.trim()) return null
+  if (!text.trim()) {
+    consoleLogger.warn("[OpenAIProvider] quota usage response empty")
+    return null
+  }
   if (text.trim().startsWith("<")) {
+    consoleLogger.warn("[OpenAIProvider] quota usage response was HTML", {
+      contentType,
+      snippet,
+    })
     throw new Error("Codex usage endpoint returned HTML instead of JSON")
   }
 
-  return mapOpenAIQuotaResult(JSON.parse(text))
+  let parsed: any
+  try {
+    parsed = JSON.parse(text)
+  } catch (error) {
+    consoleLogger.warn("[OpenAIProvider] quota usage response parse failed", {
+      contentType,
+      snippet,
+      error: getErrorMessage(error),
+    })
+    throw error
+  }
+
+  const result = mapOpenAIQuotaResult(parsed)
+  if (!result) {
+    consoleLogger.warn("[OpenAIProvider] quota usage response mapped to null", {
+      keys: parsed && typeof parsed === "object" ? Object.keys(parsed).slice(0, 12) : [],
+    })
+  }
+  return result
 }
 
 async function resolveOpenAIOAuthTokens(
   apiKey: string,
-  options: { allowCodeExchange?: boolean } = {},
+  options: { allowCodeExchange?: boolean, oauth?: VendorOAuthState | null } = {},
 ) {
   const allowCodeExchange = options.allowCodeExchange !== false
+  const oauthState = OAuthTokenState.from("openai", options.oauth)
+  if (oauthState?.isAccessTokenFresh(OPENAI_ACCESS_TOKEN_REFRESH_BUFFER_MS) && oauthState.accessToken) {
+    return {
+      accessToken: oauthState.accessToken,
+      refreshToken: oauthState.refreshToken,
+      idToken: oauthState.idToken,
+      runtimeApiKey: createOpenAIRuntimeApiKey(oauthState),
+      oauth: oauthState,
+    }
+  }
+
+  if (oauthState?.refreshToken) {
+    const data = await exchangeOpenAIRefreshToken({
+      grant_type: "refresh_token",
+      client_id: oauthState.value.clientId ?? OPENAI_OAUTH_CLIENT_ID,
+      refresh_token: oauthState.refreshToken,
+      scope: OPENAI_OAUTH_REFRESH_SCOPES,
+    })
+    const accessToken = toTrimmedString(data.access_token)
+    if (!accessToken) {
+      throw new Error("OpenAI OAuth refresh completed but no access token was returned.")
+    }
+    const nextState = createOpenAIOAuthState({
+      accessToken,
+      refreshToken: toTrimmedString(data.refresh_token) ?? oauthState.refreshToken,
+      idToken: toTrimmedString(data.id_token) ?? oauthState.idToken,
+      scope: toTrimmedString(data.scope),
+      expiresInSeconds: readNumber(data.expires_in),
+    }, oauthState.value)
+    return {
+      accessToken: nextState.accessToken,
+      refreshToken: nextState.refreshToken,
+      idToken: nextState.idToken,
+      runtimeApiKey: createOpenAIRuntimeApiKey(nextState),
+      oauth: nextState,
+      persistedOAuth: nextState.toJSON(),
+    }
+  }
+
   const callback = parseOpenAIOAuthCallbackApiKey(apiKey)
   if (callback) {
     if (!allowCodeExchange) return null
@@ -237,9 +413,9 @@ async function resolveOpenAIOAuthTokens(
       code_verifier: callback.codeVerifier,
     })
 
-    const accessToken = typeof data.access_token === "string" ? data.access_token.trim() : ""
-    const refreshToken = typeof data.refresh_token === "string" ? data.refresh_token.trim() : ""
-    const idToken = typeof data.id_token === "string" ? data.id_token.trim() : ""
+    const accessToken = toTrimmedString(data.access_token) ?? ""
+    const refreshToken = toTrimmedString(data.refresh_token) ?? ""
+    const idToken = toTrimmedString(data.id_token) ?? ""
 
     if (!accessToken) {
       throw new Error("OpenAI OAuth completed but no access token was returned.")
@@ -248,83 +424,99 @@ async function resolveOpenAIOAuthTokens(
       throw new Error("OpenAI OAuth completed but no refresh token was returned.")
     }
 
-    return {
+    const nextState = createOpenAIOAuthState({
       accessToken,
       refreshToken,
       idToken,
-      runtimeApiKey: encodeOpenAIOAuthApiKey({ accessToken, refreshToken, idToken }),
-      persistedApiKey: refreshToken,
+      scope: toTrimmedString(data.scope),
+      expiresInSeconds: readNumber(data.expires_in),
+    })
+
+    return {
+      accessToken: nextState.accessToken,
+      refreshToken: nextState.refreshToken,
+      idToken: nextState.idToken,
+      runtimeApiKey: createOpenAIRuntimeApiKey(nextState),
+      oauth: nextState,
+      persistedOAuth: nextState.toJSON(),
     }
   }
 
   const refreshToken = parseOpenAIRefreshToken(apiKey)
   if (refreshToken) {
-    const data = await exchangeOpenAIToken({
+    const data = await exchangeOpenAIRefreshToken({
       grant_type: "refresh_token",
       client_id: OPENAI_OAUTH_CLIENT_ID,
       refresh_token: refreshToken,
       scope: OPENAI_OAUTH_REFRESH_SCOPES,
     })
 
-    const accessToken = typeof data.access_token === "string" ? data.access_token.trim() : ""
+    const accessToken = toTrimmedString(data.access_token) ?? ""
     if (!accessToken) {
       throw new Error("OpenAI OAuth refresh completed but no access token was returned.")
     }
 
-    const nextRefreshToken = typeof data.refresh_token === "string" ? data.refresh_token.trim() : refreshToken
-    const idToken = typeof data.id_token === "string" ? data.id_token.trim() : ""
-
-    return {
+    const nextState = createOpenAIOAuthState({
       accessToken,
-      refreshToken: nextRefreshToken,
-      idToken,
-      runtimeApiKey: encodeOpenAIOAuthApiKey({
-        accessToken,
-        refreshToken: nextRefreshToken,
-        idToken,
-      }),
-      ...(nextRefreshToken !== refreshToken ? { persistedApiKey: nextRefreshToken } : {}),
-    }
-  }
+      refreshToken: toTrimmedString(data.refresh_token) ?? refreshToken,
+      idToken: toTrimmedString(data.id_token),
+      scope: toTrimmedString(data.scope),
+      expiresInSeconds: readNumber(data.expires_in),
+    })
 
-  const tokens = parseOpenAIOAuthApiKey(apiKey)
-  if (!tokens?.refreshToken) return null
-
-  const expiration = decodeJwtExpiration(tokens.accessToken)
-  if (expiration && expiration > Date.now() + 5 * 60 * 1000) {
     return {
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      idToken: tokens.idToken,
-      runtimeApiKey: apiKey,
+      accessToken: nextState.accessToken,
+      refreshToken: nextState.refreshToken,
+      idToken: nextState.idToken,
+      runtimeApiKey: createOpenAIRuntimeApiKey(nextState),
+      oauth: nextState,
+      persistedOAuth: nextState.toJSON(),
     }
   }
 
-  const data = await exchangeOpenAIToken({
+  const legacyState = createLegacyOpenAIOAuthState(apiKey)
+  if (!legacyState?.accessToken) return null
+
+  if (legacyState.isAccessTokenFresh(OPENAI_ACCESS_TOKEN_REFRESH_BUFFER_MS)) {
+    return {
+      accessToken: legacyState.accessToken,
+      refreshToken: legacyState.refreshToken,
+      idToken: legacyState.idToken,
+      runtimeApiKey: createOpenAIRuntimeApiKey(legacyState),
+      oauth: legacyState,
+      persistedOAuth: legacyState.toJSON(),
+    }
+  }
+
+  if (!legacyState.refreshToken) return null
+
+  const data = await exchangeOpenAIRefreshToken({
     grant_type: "refresh_token",
     client_id: OPENAI_OAUTH_CLIENT_ID,
-    refresh_token: tokens.refreshToken,
+    refresh_token: legacyState.refreshToken,
     scope: OPENAI_OAUTH_REFRESH_SCOPES,
   })
 
-  const accessToken = typeof data.access_token === "string" ? data.access_token.trim() : ""
+  const accessToken = toTrimmedString(data.access_token) ?? ""
   if (!accessToken) {
     throw new Error("OpenAI OAuth refresh completed but no access token was returned.")
   }
 
-  const nextRefreshToken = typeof data.refresh_token === "string" ? data.refresh_token.trim() : tokens.refreshToken
-  const idToken = typeof data.id_token === "string" ? data.id_token.trim() : tokens.idToken
+  const nextState = createOpenAIOAuthState({
+    accessToken,
+    refreshToken: toTrimmedString(data.refresh_token) ?? legacyState.refreshToken,
+    idToken: toTrimmedString(data.id_token) ?? legacyState.idToken,
+    scope: toTrimmedString(data.scope),
+    expiresInSeconds: readNumber(data.expires_in),
+  }, legacyState.value)
 
   return {
-    accessToken,
-    refreshToken: nextRefreshToken,
-    idToken,
-    runtimeApiKey: encodeOpenAIOAuthApiKey({
-      accessToken,
-      refreshToken: nextRefreshToken,
-      idToken,
-    }),
-    ...(nextRefreshToken !== tokens.refreshToken ? { persistedApiKey: nextRefreshToken } : {}),
+    accessToken: nextState.accessToken,
+    refreshToken: nextState.refreshToken,
+    idToken: nextState.idToken,
+    runtimeApiKey: createOpenAIRuntimeApiKey(nextState),
+    oauth: nextState,
+    persistedOAuth: nextState.toJSON(),
   }
 }
 
@@ -364,21 +556,55 @@ export const openAIVendor: VendorProvider = {
       }
     },
   },
-  async resolveApiKey({ apiKey, agent }) {
-    const resolved = await resolveOpenAIOAuthTokens(apiKey, { allowCodeExchange: true })
+  async resolveApiKey({ apiKey, agent, oauth }) {
+    const resolved = await resolveOpenAIOAuthTokens(apiKey, {
+      allowCodeExchange: true,
+      oauth,
+    })
     if (!resolved) return { apiKey }
 
     return {
       apiKey: agent === "codex"
         ? resolved.runtimeApiKey
-        : (getOpenAIOAuthAccessToken(resolved.runtimeApiKey) ?? resolved.runtimeApiKey),
-      ...(resolved.persistedApiKey ? { persistedApiKey: resolved.persistedApiKey } : {}),
+        : resolved.accessToken,
+      ...(resolved.persistedOAuth ? { persistedOAuth: resolved.persistedOAuth } : {}),
     }
   },
-  async getQuota({ apiKey }) {
-    const resolved = await resolveOpenAIOAuthTokens(apiKey, { allowCodeExchange: false })
-    if (!resolved?.accessToken) return null
-    return fetchOpenAICodexUsage(resolved.accessToken)
+  async getQuota({ apiKey, oauth }) {
+    const apiKeyKind = getOpenAIApiKeyKind(apiKey, oauth)
+    consoleLogger.info("[OpenAIProvider] quota fetch start", { apiKeyKind })
+
+    let resolved: Awaited<ReturnType<typeof resolveOpenAIOAuthTokens>>
+    try {
+      resolved = await resolveOpenAIOAuthTokens(apiKey, {
+        allowCodeExchange: false,
+        oauth,
+      })
+    } catch (error) {
+      consoleLogger.warn("[OpenAIProvider] quota token resolution failed", {
+        apiKeyKind,
+        error: getErrorMessage(error),
+      })
+      throw error
+    }
+
+    if (!resolved?.accessToken) {
+      consoleLogger.warn("[OpenAIProvider] quota unavailable because no access token could be resolved", {
+        apiKeyKind,
+      })
+      return null
+    }
+
+    const quota = await fetchOpenAICodexUsage(resolved.accessToken)
+    if (quota) {
+      consoleLogger.info("[OpenAIProvider] quota fetch success", {
+        apiKeyKind,
+        hasPrimary: Boolean(quota.primary),
+        hasSecondary: Boolean(quota.secondary),
+        planType: quota.planType ?? null,
+      })
+    }
+    return quota
   },
   npms: ["@ai-sdk/openai", "@ai-sdk/openai-compatible"],
   bundled: {

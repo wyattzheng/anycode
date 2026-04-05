@@ -29,8 +29,8 @@ import { TerminalTool } from "./tool-terminal-write"
 import { SetPreviewUrlTool } from "./tool-set-preview-url"
 import { WebSocketServer, WebSocket as WS } from "ws"
 import { SqlJsStorage, NodeFS, NodeSearchProvider, consoleLogger } from "@any-code/utils"
-import { getDuplicateAccountName, SettingsModel, SettingsStore, normalizeString, type UserSettingsFile } from "@any-code/settings"
-import { VendorRegistry } from "@any-code/provider"
+import { AccountsManager, SettingsModel, SettingsStore, type UserSettingsFile } from "@any-code/settings"
+import { VendorRegistry, type VendorOAuthState } from "@any-code/provider"
 import { createChatAgent, type IChatAgent } from "./chat-agent"
 import { adminHTML } from "./admin"
 import { computeFileDiff, type DirEntry, getGitChanges, listDir } from "./filesystem"
@@ -55,6 +55,8 @@ const API_ERROR_CODES = {
 } as const
 const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000
 const ACCOUNT_QUOTA_CACHE_TTL_MS = 10 * 1000
+
+const text = (value: unknown) => typeof value === "string" ? value.trim() : ""
 
 interface ServerConfig {
   provider: string
@@ -164,6 +166,7 @@ interface OAuthSessionRecord {
   createdAt: number
   status: "pending" | "success" | "error"
   apiKey?: string
+  oauth?: VendorOAuthState | null
   exchangeData?: Record<string, string>
   error?: string
 }
@@ -171,10 +174,12 @@ interface OAuthSessionRecord {
 interface RuntimeConfigResolution {
   config: ServerConfig
   persistedApiKey?: string
+  persistedOAuth?: VendorOAuthState | null
 }
 
-interface ApiKeyNormalizationResult {
+interface ApiKeyResolveResult {
   apiKey: string
+  oauth?: VendorOAuthState | null
 }
 
 function createAgentConfig(server: AnyCodeServer, cfg: ServerConfig, directory: string, resumeToken?: string, terminal?: TerminalProvider, preview?: PreviewProvider) {
@@ -235,7 +240,7 @@ function createChatAgentConfig(server: AnyCodeServer, cfg: ServerConfig, directo
 }
 
 function getPreferredAgentType(agentType: string | undefined) {
-  return normalizeString(agentType) ?? "anycode"
+  return text(agentType) || "anycode"
 }
 
 function createNoAgentStore(server: AnyCodeServer, sessionId: string) {
@@ -268,7 +273,7 @@ function getPersistedNoAgentMessages(server: AnyCodeServer, sessionId: string, l
 }
 
 function mergeSessionHistoryMessages(noAgentMessages: NoAgentMessageRecord[], runtimeMessages: any[], limit: number) {
-  const normalizedNoAgent = noAgentMessages.map((message, index) => (
+  const persistedNoAgentMessages = noAgentMessages.map((message, index) => (
     message.role === "user"
       ? {
         id: `noagent-user-${index}`,
@@ -284,7 +289,7 @@ function mergeSessionHistoryMessages(noAgentMessages: NoAgentMessageRecord[], ru
       }
   ))
 
-  return [...normalizedNoAgent, ...(Array.isArray(runtimeMessages) ? runtimeMessages : [])]
+  return [...persistedNoAgentMessages, ...(Array.isArray(runtimeMessages) ? runtimeMessages : [])]
     .map((message, index) => ({
       ...message,
       id: typeof message?.id === "string" && message.id ? message.id : `merged-${index}`,
@@ -323,8 +328,11 @@ async function createSessionAgentBinding(
   }
 
   const runtimeResolution = await resolveRuntimeConfig(cfg)
-  if (runtimeResolution.persistedApiKey && runtimeResolution.persistedApiKey !== cfg.apiKey) {
-    server.persistCurrentAccountApiKey(runtimeResolution.persistedApiKey)
+  if (runtimeResolution.persistedApiKey || runtimeResolution.persistedOAuth) {
+    server.persistCurrentAccountCredentials({
+      ...(runtimeResolution.persistedApiKey ? { apiKey: runtimeResolution.persistedApiKey } : {}),
+      ...(runtimeResolution.persistedOAuth ? { oauth: runtimeResolution.persistedOAuth } : {}),
+    })
   }
   const runtimeCfg = runtimeResolution.config
   const chatAgent = await createChatAgent(runtimeCfg.agent, createChatAgentConfig(server, runtimeCfg, directory, terminal, preview, resumeToken))
@@ -372,23 +380,23 @@ function createApiError(message: string, code: string) {
 }
 
 function getFirstHeaderValue(value: string | string[] | undefined) {
-  if (Array.isArray(value)) return normalizeString(value[0])
+  if (Array.isArray(value)) return text(value[0]) || undefined
   if (typeof value !== "string") return undefined
-  return normalizeString(value.split(",")[0])
+  return text(value.split(",")[0]) || undefined
 }
 
-function normalizeForwardedToken(value: string | undefined) {
-  return normalizeString(value?.replace(/^"|"$/g, ""))
+function readForwardedToken(value: string | undefined) {
+  return text(value?.replace(/^"|"$/g, "")) || undefined
 }
 
 function getForwardedBaseUrl(req: http.IncomingMessage, cfg: ServerConfig) {
-  const forwarded = normalizeString(req.headers.forwarded)
+  const forwarded = text(req.headers.forwarded) || undefined
   if (forwarded) {
     const first = forwarded.split(",")[0] ?? ""
     const protoMatch = first.match(/(?:^|;)\s*proto=([^;]+)/i)
     const hostMatch = first.match(/(?:^|;)\s*host=([^;]+)/i)
-    const proto = normalizeForwardedToken(protoMatch?.[1])?.replace(/:$/, "")
-    const host = normalizeForwardedToken(hostMatch?.[1])
+    const proto = readForwardedToken(protoMatch?.[1])?.replace(/:$/, "")
+    const host = readForwardedToken(hostMatch?.[1])
     if (host && (proto === "http" || proto === "https")) {
       return `${proto}://${host}`
     }
@@ -409,24 +417,27 @@ function getForwardedBaseUrl(req: http.IncomingMessage, cfg: ServerConfig) {
 }
 
 async function resolveRuntimeConfig(cfg: ServerConfig): Promise<RuntimeConfigResolution> {
+  const currentAccount = new SettingsModel(cfg.userSettings).getCurrentAccount()
   const resolved = await VendorRegistry.getVendorProvider({ id: cfg.provider }).resolveApiKey({
     apiKey: cfg.apiKey,
     agent: cfg.agent,
-  }).catch((): { apiKey: string, persistedApiKey?: string } => ({ apiKey: cfg.apiKey }))
+    oauth: currentAccount?.OAUTH ?? null,
+  }).catch((): { apiKey: string, persistedApiKey?: string, persistedOAuth?: VendorOAuthState | null } => ({ apiKey: cfg.apiKey }))
   const runtimeCfg = resolved.apiKey === cfg.apiKey ? cfg : { ...cfg, apiKey: resolved.apiKey }
   return {
     config: runtimeCfg,
     ...(resolved.persistedApiKey && resolved.persistedApiKey !== cfg.apiKey
       ? { persistedApiKey: resolved.persistedApiKey }
       : {}),
+    ...(resolved.persistedOAuth ? { persistedOAuth: resolved.persistedOAuth } : {}),
   }
 }
 
-function normalizePublicBaseUrl(value: unknown) {
-  const normalized = normalizeString(value)
-  if (!normalized) return undefined
+function readPublicBaseUrl(value: unknown) {
+  const baseUrl = text(value)
+  if (!baseUrl) return undefined
   try {
-    const url = new URL(normalized)
+    const url = new URL(baseUrl)
     if (url.protocol !== "http:" && url.protocol !== "https:") return undefined
     if (url.hostname === "127.0.0.1" || url.hostname === "::1" || url.hostname === "[::1]" || url.hostname === "0.0.0.0") {
       url.hostname = "localhost"
@@ -438,13 +449,13 @@ function normalizePublicBaseUrl(value: unknown) {
 }
 
 function getRequestBaseUrl(req: http.IncomingMessage, cfg: ServerConfig) {
-  const fromOrigin = normalizePublicBaseUrl(req.headers.origin)
+  const fromOrigin = readPublicBaseUrl(req.headers.origin)
   if (fromOrigin) return fromOrigin
 
   const forwardedBaseUrl = getForwardedBaseUrl(req, cfg)
   if (forwardedBaseUrl) return forwardedBaseUrl
 
-  const referer = normalizeString(req.headers.referer)
+  const referer = text(req.headers.referer)
   if (referer) {
     try {
       return new URL(referer).origin
@@ -453,7 +464,7 @@ function getRequestBaseUrl(req: http.IncomingMessage, cfg: ServerConfig) {
     }
   }
 
-  const host = normalizeString(req.headers.host) ?? `localhost:${cfg.port}`
+  const host = text(req.headers.host) || `localhost:${cfg.port}`
   return `${cfg.tlsCert ? "https" : "http"}://${host}`
 }
 
@@ -703,7 +714,9 @@ export class AnyCodeServer {
   readonly previewProviders = new Map<string, NodePreviewProvider>()
   readonly oauthSessions = new Map<string, OAuthSessionRecord>()
   readonly oauthStateIndex = new Map<string, string>()
-  readonly accountQuota = new AccountQuotaManager(ACCOUNT_QUOTA_CACHE_TTL_MS)
+  readonly accountQuota = new AccountQuotaManager(ACCOUNT_QUOTA_CACHE_TTL_MS, {
+    persistCredentials: (accountId, credentials) => this.persistAccountCredentials(accountId, credentials),
+  })
 
   previewTarget: string | null = null
   previewSessionId: string | null = null
@@ -770,39 +783,67 @@ export class AnyCodeServer {
   }
 
   persistCurrentAccountApiKey(apiKey: string) {
-    const normalizedApiKey = normalizeString(apiKey)
-    if (!normalizedApiKey) return
-
     const settings = new SettingsModel(this.readUserSettingsFile())
     const currentAccount = settings.getCurrentAccount()
-    if (!currentAccount || normalizeString(currentAccount.API_KEY) === normalizedApiKey) return
+    if (!currentAccount) return
+    this.persistAccountCredentials(currentAccount.id, { apiKey })
+  }
+
+  persistCurrentAccountCredentials(credentials: { apiKey?: string; oauth?: VendorOAuthState | null }) {
+    const settings = new SettingsModel(this.readUserSettingsFile())
+    const currentAccount = settings.getCurrentAccount()
+    if (!currentAccount) return
+    this.persistAccountCredentials(currentAccount.id, credentials)
+  }
+
+  persistAccountCredentials(accountId: string, credentials: { apiKey?: string; oauth?: VendorOAuthState | null }) {
+    const hasApiKey = Object.prototype.hasOwnProperty.call(credentials, "apiKey")
+    const hasOAuth = Object.prototype.hasOwnProperty.call(credentials, "oauth")
+    const nextApiKey = typeof credentials.apiKey === "string" ? text(credentials.apiKey) : undefined
+    const nextOAuth = hasOAuth ? (credentials.oauth ?? undefined) : undefined
+
+    const settings = new SettingsModel(this.readUserSettingsFile())
+    const targetAccount = settings.accounts.find((account) => account.id === accountId)
+    if (!targetAccount) return
+
+    const apiKeyUnchanged = !hasApiKey || targetAccount.API_KEY === (nextApiKey ?? "")
+    const oauthUnchanged = !hasOAuth || JSON.stringify(targetAccount.OAUTH ?? null) === JSON.stringify(nextOAuth ?? null)
+    if (apiKeyUnchanged && oauthUnchanged) return
 
     const accounts = settings.accounts.map((account) => (
-      account.id === currentAccount.id
-        ? { ...account, API_KEY: normalizedApiKey }
+      account.id === accountId
+        ? {
+          ...account,
+          ...(hasApiKey ? { API_KEY: nextApiKey ?? "" } : {}),
+          ...(hasOAuth ? (nextOAuth ? { OAUTH: nextOAuth } : { OAUTH: undefined }) : {}),
+        }
         : account
     ))
     const saved = this.writeUserSettingsFile(settings.replaceAccounts(accounts, settings.currentAccountId).toJSON())
-    this.applySettingsToConfig(saved)
+    if (saved.currentAccountId === accountId) {
+      this.applySettingsToConfig(saved)
+    }
   }
 
-  async normalizeProviderApiKey(provider: string, apiKey: string, agent?: string): Promise<ApiKeyNormalizationResult> {
-    const normalizedProvider = normalizeString(provider)
-    const normalizedApiKey = normalizeString(apiKey)
-    if (!normalizedProvider) {
+  async resolveProviderApiKey(provider: string, apiKey: string, agent?: string, oauth?: VendorOAuthState | null): Promise<ApiKeyResolveResult> {
+    const providerId = text(provider)
+    const nextApiKey = text(apiKey)
+    if (!providerId) {
       throw createApiError("Provider is required", API_ERROR_CODES.INVALID_REQUEST)
     }
-    if (!normalizedApiKey) {
+    if (!nextApiKey) {
       throw createApiError("API key is required", API_ERROR_CODES.INVALID_REQUEST)
     }
 
-    const resolved = await VendorRegistry.getVendorProvider({ id: normalizedProvider }).resolveApiKey({
-      apiKey: normalizedApiKey,
-      agent: normalizeString(agent),
+    const resolved = await VendorRegistry.getVendorProvider({ id: providerId }).resolveApiKey({
+      apiKey: nextApiKey,
+      agent: text(agent) || undefined,
+      oauth: oauth ?? null,
     })
 
     return {
-      apiKey: normalizeString(resolved.persistedApiKey) ?? normalizedApiKey,
+      apiKey: text(resolved.persistedApiKey) || nextApiKey,
+      ...(resolved.persistedOAuth ? { oauth: resolved.persistedOAuth } : {}),
     }
   }
 
@@ -867,6 +908,7 @@ export class AnyCodeServer {
       sessionId: session.id,
       status: session.status,
       apiKey: session.apiKey,
+      ...(session.oauth ? { oauth: session.oauth } : {}),
       error: session.error,
     }
   }
@@ -885,7 +927,7 @@ export class AnyCodeServer {
   async completeProviderOAuth(provider: string, params: URLSearchParams) {
     this.cleanupOAuthSessions()
 
-    const state = normalizeString(params.get("state"))
+    const state = text(params.get("state"))
     if (!state) {
       return oauthCallbackHtml("登录失败", "OAuth state is missing.", true)
     }
@@ -896,9 +938,9 @@ export class AnyCodeServer {
       return oauthCallbackHtml("登录已失效", "This OAuth session was not found or has expired.", true)
     }
 
-    const deniedError = normalizeString(params.get("error"))
+    const deniedError = text(params.get("error"))
     if (deniedError) {
-      const description = normalizeString(params.get("error_description")) ?? deniedError
+      const description = text(params.get("error_description")) || deniedError
       session.status = "error"
       session.error = description
       return oauthCallbackHtml("登录未完成", description, true)
@@ -908,7 +950,7 @@ export class AnyCodeServer {
       return oauthCallbackHtml("登录成功", "You can return to AnyCode now.")
     }
 
-    const code = normalizeString(params.get("code"))
+    const code = text(params.get("code"))
     if (!code) {
       session.status = "error"
       session.error = "Authorization code is missing."
@@ -925,6 +967,7 @@ export class AnyCodeServer {
       })
       session.status = "success"
       session.apiKey = tokens.apiKey
+      session.oauth = tokens.oauth
       session.error = undefined
       return oauthCallbackHtml("登录成功", "Token has been captured. Return to AnyCode and continue.")
     } catch (error: any) {
@@ -937,7 +980,7 @@ export class AnyCodeServer {
   async completeProviderOAuthFromState(params: URLSearchParams) {
     this.cleanupOAuthSessions()
 
-    const state = normalizeString(params.get("state"))
+    const state = text(params.get("state"))
     if (!state) {
       return oauthCallbackHtml("登录失败", "OAuth state is missing.", true)
     }
@@ -1486,7 +1529,7 @@ function createMainServer(server: AnyCodeServer, cfg: ServerConfig): http.Server
     const oauthStartMatch = req.url?.match(/^\/api\/oauth\/([^/?]+)\/start$/)
     if (req.method === "POST" && oauthStartMatch) {
       const body = await readJsonBody(req)
-      const publicBaseUrl = normalizePublicBaseUrl(body.publicBaseUrl) ?? getRequestBaseUrl(req, cfg)
+      const publicBaseUrl = readPublicBaseUrl(body.publicBaseUrl) ?? getRequestBaseUrl(req, cfg)
       try {
         const oauth = server.startProviderOAuth(oauthStartMatch[1], publicBaseUrl)
         sendJson(res, 200, oauth)
@@ -1500,10 +1543,11 @@ function createMainServer(server: AnyCodeServer, cfg: ServerConfig): http.Server
     if (req.method === "POST" && providerApiKeyResolveMatch) {
       const body = await readJsonBody(req)
       try {
-        const result = await server.normalizeProviderApiKey(
+        const result = await server.resolveProviderApiKey(
           providerApiKeyResolveMatch[1],
           String(body.apiKey ?? ""),
-          normalizeString(body.agent),
+          text(body.agent) || undefined,
+          body.oauth && typeof body.oauth === "object" ? body.oauth as VendorOAuthState : null,
         )
         sendJson(res, 200, result)
       } catch (error) {
@@ -1557,15 +1601,17 @@ function createMainServer(server: AnyCodeServer, cfg: ServerConfig): http.Server
       const invalidAccount = rawAccounts.find((account: unknown) => (
         !account ||
         typeof account !== "object" ||
-        !normalizeString((account as Record<string, unknown>).name) ||
-        !normalizeString((account as Record<string, unknown>).AGENT) ||
-        !normalizeString((account as Record<string, unknown>).PROVIDER) ||
-        !normalizeString((account as Record<string, unknown>).MODEL)
+        !text((account as Record<string, unknown>).name) ||
+        !text((account as Record<string, unknown>).AGENT) ||
+        !text((account as Record<string, unknown>).PROVIDER) ||
+        !text((account as Record<string, unknown>).MODEL)
       ))
       if (invalidAccount) {
-        const invalidName = normalizeString((invalidAccount as Record<string, unknown>).name)
-          ?? normalizeString((invalidAccount as Record<string, unknown>).id)
-          ?? "unknown"
+        const invalidName = (
+          text((invalidAccount as Record<string, unknown>).name)
+          || text((invalidAccount as Record<string, unknown>).id)
+          || "unknown"
+        )
         sendJson(res, 400, {
           error: `Account "${invalidName}" is incomplete`,
           code: API_ERROR_CODES.SETTINGS_ACCOUNT_INCOMPLETE,
@@ -1573,7 +1619,7 @@ function createMainServer(server: AnyCodeServer, cfg: ServerConfig): http.Server
         return
       }
 
-      const duplicateAccountName = getDuplicateAccountName(rawAccounts as Array<Record<string, unknown>>)
+      const duplicateAccountName = AccountsManager.getDuplicateName(rawAccounts as Array<Record<string, unknown>>)
       if (duplicateAccountName) {
         sendJson(res, 400, {
           error: `Account name "${duplicateAccountName}" already exists`,

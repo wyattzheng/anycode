@@ -7,13 +7,9 @@ import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
 import { AnyCodeServer } from "@any-code/server";
 import {
+    AccountsManager,
     DEFAULT_REASONING_EFFORT,
-    getDefaultBaseUrlForProvider,
-    getDefaultModelForProvider,
     SettingsStore,
-    getForcedProviderForAgent,
-    getProviderOptionsForAgent,
-    normalizeProviderForAgent,
     type AccountSettings,
     type UserSettingsFile,
 } from "@any-code/settings";
@@ -134,16 +130,12 @@ async function ensureSettings(): Promise<Settings> {
         divider();
         blank();
         const name = await prompt(`  ${c.cyan}?${c.reset} ${c.bold}Account Name${c.reset} ${c.gray}(default account)${c.reset}: `);
-        account = {
+        account = AccountsManager.createAccount([], {
             id: randomUUID(),
             name: name || "默认账号",
             AGENT: "anycode",
-            PROVIDER: normalizeProviderForAgent("anycode", undefined),
-            MODEL: getDefaultModelForProvider(normalizeProviderForAgent("anycode", undefined)),
             REASONING_EFFORT: DEFAULT_REASONING_EFFORT,
-            BASE_URL: getDefaultBaseUrlForProvider(normalizeProviderForAgent("anycode", undefined)),
-            API_KEY: "",
-        };
+        });
         settings.accounts = [account];
         settings.currentAccountId = account.id;
         changed = true;
@@ -166,7 +158,7 @@ async function ensureSettings(): Promise<Settings> {
         changed = true;
     }
 
-    const forcedProvider = getForcedProviderForAgent(account.AGENT);
+    const forcedProvider = AccountsManager.getForcedProviderForAgent(account.AGENT);
     if (forcedProvider && account.PROVIDER !== forcedProvider) {
         account.PROVIDER = forcedProvider;
         changed = true;
@@ -180,9 +172,9 @@ async function ensureSettings(): Promise<Settings> {
             divider();
             blank();
         }
-        const providerOptions = getProviderOptionsForAgent(account.AGENT).join(", ");
+        const providerOptions = AccountsManager.getProviderOptionsForAgent(account.AGENT).join(", ");
         const val = await prompt(`  ${c.cyan}?${c.reset} ${c.bold}Provider${c.reset} ${c.gray}(${providerOptions})${c.reset}: `);
-        account.PROVIDER = normalizeProviderForAgent(account.AGENT, val);
+        account.PROVIDER = AccountsManager.resolveProviderForAgent(account.AGENT, val);
         changed = true;
     }
 
@@ -203,7 +195,7 @@ async function ensureSettings(): Promise<Settings> {
     }
 
     if (!account.MODEL) {
-        const defaultModel = getDefaultModelForProvider(account.PROVIDER);
+        const defaultModel = AccountsManager.getDefaultModelForProvider(account.PROVIDER);
         const val = await prompt(`  ${c.cyan}?${c.reset} ${c.bold}Model${c.reset} ${c.gray}(${defaultModel})${c.reset}: `);
         account.MODEL = val || defaultModel;
         changed = true;
@@ -215,7 +207,7 @@ async function ensureSettings(): Promise<Settings> {
     }
 
     if (account.BASE_URL === undefined) {
-        const defaultBaseUrl = getDefaultBaseUrlForProvider(account.PROVIDER);
+        const defaultBaseUrl = AccountsManager.getDefaultBaseUrlForProvider(account.PROVIDER);
         const promptText = defaultBaseUrl
             ? `  ${c.cyan}?${c.reset} ${c.bold}Base URL${c.reset} ${c.gray}(${defaultBaseUrl})${c.reset}: `
             : `  ${c.cyan}?${c.reset} ${c.bold}Base URL${c.reset} ${c.gray}(optional, Enter to skip)${c.reset}: `;

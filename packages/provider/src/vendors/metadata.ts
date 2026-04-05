@@ -91,14 +91,14 @@ const VENDOR_METADATA = [
   openAIVendorMetadata,
 ] satisfies VendorMetadata[]
 
-function normalizeVendorId(vendor: unknown) {
+function vendorId(vendor: unknown) {
   return typeof vendor === "string" ? vendor.trim().toLowerCase() : ""
 }
 
 export function getVendorMetadata(vendor: unknown): VendorMetadata | undefined {
-  const normalized = normalizeVendorId(vendor)
-  if (!normalized) return undefined
-  return VENDOR_METADATA.find((item) => item.id === normalized)
+  const id = vendorId(vendor)
+  if (!id) return undefined
+  return VENDOR_METADATA.find((item) => item.id === id)
 }
 
 export function getVendorDefaultModel(vendor: unknown): string | undefined {
@@ -110,8 +110,8 @@ export function getVendorDefaultBaseUrl(vendor: unknown): string | undefined {
 }
 
 export function getVendorBrandVendor(vendor: unknown): string | undefined {
-  const normalized = normalizeVendorId(vendor)
-  return (getVendorMetadata(vendor)?.getBrandVendor?.() ?? normalized) || undefined
+  const id = vendorId(vendor)
+  return (getVendorMetadata(vendor)?.getBrandVendor?.() ?? id) || undefined
 }
 
 export function getVendorOAuthUi(vendor: unknown): VendorOAuthUiConfig | undefined {
