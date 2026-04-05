@@ -13,7 +13,7 @@ When to call:
 
 IMPORTANT: If the project is newly created and has no git history, run \`git init\` in the project directory BEFORE calling this tool. The diff viewer and change tracking depend on git.
 
-The directory must be an absolute path to an existing directory. To switch projects, first call with null to clear, then call again with the new path.`,
+The directory must be an absolute path to an existing directory. Pass null only when the user explicitly wants to clear the current project from the UI.`,
   parameters: z.object({
     directory: z.string().nullable().describe("Absolute path to the project directory. Pass null to clear the current directory."),
   }),
@@ -29,11 +29,10 @@ The directory must be an absolute path to an existing directory. To switch proje
       }
     }
 
-    // Check if directory is already set
-    if (ctx.worktree && ctx.worktree !== "") {
+    if (ctx.worktree && ctx.worktree === dir) {
       return {
         title: "Already set",
-        output: `Working directory is already set to "${ctx.worktree}". You must first set it to null to clear it before setting a new one.`,
+        output: `Working directory is already set to "${ctx.worktree}".`,
         metadata: {},
       }
     }
@@ -52,12 +51,12 @@ The directory must be an absolute path to an existing directory. To switch proje
 
     // Emit tool event — server handler calls agent.setWorkingDirectory()
     ctx.emit("directory.set", { directory: dir })
+    const didSwitch = !!ctx.worktree && ctx.worktree !== ""
 
     return {
-      title: `Set directory: ${dir}`,
-      output: `Working directory set to "${dir}". The session is now configured to work on this project. The full development environment is now available.`,
+      title: `${didSwitch ? "Switched" : "Set"} directory: ${dir}`,
+      output: `${didSwitch ? "Working directory switched" : "Working directory set"} to "${dir}". The session is now configured to work on this project. The full development environment is now available.`,
       metadata: {},
     }
   },
 })
-

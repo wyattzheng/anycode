@@ -33,6 +33,7 @@ export interface ServerConfig {
   baseUrl: string
   port: number
   previewPort: number
+  previewPublicBaseUrl?: string
   appDist: string
   userSettings: Record<string, any>
   tlsCert?: string
@@ -51,6 +52,19 @@ function ensureDataPath(anycodeDir: string) {
   const dataPath = path.join(anycodeDir, "data")
   fs.mkdirSync(dataPath, { recursive: true })
   return dataPath
+}
+
+function readHttpBaseUrl(value: string | undefined) {
+  const baseUrl = typeof value === "string" ? value.trim() : ""
+  if (!baseUrl) return undefined
+  try {
+    const parsed = new URL(baseUrl)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return undefined
+    parsed.hash = ""
+    return parsed.origin + parsed.pathname.replace(/\/+$/, "")
+  } catch {
+    return undefined
+  }
 }
 
 class NodeShellProvider {
@@ -156,6 +170,12 @@ export class AnyCodeServer {
     return this.previewSessionId === sessionId && this.previewTarget ? this.cfg.previewPort : null
   }
 
+  getPreviewBaseUrlForSession(sessionId: string) {
+    return this.previewSessionId === sessionId && this.previewTarget
+      ? this.cfg.previewPublicBaseUrl ?? null
+      : null
+  }
+
   getPreviewPathForSession(sessionId: string) {
     if (this.previewSessionId !== sessionId || !this.previewTarget) return null
 
@@ -180,7 +200,7 @@ export class AnyCodeServer {
     }
     this.previewSessionId = sessionId
     if (previousSessionId && previousSessionId !== sessionId) {
-      this.getSession(previousSessionId)?.state.setPreview(null, null)
+      this.getSession(previousSessionId)?.state.setPreview(null, null, null)
     }
     return this.previewTarget
   }
@@ -189,6 +209,7 @@ export class AnyCodeServer {
     const runtime = this.settingsStore.read().resolveRuntime()
     const port = parseInt(process.env.PORT ?? "3210", 10)
     const previewPort = parseInt(process.env.PREVIEW_PORT ?? String(port + 1), 10)
+    const previewPublicBaseUrl = readHttpBaseUrl(process.env.PREVIEW_PUBLIC_URL ?? process.env.PUBLIC_PREVIEW_URL)
     if (!runtime.provider) {
       console.error("❌  Missing PROVIDER")
       process.exit(1)
@@ -208,6 +229,7 @@ export class AnyCodeServer {
       baseUrl: runtime.baseUrl,
       port,
       previewPort,
+      ...(previewPublicBaseUrl ? { previewPublicBaseUrl } : {}),
       appDist: resolveAppDist(),
       userSettings: runtime.userSettings,
       tlsCert,
@@ -332,6 +354,9 @@ export class AnyCodeServer {
 
     this.previewServer.listen(this.cfg.previewPort, host, () => {
       console.log(`👁  Preview proxy: ${proto}://${host}:${this.cfg.previewPort}`)
+      if (this.cfg.previewPublicBaseUrl) {
+        console.log(`👁  Preview public base: ${this.cfg.previewPublicBaseUrl}`)
+      }
     })
 
     this.mainServer.listen(this.cfg.port, host, () => {

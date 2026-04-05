@@ -122,6 +122,7 @@ export class SessionStateModel {
   topLevel: any[] = []
   changes: any[] = []
   previewPort: number | null = null
+  previewBaseUrl: string | null = null
   previewPath: string | null = null
   chatBusy = false
   contextUsed = 0
@@ -143,9 +144,11 @@ export class SessionStateModel {
     }
 
     const expectedPort = this.server.getPreviewPortForSession(this.sessionId)
+    const expectedBaseUrl = this.server.getPreviewBaseUrlForSession(this.sessionId)
     const expectedPath = this.server.getPreviewPathForSession(this.sessionId)
-    if (this.previewPort !== expectedPort || this.previewPath !== expectedPath) {
+    if (this.previewPort !== expectedPort || this.previewBaseUrl !== expectedBaseUrl || this.previewPath !== expectedPath) {
       this.previewPort = expectedPort
+      this.previewBaseUrl = expectedBaseUrl
       this.previewPath = expectedPath
     }
 
@@ -182,10 +185,11 @@ export class SessionStateModel {
     }
   }
 
-  setPreview(port: number | null, path: string | null) {
-    if (this.previewPort !== port || this.previewPath !== path) {
+  setPreview(port: number | null, path: string | null, baseUrl: string | null) {
+    if (this.previewPort !== port || this.previewPath !== path || this.previewBaseUrl !== baseUrl) {
       this.previewPort = port
       this.previewPath = path
+      this.previewBaseUrl = baseUrl
       this.notify()
     }
   }
@@ -212,6 +216,7 @@ export class SessionStateModel {
       topLevel: this.topLevel,
       changes: this.changes,
       previewPort: this.previewPort,
+      previewBaseUrl: this.previewBaseUrl,
       previewPath: this.previewPath,
       chatBusy: this.chatBusy,
       contextUsed: this.contextUsed,
@@ -222,7 +227,7 @@ export class SessionStateModel {
   notify() {
     const json = JSON.stringify(this.toJSON())
     const clients = this.server.getSessionClients(this.sessionId)
-    console.log(`📤  SessionStateModel(${this.sessionId}): dir="${this.directory}", topLevel=${this.topLevel.length} entries, changes=${this.changes.length}, previewPort=${this.previewPort}, previewPath=${this.previewPath}, clients=${clients.size}`)
+    console.log(`📤  SessionStateModel(${this.sessionId}): dir="${this.directory}", topLevel=${this.topLevel.length} entries, changes=${this.changes.length}, previewPort=${this.previewPort}, previewBaseUrl=${this.previewBaseUrl}, previewPath=${this.previewPath}, clients=${clients.size}`)
     for (const client of clients) {
       if (client.readyState === WS.OPEN) client.send(json)
     }

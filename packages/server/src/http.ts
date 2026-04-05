@@ -302,6 +302,7 @@ export function createMainServer(server: AnyCodeServer, cfg: ServerConfig) {
           topLevel,
           changes,
           previewPort: server.getPreviewPortForSession(session.id),
+          previewBaseUrl: server.getPreviewBaseUrlForSession(session.id),
           previewPath: server.getPreviewPathForSession(session.id),
         })
         return

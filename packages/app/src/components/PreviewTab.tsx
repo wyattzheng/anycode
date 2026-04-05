@@ -4,11 +4,18 @@ import "./PreviewTab.css";
 
 interface PreviewTabProps {
     previewPort: number | null;
+    previewBaseUrl: string | null;
     previewPath: string | null;
 }
 
-export function PreviewTab({ previewPort, previewPath }: PreviewTabProps) {
-    if (!previewPort) {
+function joinPreviewUrl(baseUrl: string, previewPath: string) {
+    const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+    const normalizedPath = previewPath.startsWith("/") ? previewPath.slice(1) : previewPath;
+    return new URL(normalizedPath || "", normalizedBase).toString();
+}
+
+export function PreviewTab({ previewPort, previewBaseUrl, previewPath }: PreviewTabProps) {
+    if (!previewBaseUrl && !previewPort) {
         return (
             <div className="preview-tab">
                 <div className="preview-empty">
@@ -19,19 +26,24 @@ export function PreviewTab({ previewPort, previewPath }: PreviewTabProps) {
         );
     }
 
-    // Use server URL's hostname if configured, otherwise use current hostname
-    const serverUrl = getServerUrl();
-    let hostname = location.hostname;
-    let protocol = location.protocol;
-    if (serverUrl) {
-        try {
-            const parsed = new URL(serverUrl);
-            hostname = parsed.hostname;
-            protocol = parsed.protocol;
-        } catch { /* use defaults */ }
-    }
     const path = previewPath && previewPath.trim() ? previewPath : "/";
-    const src = `${protocol}//${hostname}:${previewPort}${path.startsWith("/") ? path : `/${path}`}`;
+    let src = "";
+
+    if (previewBaseUrl) {
+        src = joinPreviewUrl(previewBaseUrl, path);
+    } else {
+        const serverUrl = getServerUrl();
+        let hostname = location.hostname;
+        let protocol = location.protocol;
+        if (serverUrl) {
+            try {
+                const parsed = new URL(serverUrl);
+                hostname = parsed.hostname;
+                protocol = parsed.protocol;
+            } catch { /* use defaults */ }
+        }
+        src = `${protocol}//${hostname}:${previewPort}${path.startsWith("/") ? path : `/${path}`}`;
+    }
 
     return (
         <div className="preview-tab">

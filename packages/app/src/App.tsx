@@ -79,6 +79,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
     const [changes, setChanges] = useState<GitChange[]>([]);
     const [fileContext, setFileContext] = useState<FileContext | null>(null);
     const [previewPort, setPreviewPort] = useState<number | null>(null);
+    const [previewBaseUrl, setPreviewBaseUrl] = useState<string | null>(null);
     const [previewPath, setPreviewPath] = useState<string | null>(null);
     const [previewNotify, setPreviewNotify] = useState(false);
     const [chatBusy, setChatBusy] = useState(false);
@@ -118,6 +119,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                         setPreviewPort(data.previewPort);
                         if (data.previewPort != null) setPreviewNotify(true);
                     }
+                    if (data.previewBaseUrl !== undefined) setPreviewBaseUrl(data.previewBaseUrl);
                     if (data.previewPath !== undefined) setPreviewPath(data.previewPath);
                     if (data.chatBusy !== undefined) setChatBusy(data.chatBusy);
                     if (data.contextUsed !== undefined) setContextUsed(data.contextUsed);
@@ -303,6 +305,7 @@ function WindowView({ sessionId, visible, onWindowsChanged }: WindowViewProps) {
                                 directory={directory}
                                 sessionId={sessionId}
                                 previewPort={previewPort}
+                                previewBaseUrl={previewBaseUrl}
                                 previewPath={previewPath}
                                 requestFile={requestFile}
                                 requestDiff={requestDiff}

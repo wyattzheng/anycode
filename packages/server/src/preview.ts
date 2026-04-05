@@ -14,8 +14,9 @@ export interface PreviewServerRuntime {
   previewProviders: Map<string, NodePreviewProvider>
   previewTarget: string | null
   setPreviewTarget(sessionId: string, forwardedLocalUrl: string): string | null
+  getPreviewBaseUrlForSession(sessionId: string): string | null
   getPreviewPathForSession(sessionId: string): string | null
-  getSession(id: string): { state: { setPreview(port: number | null, path: string | null): void } } | undefined
+  getSession(id: string): { state: { setPreview(port: number | null, path: string | null, baseUrl: string | null): void } } | undefined
 }
 
 function requestModule(protocol: string) {
@@ -42,7 +43,11 @@ export class NodePreviewProvider implements PreviewProvider {
   setPreviewTarget(forwardedLocalUrl: string): void {
     const previewTarget = this.server.setPreviewTarget(this.sessionId, forwardedLocalUrl)
     console.log(`🔗  Preview proxy: :${this.cfg.previewPort} → ${previewTarget} (session ${this.sessionId})`)
-    this.server.getSession(this.sessionId)?.state.setPreview(this.cfg.previewPort, this.server.getPreviewPathForSession(this.sessionId))
+    this.server.getSession(this.sessionId)?.state.setPreview(
+      this.cfg.previewPort,
+      this.server.getPreviewPathForSession(this.sessionId),
+      this.server.getPreviewBaseUrlForSession(this.sessionId),
+    )
   }
 }
 
