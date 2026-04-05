@@ -1,5 +1,8 @@
 import z from "zod"
 import { Tool } from "@any-code/agent"
+
+const PROJECT_REQUIRED_ERROR = "No watched project is set. Call set_user_watch_project with an absolute project directory before using user_watch_terminal."
+
 const DESCRIPTION = `Send input to the shared user terminal, optionally waiting and reading output.
 
 This tool interacts with a single shared terminal (PTY) that is also visible in the user's UI.
@@ -17,6 +20,7 @@ If no terminal exists, one is automatically created on the first call.
 - Use this tool when you need a **persistent, stateful shell session**, e.g. running a long-lived dev server for preview, interactive REPL, or commands that depend on prior shell state.
 
 ## Usage notes
+- Requires an active watched project. If no project is open in the UI yet, call set_user_watch_project first.
 - This is a user-watch terminal: the user can watch the same terminal session in the UI while you use it.
 - When answering interactive prompts (e.g. "Continue? [y/n]"), set pressEnter=false if the program reads single characters, or pressEnter=true if it expects a line.
 - To just read output without sending new input, omit content and set waitMs/readLines.
@@ -52,6 +56,9 @@ export const TerminalTool = Tool.define("user_watch_terminal", async () => {
         .optional(),
     }),
     async execute(params, ctx) {
+      const worktree = typeof ctx.worktree === "string" ? ctx.worktree.trim() : ""
+      if (!worktree) throw new Error(PROJECT_REQUIRED_ERROR)
+
       const terminal = ctx.terminal
 
       // Ensure terminal is running (auto-create if needed, reset if requested)

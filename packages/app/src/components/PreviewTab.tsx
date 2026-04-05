@@ -15,7 +15,7 @@ function joinPreviewUrl(baseUrl: string, previewPath: string) {
 }
 
 export function PreviewTab({ previewPort, previewBaseUrl, previewPath }: PreviewTabProps) {
-    if (!previewBaseUrl && !previewPort) {
+    if (!previewPort && !previewBaseUrl) {
         return (
             <div className="preview-tab">
                 <div className="preview-empty">
