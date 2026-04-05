@@ -482,6 +482,25 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, co
         });
     }, []);
 
+    const appendThinkingDelta = useCallback((delta: string) => {
+        if (!delta) return;
+        setMessages(prev => {
+            const last = prev[prev.length - 1];
+            if (last && last.role === "assistant") {
+                const parts = [...last.parts];
+                for (let i = parts.length - 1; i >= 0; i--) {
+                    if (parts[i].kind === "thinking") {
+                        parts[i] = { ...(parts[i] as ThinkingBlock), content: (parts[i] as ThinkingBlock).content + delta };
+                        return [...prev.slice(0, -1), { ...last, parts }];
+                    }
+                }
+                parts.push({ kind: "thinking", content: delta });
+                return [...prev.slice(0, -1), { ...last, parts }];
+            }
+            return [...prev, { role: "assistant", parts: [{ kind: "thinking", content: delta }] }];
+        });
+    }, []);
+
     // ── Event handler ──
     const handleEvent = useCallback((data: any) => {
         switch (data.type) {
@@ -489,7 +508,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, co
                 appendPart({ kind: "thinking", content: "" });
                 break;
             case "thinking.delta":
-                updateLastPartOfKind("thinking", p => ({ ...p, content: p.content + (data.thinkingContent || "") }));
+                appendThinkingDelta(data.thinkingContent || "");
                 break;
             case "thinking.end":
                 updateLastPartOfKind("thinking", p => ({ ...p, duration: data.thinkingDuration }));
@@ -556,7 +575,7 @@ export function ConversationOverlay({ sessionId, fileContext, chatHandlerRef, co
                 setLocalBusy(false);
                 break;
         }
-    }, [appendPart, updateLastPartOfKind, updateToolById]);
+    }, [appendPart, appendThinkingDelta, updateLastPartOfKind, updateToolById]);
 
     // Register WebSocket chat event handler — all clients receive the same events
     useEffect(() => {

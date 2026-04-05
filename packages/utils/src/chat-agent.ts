@@ -31,6 +31,7 @@ export interface ChatAgentConfig {
   model: string
   baseUrl?: string
   reasoningEffort?: string
+  serviceTier?: string
   logger?: Logger
   /** Override the default agent name */
   name?: string

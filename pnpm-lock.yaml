@@ -203,9 +203,12 @@ importers:
       '@any-code/utils':
         specifier: workspace:*
         version: link:../utils
-      '@openai/codex-sdk':
-        specifier: ^0.116.0
+      '@openai/codex':
+        specifier: 0.116.0
         version: 0.116.0
+      zod:
+        specifier: ^4.1.8
+        version: 4.1.8
     devDependencies:
       '@types/node':
         specifier: ^25.5.0
@@ -1159,10 +1162,6 @@ packages:
 
   '@open-draft/until@2.1.0':
     resolution: {integrity: sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg==}
-
-  '@openai/codex-sdk@0.116.0':
-    resolution: {integrity: sha512-qrn1Pu5G1GJ9w4m/Lk3L3466ulMGG9SfyR0LPAaXdisuQI1rqgoUOuoZ4byX7cCzn0x1g2+WPc0apZgjMEK04Q==}
-    engines: {node: '>=18'}
 
   '@openai/codex@0.116.0':
     resolution: {integrity: sha512-K6q9P2ZmpnzGmpS6Ybjvsdtvu8AbJx3f/Z4KmjH1u85StSS9TWMSQB8z0PPObKMejbtiIkHwhGyEIHi4iBYjig==}
@@ -3241,10 +3240,6 @@ snapshots:
       outvariant: 1.4.3
 
   '@open-draft/until@2.1.0': {}
-
-  '@openai/codex-sdk@0.116.0':
-    dependencies:
-      '@openai/codex': 0.116.0
 
   '@openai/codex@0.116.0':
     optionalDependencies:

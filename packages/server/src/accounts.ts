@@ -179,6 +179,7 @@ export class ServerAccountsManager {
     this.server.cfg.baseUrl = runtime.baseUrl
     this.server.cfg.model = runtime.model
     this.server.cfg.reasoningEffort = runtime.reasoningEffort
+    this.server.cfg.serviceTier = runtime.serviceTier
   }
 
   persistCurrentAccountApiKey(apiKey: string) {

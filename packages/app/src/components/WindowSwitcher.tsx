@@ -3,6 +3,7 @@ import {
     AccountsManager,
     DEFAULT_REASONING_EFFORT,
     REASONING_EFFORT_OPTIONS,
+    SERVICE_TIER_OPTIONS,
     type AccountSettings,
 } from "@any-code/settings/shared";
 import { GearIcon, CloseIcon, ChevronIcon, PlusIcon, VendorIcon, hasVendorIcon } from "./Icons";
@@ -875,6 +876,24 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                                             ))}
                                         </select>
                                     </div>
+                                    {selectedAccount.AGENT === "codex" && (
+                                        <div className="settings-row">
+                                            <label className="settings-label">SERVICE_TIER</label>
+                                            <select
+                                                className="settings-input"
+                                                value={selectedAccount.SERVICE_TIER || ""}
+                                                onChange={(e) => updateSelectedAccount({ SERVICE_TIER: e.target.value || undefined })}
+                                            >
+                                                <option value="">default</option>
+                                                {SERVICE_TIER_OPTIONS.map((tier) => (
+                                                    <option key={tier} value={tier}>{tier}</option>
+                                                ))}
+                                            </select>
+                                            <span className="settings-field-hint">
+                                                fast 会请求官方优先级通道；flex 也会按官方 service tier 透传。
+                                            </span>
+                                        </div>
+                                    )}
                                     <div className="settings-row">
                                         <label className="settings-label">BASE_URL</label>
                                         <input

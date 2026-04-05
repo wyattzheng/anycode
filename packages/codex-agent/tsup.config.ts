@@ -9,5 +9,4 @@ export default defineConfig({
     dts: true,
     clean: true,
     skipNodeModulesBundle: true,
-    onSuccess: "cp src/codex-mcp-bridge.cjs dist/codex-mcp-bridge.cjs",
 });

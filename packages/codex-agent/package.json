@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@any-code/utils": "workspace:*",
-    "@openai/codex-sdk": "^0.116.0"
+    "@openai/codex": "0.116.0",
+    "zod": "^4.1.8"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

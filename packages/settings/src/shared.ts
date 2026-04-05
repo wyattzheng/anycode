@@ -10,6 +10,7 @@ export const DEFAULT_BASE_URL = getVendorDefaultBaseUrl(DEFAULT_PROVIDER) ?? "ht
 export const DEFAULT_PROVIDER_OPTIONS = ["anthropic", "openai", "google", "litellm"] as const
 export const REASONING_EFFORT_OPTIONS = ["minimal", "low", "medium", "high", "xhigh"] as const
 export const DEFAULT_REASONING_EFFORT = "xhigh"
+export const SERVICE_TIER_OPTIONS = ["fast", "flex"] as const
 
 const FORCED_PROVIDER_BY_AGENT = {
   claudecode: "anthropic",
@@ -24,6 +25,7 @@ export interface AccountSettings {
   PROVIDER: string
   MODEL: string
   REASONING_EFFORT: string
+  SERVICE_TIER?: string
   API_KEY: string
   BASE_URL?: string
   OAUTH?: VendorOAuthState
@@ -34,6 +36,7 @@ export interface UserSettingsFile extends Record<string, any> {
   currentAccountId?: string | null
   MODEL?: string
   REASONING_EFFORT?: string
+  SERVICE_TIER?: string
   TLS_CERT?: string
   TLS_KEY?: string
   AGENT?: string
@@ -47,6 +50,7 @@ export interface RuntimeSettings {
   provider: string
   model: string
   reasoningEffort: string
+  serviceTier?: string
   apiKey: string
   baseUrl: string
   currentAccount: AccountSettings | null
@@ -56,6 +60,7 @@ const text = (value: unknown) => typeof value === "string" ? value.trim() : ""
 const maybe = (value: unknown) => text(value) || undefined
 const accountNameKey = (value: unknown) => text(value).toLocaleLowerCase()
 const reasoningEffort = (value: unknown) => REASONING_EFFORT_OPTIONS.includes(text(value) as typeof REASONING_EFFORT_OPTIONS[number]) ? text(value) : DEFAULT_REASONING_EFFORT
+const serviceTier = (value: unknown) => SERVICE_TIER_OPTIONS.includes(text(value).toLowerCase() as typeof SERVICE_TIER_OPTIONS[number]) ? text(value).toLowerCase() : undefined
 const OAUTH_KEYS = ["accessToken", "refreshToken", "idToken", "expiresAt", "clientId", "scope", "updatedAt"] as const
 
 function createAccountId() {
@@ -149,8 +154,10 @@ export class AccountsManager {
       REASONING_EFFORT: reasoningEffort(input.REASONING_EFFORT),
       API_KEY: text(input.API_KEY),
     }
+    const SERVICE_TIER = serviceTier(input.SERVICE_TIER)
     const BASE_URL = text(input.BASE_URL) || text(fallbackBaseUrl) || AccountsManager.getDefaultBaseUrlForProvider(PROVIDER)
     const OAUTH = readOAuth(PROVIDER, input.OAUTH)
+    if (SERVICE_TIER) account.SERVICE_TIER = SERVICE_TIER
     if (BASE_URL) account.BASE_URL = BASE_URL
     if (OAUTH) account.OAUTH = OAUTH
     return account
@@ -158,6 +165,7 @@ export class AccountsManager {
   static createAccount(existingAccounts: Array<Partial<AccountSettings>>, input: Partial<AccountSettings> = {}) {
     const AGENT = text(input.AGENT) || DEFAULT_AGENT
     const PROVIDER = AccountsManager.resolveProviderForAgent(AGENT, input.PROVIDER)
+    const SERVICE_TIER = serviceTier(input.SERVICE_TIER)
     return AccountsManager.materializeAccount({
       id: text(input.id) || createAccountId(),
       name: text(input.name) || AccountsManager.createUniqueName("账号", existingAccounts),
@@ -165,6 +173,7 @@ export class AccountsManager {
       PROVIDER,
       MODEL: text(input.MODEL) || AccountsManager.getDefaultModelForProvider(PROVIDER),
       REASONING_EFFORT: text(input.REASONING_EFFORT) || DEFAULT_REASONING_EFFORT,
+      ...(SERVICE_TIER ? { SERVICE_TIER } : {}),
       API_KEY: text(input.API_KEY),
       BASE_URL: text(input.BASE_URL) || AccountsManager.getDefaultBaseUrlForProvider(PROVIDER),
       OAUTH: input.OAUTH,
@@ -223,6 +232,7 @@ export class AccountsManager {
       provider: currentAccount?.PROVIDER ?? DEFAULT_PROVIDER,
       model: currentAccount?.MODEL ?? AccountsManager.getDefaultModelForProvider(currentAccount?.PROVIDER),
       reasoningEffort: currentAccount?.REASONING_EFFORT ?? DEFAULT_REASONING_EFFORT,
+      serviceTier: currentAccount?.SERVICE_TIER,
       apiKey: currentAccount?.API_KEY ?? "",
       baseUrl: currentAccount?.BASE_URL ?? AccountsManager.getDefaultBaseUrlForProvider(currentAccount?.PROVIDER),
       currentAccount,
@@ -248,6 +258,7 @@ export class SettingsModel {
           PROVIDER: input.PROVIDER,
           MODEL: input.MODEL,
           REASONING_EFFORT: input.REASONING_EFFORT,
+          SERVICE_TIER: input.SERVICE_TIER,
           API_KEY: input.API_KEY,
           BASE_URL: input.BASE_URL,
         }]
@@ -268,6 +279,7 @@ export class SettingsModel {
       BASE_URL: _BASE_URL,
       MODEL: _MODEL,
       REASONING_EFFORT: _REASONING_EFFORT,
+      SERVICE_TIER: _SERVICE_TIER,
       ...rest
     } = input
     this.data = {

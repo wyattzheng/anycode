@@ -28,6 +28,7 @@ export interface ServerConfig {
   provider: string
   model: string
   reasoningEffort?: string
+  serviceTier?: string
   apiKey: string
   baseUrl: string
   port: number
@@ -185,6 +186,7 @@ export class AnyCodeServer {
       provider: runtime.provider,
       model: runtime.model,
       reasoningEffort: runtime.reasoningEffort,
+      serviceTier: runtime.serviceTier,
       apiKey: runtime.apiKey,
       baseUrl: runtime.baseUrl,
       port,
